@@ -33,11 +33,11 @@ Some relevant benchmarks on an NVIDIA A5000:
 
 | Implementation   | Batch Size |  Steps / Second |
 | ---------------- | ---------- | --------------- |
-| Pure JAX         | 4096       |  79M            |
-| C++ CUDA         | 4096       |  20M            |  
+| Pure JAX         | 4096       |  32M            |
+| C++ CUDA         | 4096       |  5M             |
 | Warp             | 4096       |  32M            |
-| Pure JAX         | 8192       |  102M           |
-| C++ CUDA         | 8192       |  33M            |  
+| Pure JAX         | 8192       |  50M            |
+| C++ CUDA         | 8192       |  9.75M          |
 | Warp             | 8192       |  34M            |
 
 # Ideas for what to try next
