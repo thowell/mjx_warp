@@ -34,17 +34,17 @@ Some relevant benchmarks on an NVIDIA A5000:
 | Implementation   | Batch Size |  Steps / Second |
 | ---------------- | ---------- | --------------- |
 | Pure JAX         | 4096       |  32M            |
-| C++ CUDA         | 4096       |  5M             |
+| JAX<>CUDA FFI    | 4096       |  5M             |
 | Warp             | 4096       |  32M            |
 | Pure JAX         | 8192       |  50M            |
-| C++ CUDA         | 8192       |  9.75M          |
+| JAX<>CUDA FFI    | 8192       |  9.75M          |
 | Warp             | 8192       |  34M            |
 
 # Ideas for what to try next
 
 ## 1. Unroll steps
 
-In the Pure JAX benchmark, we can tell JAX to unroll some number of FK steps (in the benchmarks above, `unroll=4`).  This has a big impact on performance.  If we change `unroll` from 4 to 1, pure JAX performance at 4k batch drops from 79M to 30M.
+In the Pure JAX benchmark, we can tell JAX to unroll some number of FK steps (in the benchmarks above, `unroll=4`).  This has a big impact on performance.  If we change `unroll` from 4 to 1, pure JAX performance at 8k batch drops from 50M to 33M steps/sec.
 
 Is there some way that we can improve Warp performance in the same way?  If I know ahead of time that I am going to call FK in a loop 1000 times, can I somehow inject unroll primitives?
 
