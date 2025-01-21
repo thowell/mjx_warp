@@ -29,16 +29,16 @@ Benchmark as follows:
 mjx-testspeed --mjcf=humanoid/humanoid.xml
 ```
 
-Some relevant benchmarks on an NVIDIA A5000:
+Some relevant benchmarks on an NVIDIA GeForce RTX 4090:
 
 | Implementation   | Batch Size |  Steps / Second |
 | ---------------- | ---------- | --------------- |
-| Pure JAX         | 4096       |  32M            |
-| JAX<>CUDA FFI    | 4096       |  5M             |
-| Warp             | 4096       |  32M            |
-| Pure JAX         | 8192       |  50M            |
-| JAX<>CUDA FFI    | 8192       |  9.75M          |
-| Warp             | 8192       |  34M            |
+| Pure JAX         | 4096       |  47M            |
+| JAX<>CUDA FFI    | 4096       |  7.4M           |
+| Warp             | 4096       |  30M            |
+| Pure JAX         | 8192       |  82M            |
+| JAX<>CUDA FFI    | 8192       |  13.5M          |
+| Warp             | 8192       |  59M            |
 
 # Ideas for what to try next
 
