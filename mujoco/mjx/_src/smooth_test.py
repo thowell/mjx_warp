@@ -33,7 +33,14 @@ class SmoothTest(absltest.TestCase):
     dx = mjx.make_data(m)
     qpos = np.tile(d.qpos, (1, 1))
     dx.qpos = wp.array(qpos, dtype=wp.float32, ndim=2)
-    mjx.kinematics(mx, dx)
+
+    # common code path: only care about xpos / xquat
+    mjx.kinematics(mx, dx, emit_anchor_axis=False)
+    _assert_eq(d.xquat, dx.xquat.numpy().reshape((-1, 4)), 'xquat')
+    _assert_eq(d.xpos, dx.xpos.numpy().reshape((-1, 3)), 'xpos')
+
+    # for debugging you might want to see xanchor and xaxis
+    mjx.kinematics(mx, dx, emit_anchor_axis=True)
     _assert_eq(d.xanchor, dx.xanchor.numpy().reshape((-1, 3)), 'xanchor')
     _assert_eq(d.xaxis, dx.xaxis.numpy().reshape((-1, 3)), 'xaxis')
     _assert_eq(d.xquat, dx.xquat.numpy().reshape((-1, 4)), 'xquat')
