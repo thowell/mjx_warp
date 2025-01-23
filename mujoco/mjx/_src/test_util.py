@@ -48,14 +48,14 @@ def benchmark(
 
   wp.clear_kernel_cache()
   jit_beg = time.perf_counter()
-  smooth.kinematics(mx, dx)
+  smooth.kinematics(mx, dx, False)
   jit_end = time.perf_counter()
   jit_duration = jit_end - jit_beg
   wp.synchronize()
 
   # capture the whole smooth.kinematic() function as a CUDA graph
   with wp.ScopedCapture() as capture:
-    smooth.kinematics(mx, dx)
+    smooth.kinematics(mx, dx, False)
   graph = capture.graph
 
   run_beg = time.perf_counter()
