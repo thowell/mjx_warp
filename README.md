@@ -35,10 +35,10 @@ Some relevant benchmarks on an NVIDIA GeForce RTX 4090:
 | ---------------- | ---------- | --------------- |
 | Pure JAX         | 4096       |  47M            |
 | JAX<>CUDA FFI    | 4096       |  7.4M           |
-| Warp             | 4096       |  63M            |
+| Warp             | 4096       |  79M            |
 | Pure JAX         | 8192       |  82M            |
 | JAX<>CUDA FFI    | 8192       |  13.5M          |
-| Warp             | 8192       |  82M            |
+| Warp             | 8192       |  107M           |
 
 # Ideas for what to try next
 
