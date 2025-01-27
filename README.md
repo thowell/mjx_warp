@@ -33,12 +33,15 @@ Some relevant benchmarks on an NVIDIA GeForce RTX 4090:
 
 | Implementation   | Batch Size |  Steps / Second |
 | ---------------- | ---------- | --------------- |
+| JAX<>CUDA FFI    | 4096       |  46M            |
 | Pure JAX         | 4096       |  47M            |
-| JAX<>CUDA FFI    | 4096       |  7.4M           |
 | Warp             | 4096       |  79M            |
+| Pure CUDA        | 4096       |  86M            |
+| JAX<>CUDA FFI    | 8192       |  68M            |
 | Pure JAX         | 8192       |  82M            |
-| JAX<>CUDA FFI    | 8192       |  13.5M          |
+| Taichi           | 8192       |  82M            |
 | Warp             | 8192       |  107M           |
+| Pure CUDA        | 8192       |  125M           |
 
 # Ideas for what to try next
 
