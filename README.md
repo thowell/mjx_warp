@@ -31,6 +31,8 @@ mjx-testspeed --mjcf=humanoid/humanoid.xml
 
 Some relevant benchmarks on an NVIDIA GeForce RTX 4090:
 
+## kinematics
+
 | Implementation   | Batch Size |  Steps / Second |
 | ---------------- | ---------- | --------------- |
 | JAX<>CUDA FFI    | 4096       |  46M            |
@@ -42,6 +44,20 @@ Some relevant benchmarks on an NVIDIA GeForce RTX 4090:
 | Taichi           | 8192       |  82M            |
 | Warp             | 8192       |  107M           |
 | Pure CUDA        | 8192       |  125M           |
+
+## com_pos
+
+```bash
+mjx-testspeed --function=com_pos --mjcf=humanoid/humanoid.xml --batch_size=8192
+```
+
+| Implementation   | Batch Size |  Steps / Second |
+| ---------------- | ---------- | --------------- |
+| JAX<>CUDA FFI    | 4096       |  65M            |
+| Pure CUDA        | 8192       |  87M            |
+| Pure JAX         | 4096       |  94M            |
+| Warp             | 4096       |  111M           |
+
 
 # Ideas for what to try next
 

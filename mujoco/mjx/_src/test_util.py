@@ -14,32 +14,29 @@
 # ==============================================================================
 """Utilities for testing."""
 
-import os
-import sys
 import time
-from typing import Dict, Optional, Tuple
+from typing import Callable, Tuple
 
-from etils import epath
-import jax
 import mujoco
 import warp as wp
+
 # pylint: disable=g-importing-member
 from . import io
 from . import smooth
+from .types import Data
 from .types import Model
 # pylint: enable=g-importing-member
-import numpy as np
-
 
 
 def benchmark(
-    m: mujoco.MjModel,
-    nstep: int = 1000,
-    batch_size: int = 1024,
-    unroll_steps: int = 1,
-    solver: str = 'newton',
-    iterations: int = 1,
-    ls_iterations: int = 4,
+  fn: Callable[[Model, Data], None],
+  m: mujoco.MjModel,
+  nstep: int = 1000,
+  batch_size: int = 1024,
+  unroll_steps: int = 1,
+  solver: str = "newton",
+  iterations: int = 1,
+  ls_iterations: int = 4,
 ) -> Tuple[float, float, int]:
   """Benchmark a model."""
 
@@ -48,14 +45,14 @@ def benchmark(
 
   wp.clear_kernel_cache()
   jit_beg = time.perf_counter()
-  smooth.kinematics(mx, dx, False)
+  fn(mx, dx)
   jit_end = time.perf_counter()
   jit_duration = jit_end - jit_beg
   wp.synchronize()
 
   # capture the whole smooth.kinematic() function as a CUDA graph
   with wp.ScopedCapture() as capture:
-    smooth.kinematics(mx, dx, False)
+    fn(mx, dx)
   graph = capture.graph
 
   run_beg = time.perf_counter()

@@ -17,7 +17,7 @@ def put_model(m: mujoco.MjModel) -> types.Model:
   mx.qpos0 = wp.array(m.qpos0, dtype=wp.float32, ndim=2)
 
   # body_bfs is BFS ordering of body ids
-  # level_beg, level_end specify the bounds of level ranges in body_range
+  # level_beg, level_end specify the bounds of level ranges in body_bfs
   level_beg, level_end, body_bfs = [], [], []
   parents = {0}
   while len(body_bfs) < m.nbody - 1:
@@ -43,8 +43,17 @@ def put_model(m: mujoco.MjModel) -> types.Model:
   mx.body_quat = wp.array(m.body_quat, dtype=wp.quat, ndim=1)
   mx.body_ipos = wp.array(m.body_ipos, dtype=wp.vec3, ndim=1)
   mx.body_iquat = wp.array(m.body_iquat, dtype=wp.quat, ndim=1)
+  mx.body_rootid = wp.array(m.body_rootid, dtype=wp.int32, ndim=1)
+  mx.body_inertia = wp.array(m.body_inertia, dtype=wp.vec3, ndim=1)
+  mx.body_mass = wp.array(m.body_mass, dtype=wp.float32, ndim=1)
+  body_subtree_mass = np.copy(m.body_mass)
+  for i in range(m.nbody - 1, 0, -1):
+    body_subtree_mass[m.body_parentid[i]] += body_subtree_mass[i]
+  mx.body_subtree_mass = wp.array(body_subtree_mass, dtype=wp.float32, ndim=1)
+  mx.jnt_bodyid = wp.array(m.jnt_bodyid, dtype=wp.int32, ndim=1)
   mx.jnt_type = wp.array(m.jnt_type, dtype=wp.int32, ndim=1)
   mx.jnt_qposadr = wp.array(m.jnt_qposadr, dtype=wp.int32, ndim=1)
+  mx.jnt_dofadr = wp.array(m.jnt_dofadr, dtype=wp.int32, ndim=1)
   mx.jnt_axis = wp.array(m.jnt_axis, dtype=wp.vec3, ndim=1)
   mx.jnt_pos = wp.array(m.jnt_pos, dtype=wp.vec3, ndim=1)
   mx.geom_pos = wp.array(m.geom_pos, dtype=wp.vec3, ndim=1)
@@ -69,9 +78,12 @@ def make_data(m: mujoco.MjModel, nworld: int = 1) -> types.Data:
   d.xquat = wp.zeros((nworld, m.nbody), dtype=wp.quat)
   d.xipos = wp.zeros((nworld, m.nbody), dtype=wp.vec3)
   d.ximat = wp.zeros((nworld, m.nbody), dtype=wp.mat33)
+  d.subtree_com = wp.zeros((nworld, m.nbody), dtype=wp.vec3)
   d.geom_xpos = wp.zeros((nworld, m.ngeom), dtype=wp.vec3)
   d.geom_xmat = wp.zeros((nworld, m.ngeom), dtype=wp.mat33)
   d.site_xpos = wp.zeros((nworld, m.nsite), dtype=wp.vec3)
   d.site_xmat = wp.zeros((nworld, m.nsite), dtype=wp.mat33)
+  d.cinert = wp.zeros((nworld, m.nbody, 10), dtype=wp.float32)
+  d.cdof = wp.zeros((nworld, m.nv), dtype=wp.spatial_vector)
 
   return d
