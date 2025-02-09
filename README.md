@@ -66,8 +66,8 @@ mjx-testspeed --function=crb --mjcf=humanoid/humanoid.xml --batch_size=8192
 
 | Implementation   | Batch Size |  Steps / Second |
 | ---------------- | ---------- | --------------- |
-| JAX<>CUDA FFI    | 8192       |  65M            |
-| Pure CUDA        | 8192       |  26M            |
+| JAX<>CUDA FFI    | 8192       |  26M            |
+| Pure CUDA        | 8192       |  67M            |
 | Pure JAX         | 8192       |  37M            |
 | Warp             | 8192       |  95M           |
 
