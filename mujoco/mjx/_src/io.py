@@ -5,23 +5,23 @@ import numpy as np
 from . import types
 
 
-def put_model(m: mujoco.MjModel) -> types.Model:
-  mx = types.Model()
-  mx.nq = m.nq
-  mx.nv = m.nv
-  mx.nbody = m.nbody
-  mx.njnt = m.njnt
-  mx.ngeom = m.ngeom
-  mx.nsite = m.nsite
-  mx.nmocap = m.nmocap
-  mx.qpos0 = wp.array(m.qpos0, dtype=wp.float32, ndim=2)
+def put_model(mjm: mujoco.MjModel) -> types.Model:
+  m = types.Model()
+  m.nq = mjm.nq
+  m.nv = mjm.nv
+  m.nbody = mjm.nbody
+  m.njnt = mjm.njnt
+  m.ngeom = mjm.ngeom
+  m.nsite = mjm.nsite
+  m.nmocap = mjm.nmocap
+  m.qpos0 = wp.array(mjm.qpos0, dtype=wp.float32, ndim=2)
 
   # body_bfs is BFS ordering of body ids
   # level_beg, level_end specify the bounds of level ranges in body_bfs
   level_beg, level_end, body_bfs = [], [], []
   parents = {0}
   while len(body_bfs) < m.nbody - 1:
-    children = [i for i, p in enumerate(m.body_parentid) if p in parents and i != 0]
+    children = [i for i, p in enumerate(mjm.body_parentid) if p in parents and i != 0]
     if not children:
       raise ValueError("invalid tree layout")
     level_beg.append(len(body_bfs))
@@ -29,61 +29,92 @@ def put_model(m: mujoco.MjModel) -> types.Model:
     level_end.append(len(body_bfs))
     parents = set(children)
 
-  mx.nlevel = len(level_beg)
-  mx.level_beg = wp.array(level_beg, dtype=wp.int32, ndim=1)
-  mx.level_beg_cpu = wp.array(level_beg, dtype=wp.int32, ndim=1, device='cpu')
-  mx.level_end = wp.array(level_end, dtype=wp.int32, ndim=1)
-  mx.level_end_cpu = wp.array(level_end, dtype=wp.int32, ndim=1, device='cpu')
-  mx.body_bfs = wp.array(body_bfs, dtype=wp.int32, ndim=1)
-  mx.body_jntadr = wp.array(m.body_jntadr, dtype=wp.int32, ndim=1)
-  mx.body_jntnum = wp.array(m.body_jntnum, dtype=wp.int32, ndim=1)
-  mx.body_parentid = wp.array(m.body_parentid, dtype=wp.int32, ndim=1)
-  mx.body_mocapid = wp.array(m.body_mocapid, dtype=wp.int32, ndim=1)
-  mx.body_pos = wp.array(m.body_pos, dtype=wp.vec3, ndim=1)
-  mx.body_quat = wp.array(m.body_quat, dtype=wp.quat, ndim=1)
-  mx.body_ipos = wp.array(m.body_ipos, dtype=wp.vec3, ndim=1)
-  mx.body_iquat = wp.array(m.body_iquat, dtype=wp.quat, ndim=1)
-  mx.body_rootid = wp.array(m.body_rootid, dtype=wp.int32, ndim=1)
-  mx.body_inertia = wp.array(m.body_inertia, dtype=wp.vec3, ndim=1)
-  mx.body_mass = wp.array(m.body_mass, dtype=wp.float32, ndim=1)
-  body_subtree_mass = np.copy(m.body_mass)
-  for i in range(m.nbody - 1, 0, -1):
-    body_subtree_mass[m.body_parentid[i]] += body_subtree_mass[i]
-  mx.body_subtree_mass = wp.array(body_subtree_mass, dtype=wp.float32, ndim=1)
-  mx.jnt_bodyid = wp.array(m.jnt_bodyid, dtype=wp.int32, ndim=1)
-  mx.jnt_type = wp.array(m.jnt_type, dtype=wp.int32, ndim=1)
-  mx.jnt_qposadr = wp.array(m.jnt_qposadr, dtype=wp.int32, ndim=1)
-  mx.jnt_dofadr = wp.array(m.jnt_dofadr, dtype=wp.int32, ndim=1)
-  mx.jnt_axis = wp.array(m.jnt_axis, dtype=wp.vec3, ndim=1)
-  mx.jnt_pos = wp.array(m.jnt_pos, dtype=wp.vec3, ndim=1)
-  mx.geom_pos = wp.array(m.geom_pos, dtype=wp.vec3, ndim=1)
-  mx.geom_quat = wp.array(m.geom_quat, dtype=wp.quat, ndim=1)
-  mx.site_pos = wp.array(m.site_pos, dtype=wp.vec3, ndim=1)
-  mx.site_quat = wp.array(m.site_quat, dtype=wp.quat, ndim=1)
+  m.nlevel = len(level_beg)
+  m.level_beg = wp.array(level_beg, dtype=wp.int32, ndim=1)
+  m.level_beg_cpu = wp.array(level_beg, dtype=wp.int32, ndim=1, device='cpu')
+  m.level_end = wp.array(level_end, dtype=wp.int32, ndim=1)
+  m.level_end_cpu = wp.array(level_end, dtype=wp.int32, ndim=1, device='cpu')
+  m.body_bfs = wp.array(body_bfs, dtype=wp.int32, ndim=1)
+  m.body_jntadr = wp.array(mjm.body_jntadr, dtype=wp.int32, ndim=1)
+  m.body_jntnum = wp.array(mjm.body_jntnum, dtype=wp.int32, ndim=1)
+  m.body_parentid = wp.array(mjm.body_parentid, dtype=wp.int32, ndim=1)
+  m.body_mocapid = wp.array(mjm.body_mocapid, dtype=wp.int32, ndim=1)
+  m.body_pos = wp.array(mjm.body_pos, dtype=wp.vec3, ndim=1)
+  m.body_quat = wp.array(mjm.body_quat, dtype=wp.quat, ndim=1)
+  m.body_ipos = wp.array(mjm.body_ipos, dtype=wp.vec3, ndim=1)
+  m.body_iquat = wp.array(mjm.body_iquat, dtype=wp.quat, ndim=1)
+  m.body_rootid = wp.array(mjm.body_rootid, dtype=wp.int32, ndim=1)
+  m.body_inertia = wp.array(mjm.body_inertia, dtype=wp.vec3, ndim=1)
+  m.body_mass = wp.array(mjm.body_mass, dtype=wp.float32, ndim=1)
+  m.jnt_bodyid = wp.array(mjm.jnt_bodyid, dtype=wp.int32, ndim=1)
+  m.jnt_type = wp.array(mjm.jnt_type, dtype=wp.int32, ndim=1)
+  m.jnt_qposadr = wp.array(mjm.jnt_qposadr, dtype=wp.int32, ndim=1)
+  m.jnt_dofadr = wp.array(mjm.jnt_dofadr, dtype=wp.int32, ndim=1)
+  m.jnt_axis = wp.array(mjm.jnt_axis, dtype=wp.vec3, ndim=1)
+  m.jnt_pos = wp.array(mjm.jnt_pos, dtype=wp.vec3, ndim=1)
+  m.geom_pos = wp.array(mjm.geom_pos, dtype=wp.vec3, ndim=1)
+  m.geom_quat = wp.array(mjm.geom_quat, dtype=wp.quat, ndim=1)
+  m.site_pos = wp.array(mjm.site_pos, dtype=wp.vec3, ndim=1)
+  m.site_quat = wp.array(mjm.site_quat, dtype=wp.quat, ndim=1)
+  m.dof_bodyid = wp.array(mjm.dof_bodyid, dtype=wp.int32, ndim=1)
+  m.dof_parentid = wp.array(mjm.dof_parentid, dtype=wp.int32, ndim=1)
+  m.dof_Madr = wp.array(mjm.dof_Madr, dtype=wp.int32, ndim=1)
+  m.dof_armature = wp.array(mjm.dof_armature, dtype=wp.float32, ndim=1)
 
-  return mx
+  return m
 
-def make_data(m: mujoco.MjModel, nworld: int = 1) -> types.Data:
+def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   d = types.Data()
   d.nworld = nworld
 
-  qpos0 = np.tile(m.qpos0, (nworld, 1))
+  qpos0 = np.tile(mjm.qpos0, (nworld, 1))
   d.qpos = wp.array(qpos0, dtype=wp.float32, ndim=2)
-  d.mocap_pos = wp.zeros((nworld, m.nmocap), dtype=wp.vec3)
-  d.mocap_quat = wp.zeros((nworld, m.nmocap), dtype=wp.quat)
-  d.xanchor = wp.zeros((nworld, m.njnt), dtype=wp.vec3)
-  d.xaxis = wp.zeros((nworld, m.njnt), dtype=wp.vec3)
-  d.xmat = wp.zeros((nworld, m.nbody), dtype=wp.mat33)
-  d.xpos = wp.zeros((nworld, m.nbody), dtype=wp.vec3)
-  d.xquat = wp.zeros((nworld, m.nbody), dtype=wp.quat)
-  d.xipos = wp.zeros((nworld, m.nbody), dtype=wp.vec3)
-  d.ximat = wp.zeros((nworld, m.nbody), dtype=wp.mat33)
-  d.subtree_com = wp.zeros((nworld, m.nbody), dtype=wp.vec3)
-  d.geom_xpos = wp.zeros((nworld, m.ngeom), dtype=wp.vec3)
-  d.geom_xmat = wp.zeros((nworld, m.ngeom), dtype=wp.mat33)
-  d.site_xpos = wp.zeros((nworld, m.nsite), dtype=wp.vec3)
-  d.site_xmat = wp.zeros((nworld, m.nsite), dtype=wp.mat33)
-  d.cinert = wp.zeros((nworld, m.nbody, 10), dtype=wp.float32)
-  d.cdof = wp.zeros((nworld, m.nv), dtype=wp.spatial_vector)
+  d.mocap_pos = wp.zeros((nworld, mjm.nmocap), dtype=wp.vec3)
+  d.mocap_quat = wp.zeros((nworld, mjm.nmocap), dtype=wp.quat)
+  d.xanchor = wp.zeros((nworld, mjm.njnt), dtype=wp.vec3)
+  d.xaxis = wp.zeros((nworld, mjm.njnt), dtype=wp.vec3)
+  d.xmat = wp.zeros((nworld, mjm.nbody), dtype=wp.mat33)
+  d.xpos = wp.zeros((nworld, mjm.nbody), dtype=wp.vec3)
+  d.xquat = wp.zeros((nworld, mjm.nbody), dtype=wp.quat)
+  d.xipos = wp.zeros((nworld, mjm.nbody), dtype=wp.vec3)
+  d.ximat = wp.zeros((nworld, mjm.nbody), dtype=wp.mat33)
+  d.subtree_com = wp.zeros((nworld, mjm.nbody), dtype=wp.vec3)
+  d.geom_xpos = wp.zeros((nworld, mjm.ngeom), dtype=wp.vec3)
+  d.geom_xmat = wp.zeros((nworld, mjm.ngeom), dtype=wp.mat33)
+  d.site_xpos = wp.zeros((nworld, mjm.nsite), dtype=wp.vec3)
+  d.site_xmat = wp.zeros((nworld, mjm.nsite), dtype=wp.mat33)
+  d.cinert = wp.zeros((nworld, mjm.nbody), dtype=types.vec10)
+  d.cdof = wp.zeros((nworld, mjm.nv), dtype=wp.spatial_vector)
+  d.crb = wp.zeros((nworld, mjm.nbody), dtype=types.vec10)
+  d.qM = wp.zeros((nworld, mjm.nM), dtype=wp.float32)
+
+  return d
+
+def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.Data:
+  d = types.Data()
+  d.nworld = nworld
+
+  # TODO(erikfrey): would it be better to tile on the gpu?
+  tile_fn = lambda x: np.tile(x, (nworld,) + (1,) * len(x.shape))
+
+  d.qpos = wp.array(tile_fn(mjd.qpos), dtype=wp.float32, ndim=2)
+  d.mocap_pos = wp.array(tile_fn(mjd.mocap_pos), dtype=wp.vec3, ndim=2)
+  d.mocap_quat = wp.array(tile_fn(mjd.mocap_quat), dtype=wp.quat, ndim=2)
+  d.xanchor = wp.array(tile_fn(mjd.xanchor), dtype=wp.vec3, ndim=2)
+  d.xaxis = wp.array(tile_fn(mjd.xaxis), dtype=wp.vec3, ndim=2)
+  d.xmat = wp.array(tile_fn(mjd.xmat), dtype=wp.mat33, ndim=2)
+  d.xpos = wp.array(tile_fn(mjd.xpos), dtype=wp.vec3, ndim=2)
+  d.xquat = wp.array(tile_fn(mjd.xquat), dtype=wp.quat, ndim=2)
+  d.xipos = wp.array(tile_fn(mjd.xipos), dtype=wp.vec3, ndim=2)
+  d.ximat = wp.array(tile_fn(mjd.ximat), dtype=wp.mat33, ndim=2)
+  d.subtree_com = wp.array(tile_fn(mjd.subtree_com), dtype=wp.vec3, ndim=2)
+  d.geom_xpos = wp.array(tile_fn(mjd.geom_xpos), dtype=wp.vec3, ndim=2)
+  d.geom_xmat = wp.array(tile_fn(mjd.geom_xmat), dtype=wp.mat33, ndim=2)
+  d.site_xpos = wp.array(tile_fn(mjd.site_xpos), dtype=wp.vec3, ndim=2)
+  d.site_xmat = wp.array(tile_fn(mjd.site_xmat), dtype=wp.mat33, ndim=2)
+  d.cinert = wp.array(tile_fn(mjd.cinert), dtype=types.vec10, ndim=2)
+  d.cdof = wp.array(tile_fn(mjd.cdof), dtype=wp.spatial_vector, ndim=2)
+  d.crb = wp.array(tile_fn(mjd.crb), dtype=types.vec10, ndim=2)
+  d.qM = wp.array(tile_fn(mjd.qM), dtype=wp.float32, ndim=2)
 
   return d

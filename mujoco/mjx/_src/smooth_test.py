@@ -22,55 +22,62 @@ class SmoothTest(absltest.TestCase):
   def test_kinematics(self):
     """Tests MJX kinematics."""
     path = epath.resource_path('mujoco.mjx') / 'test_data/humanoid/humanoid.xml'
-    m = mujoco.MjModel.from_xml_path(path.as_posix())
-    d = mujoco.MjData(m)
-    # reset to stand_on_left_leg
-    mujoco.mj_resetDataKeyframe(m, d, 1)
-    mujoco.mj_forward(m, d)
-    # make mjx model and data
-    mx = mjx.put_model(m)
-    dx = mjx.make_data(m)
-    qpos = np.reshape(d.qpos, (1, -1))
-    dx.qpos = wp.array(qpos, dtype=wp.float32, ndim=2)
+    mjm = mujoco.MjModel.from_xml_path(path.as_posix())
+    mjd = mujoco.MjData(mjm)
+    mujoco.mj_resetDataKeyframe(mjm, mjd, 1) # reset to stand_on_left_leg
+    mujoco.mj_forward(mjm, mjd)
+    m = mjx.put_model(mjm)
+    d = mjx.put_data(mjm, mjd)
 
-    mjx.kinematics(mx, dx)
-    _assert_eq(d.xanchor, dx.xanchor.numpy().reshape((-1, 3)), 'xanchor')
-    _assert_eq(d.xaxis, dx.xaxis.numpy().reshape((-1, 3)), 'xaxis')
-    _assert_eq(d.xquat, dx.xquat.numpy().reshape((-1, 4)), 'xquat')
-    _assert_eq(d.xpos, dx.xpos.numpy().reshape((-1, 3)), 'xpos')
+    for arr in (d.xanchor, d.xaxis, d.xquat, d.xpos):
+      arr.zero_()
+
+    mjx.kinematics(m, d)
+
+    _assert_eq(d.xanchor.numpy()[0], mjd.xanchor, 'xanchor')
+    _assert_eq(d.xaxis.numpy()[0], mjd.xaxis, 'xaxis')
+    _assert_eq(d.xquat.numpy()[0], mjd.xquat, 'xquat')
+    _assert_eq(d.xpos.numpy()[0], mjd.xpos, 'xpos')
 
   def test_com_pos(self):
     """Tests MJX com_pos."""
     path = epath.resource_path('mujoco.mjx') / 'test_data/humanoid/humanoid.xml'
-    m = mujoco.MjModel.from_xml_path(path.as_posix())
-    d = mujoco.MjData(m)
-    # reset to stand_on_left_leg
-    mujoco.mj_resetDataKeyframe(m, d, 1)
-    mujoco.mj_forward(m, d)
-    # make mjx model and data
-    mx = mjx.put_model(m)
-    dx = mjx.make_data(m)
-    qpos = np.reshape(d.qpos, (1, -1))
-    dx.qpos = wp.array(qpos, dtype=wp.float32, ndim=2)
-    xaxis = np.reshape(d.xaxis, (1, -1, 3))
-    dx.xaxis = wp.array(xaxis, dtype=wp.vec3, ndim=2)
-    xanchor = np.reshape(d.xanchor, (1, -1, 3))
-    dx.xanchor = wp.array(xanchor, dtype=wp.vec3, ndim=2)
-    xmat = np.reshape(d.xmat, (1, -1, 3, 3))
-    dx.xmat = wp.array(xmat, dtype=wp.mat33, ndim=2)
-    xipos = np.reshape(d.xipos, (1, -1, 3))
-    dx.xipos = wp.array(xipos, dtype=wp.vec3, ndim=2)
-    ximat = np.reshape(d.ximat, (1, -1, 3, 3))
-    dx.ximat = wp.array(ximat, dtype=wp.mat33, ndim=2)
+    mjm = mujoco.MjModel.from_xml_path(path.as_posix())
+    mjd = mujoco.MjData(mjm)
+    mujoco.mj_resetDataKeyframe(mjm, mjd, 1) # reset to stand_on_left_leg
+    mujoco.mj_forward(mjm, mjd)
+    m = mjx.put_model(mjm)
+    d = mjx.put_data(mjm, mjd)
 
-    mjx.com_pos(mx, dx)
-    _assert_eq(dx.subtree_com.numpy().reshape((-1, 3)), d.subtree_com, 'subtree_com')
-    _assert_eq(dx.cinert.numpy().reshape((-1, 10)), d.cinert, 'subtree_com')
-    np.set_printoptions(suppress=True, linewidth=1000, precision=4)
-    print(dx.cdof.numpy().reshape((-1, 6)))
-    print(d.cdof)
-    _assert_eq(dx.cdof.numpy().reshape((-1, 6)), d.cdof, 'subtree_com')
+    for arr in (d.subtree_com, d.cinert, d.cdof):
+      arr.zero_()
 
+    mjx.com_pos(m, d)
+    _assert_eq(d.subtree_com.numpy()[0], mjd.subtree_com, 'subtree_com')
+    _assert_eq(d.cinert.numpy()[0], mjd.cinert, 'cinert')
+    _assert_eq(d.cdof.numpy()[0], mjd.cdof, 'cdof')
+
+  def test_crb(self):
+    """Tests MJX crb."""
+    path = epath.resource_path('mujoco.mjx') / 'test_data/humanoid/humanoid.xml'
+    mjm = mujoco.MjModel.from_xml_path(path.as_posix())
+    mjd = mujoco.MjData(mjm)
+    mujoco.mj_resetDataKeyframe(mjm, mjd, 1) # reset to stand_on_left_leg
+    mujoco.mj_forward(mjm, mjd)
+    m = mjx.put_model(mjm)
+    d = mjx.put_data(mjm, mjd)
+
+    for arr in (d.crb,):
+      arr.zero_()
+
+    mjx.crb(m, d)
+
+    np.set_printoptions(suppress=True, precision=4, linewidth=1000)
+    print(d.crb)
+    print(mjd.crb)
+
+    _assert_eq(d.crb.numpy()[0], mjd.crb, 'crb')
+    _assert_eq(d.qM.numpy()[0], mjd.qM, 'qM')
 
 if __name__ == '__main__':
   wp.init()

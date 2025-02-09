@@ -70,21 +70,28 @@ def com_pos(m: types.Model, d: types.Data):
   """Map inertias and motion dofs to global frame centered at subtree-CoM."""
 
   @wp.kernel
-  def subtree_init(m: types.Model, d: types.Data):
+  def mass_subtree_acc(m: types.Model, mass_subtree: wp.array(dtype=wp.float32, ndim=1), level: int):
+    levelid = wp.tid()
+    bodyid = m.body_bfs[m.level_beg[level] + levelid]
+    pid = m.body_parentid[bodyid]
+    wp.atomic_add(mass_subtree, pid, mass_subtree[bodyid])
+
+  @wp.kernel
+  def subtree_com_init(m: types.Model, d: types.Data):
     worldid, bodyid = wp.tid()
     d.subtree_com[worldid, bodyid] = d.xipos[worldid, bodyid] * m.body_mass[bodyid]
 
   @wp.kernel
-  def subtree_level(m: types.Model, d: types.Data, level: int):
+  def subtree_com_acc(m: types.Model, d: types.Data, level: int):
     worldid, levelid = wp.tid()
     bodyid = m.body_bfs[m.level_beg[level] + levelid]
     pid = m.body_parentid[bodyid]
     wp.atomic_add(d.subtree_com, worldid, pid, d.subtree_com[worldid, bodyid])
 
   @wp.kernel
-  def subtree_div(m: types.Model, d: types.Data):
+  def subtree_div(mass_subtree: wp.array(dtype=wp.float32, ndim=1), d: types.Data):
     worldid, bodyid = wp.tid()
-    d.subtree_com[worldid, bodyid] /= m.body_subtree_mass[bodyid]
+    d.subtree_com[worldid, bodyid] /= mass_subtree[bodyid]
 
   @wp.kernel
   def cinert(m: types.Model, d: types.Data):
@@ -95,7 +102,7 @@ def com_pos(m: types.Model, d: types.Data):
     dif = d.xipos[worldid, bodyid] - d.subtree_com[worldid, m.body_rootid[bodyid]]
     # express inertia in com-based frame (mju_inertCom)
 
-    res = d.cinert[worldid, bodyid]
+    res = types.vec10()
     # res_rot = mat * diag(inert) * mat'
     tmp = mat @ wp.diag(inert) @ wp.transpose(mat)
     res[0] = tmp[0, 0]
@@ -104,7 +111,6 @@ def com_pos(m: types.Model, d: types.Data):
     res[3] = tmp[0, 1]
     res[4] = tmp[0, 2]
     res[5] = tmp[1, 2]
-
     # res_rot -= mass * dif_cross * dif_cross
     res[0] += mass * (dif[1] * dif[1] + dif[2] * dif[2])
     res[1] += mass * (dif[0] * dif[0] + dif[2] * dif[2])
@@ -112,14 +118,14 @@ def com_pos(m: types.Model, d: types.Data):
     res[3] -= mass * dif[0] * dif[1]
     res[4] -= mass * dif[0] * dif[2]
     res[5] -= mass * dif[1] * dif[2]
-
     # res_tran = mass * dif
     res[6] = mass * dif[0]
     res[7] = mass * dif[1]
     res[8] = mass * dif[2]
-
     # res_mass = mass
     res[9] = mass
+
+    d.cinert[worldid, bodyid] = res
 
   @wp.kernel
   def cdof(m: types.Model, d: types.Data):
@@ -154,12 +160,66 @@ def com_pos(m: types.Model, d: types.Data):
 
   level_beg, level_end = m.level_beg_cpu.numpy(), m.level_end_cpu.numpy()
 
-  wp.launch(subtree_init, dim=(d.nworld, m.nbody), inputs=[m, d])
+  mass_subtree = wp.clone(m.body_mass)
+  for i in reversed(range(m.nlevel)):
+    dim = (level_end[i] - level_beg[i],)
+    wp.launch(mass_subtree_acc, dim=dim, inputs=[m, mass_subtree, i])
+
+  wp.launch(subtree_com_init, dim=(d.nworld, m.nbody), inputs=[m, d])
 
   for i in reversed(range(m.nlevel)):
     dim = (d.nworld, level_end[i] - level_beg[i])
-    wp.launch(subtree_level, dim=dim, inputs=[m, d, i])
+    wp.launch(subtree_com_acc, dim=dim, inputs=[m, d, i])
 
-  wp.launch(subtree_div, dim=(d.nworld, m.nbody), inputs=[m, d])
+  wp.launch(subtree_div, dim=(d.nworld, m.nbody), inputs=[mass_subtree, d])
   wp.launch(cinert, dim=(d.nworld, m.nbody), inputs=[m, d])
   wp.launch(cdof, dim=(d.nworld, m.njnt), inputs=[m, d])
+
+def crb(m: types.Model, d: types.Data):
+  """Composite rigid body inertia algorithm."""
+
+  wp.copy(d.crb, d.cinert)
+
+  @wp.kernel
+  def crb_accumulate(m: types.Model, d: types.Data, level: int):
+    worldid, levelid = wp.tid()
+    bodyid = m.body_bfs[m.level_beg[level] + levelid]
+    pid = m.body_parentid[bodyid]
+    if pid == 0:
+      return
+    wp.atomic_add(d.crb, worldid, pid, d.crb[worldid, bodyid])
+  
+  @wp.kernel
+  def qM_sparse(m: types.Model, d: types.Data):
+    worldid, dofid = wp.tid()
+    madr_ij = m.dof_Madr[dofid]
+    bodyid = m.dof_bodyid[dofid]
+
+    # init M(i,i) with armature inertia
+    d.qM[worldid, madr_ij] = m.dof_armature[dofid]
+    
+    # precompute buf = crb_body_i * cdof_i
+    i = d.crb[worldid, bodyid]
+    v = d.cdof[worldid, dofid]
+    # multiply 6D vector (rotation, translation) by 6D inertia matrix (mju_mulInertVec)
+    buf = wp.spatial_vector()
+    buf[0] = i[0]*v[0] + i[3]*v[1] + i[4]*v[2] - i[8]*v[4] + i[7]*v[5]
+    buf[1] = i[3]*v[0] + i[1]*v[1] + i[5]*v[2] + i[8]*v[3] - i[6]*v[5];
+    buf[2] = i[4]*v[0] + i[5]*v[1] + i[2]*v[2] - i[7]*v[3] + i[6]*v[4];
+    buf[3] = i[8]*v[1] - i[7]*v[2] + i[9]*v[3];
+    buf[4] = i[6]*v[2] - i[8]*v[0] + i[9]*v[4];
+    buf[5] = i[7]*v[0] - i[6]*v[1] + i[9]*v[5];
+  
+    # sparse backward pass over ancestors
+    while dofid >= 0:
+      d.qM[worldid, madr_ij] += wp.dot(d.cdof[worldid, dofid], buf)
+      madr_ij += 1
+      dofid = m.dof_parentid[dofid]
+
+  level_beg, level_end = m.level_beg_cpu.numpy(), m.level_end_cpu.numpy()
+  for i in reversed(range(m.nlevel)):
+    dim = (d.nworld, level_end[i] - level_beg[i])
+    wp.launch(crb_accumulate, dim=dim, inputs=[m, d, i])
+
+  d.qM.zero_()
+  wp.launch(qM_sparse, dim=(d.nworld, m.nv), inputs=[m, d])
