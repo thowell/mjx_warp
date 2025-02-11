@@ -7,76 +7,76 @@ from . import types
 
 
 def put_model(mjm: mujoco.MjModel) -> types.Model:
-    m = types.Model()
-    m.nq = mjm.nq
-    m.nv = mjm.nv
-    m.nbody = mjm.nbody
-    m.njnt = mjm.njnt
-    m.ngeom = mjm.ngeom
-    m.nsite = mjm.nsite
-    m.nmocap = mjm.nmocap
-    m.nM = mjm.nM
-    m.qpos0 = wp.array(mjm.qpos0, dtype=wp.float32, ndim=2)
+  m = types.Model()
+  m.nq = mjm.nq
+  m.nv = mjm.nv
+  m.nbody = mjm.nbody
+  m.njnt = mjm.njnt
+  m.ngeom = mjm.ngeom
+  m.nsite = mjm.nsite
+  m.nmocap = mjm.nmocap
+  m.nM = mjm.nM
+  m.qpos0 = wp.array(mjm.qpos0, dtype=wp.float32, ndim=2)
 
-    # body_tree is BFS ordering of body ids
-    body_tree, body_depth = {}, np.zeros(mjm.nbody, dtype=int) - 1
-    for i in range(mjm.nbody):
-        body_depth[i] = body_depth[mjm.body_parentid[i]] + 1
-        body_tree.setdefault(body_depth[i], []).append(i)
-    # body_leveladr, body_levelsize specify the bounds of level ranges in body_level
-    body_levelsize = np.array([len(body_tree[i]) for i in range(len(body_tree))])
-    body_leveladr = np.cumsum(np.insert(body_levelsize, 0, 0))[:-1]
-    body_tree = sum([body_tree[i] for i in range(len(body_tree))], [])
+  # body_tree is BFS ordering of body ids
+  body_tree, body_depth = {}, np.zeros(mjm.nbody, dtype=int) - 1
+  for i in range(mjm.nbody):
+    body_depth[i] = body_depth[mjm.body_parentid[i]] + 1
+    body_tree.setdefault(body_depth[i], []).append(i)
+  # body_leveladr, body_levelsize specify the bounds of level ranges in body_level
+  body_levelsize = np.array([len(body_tree[i]) for i in range(len(body_tree))])
+  body_leveladr = np.cumsum(np.insert(body_levelsize, 0, 0))[:-1]
+  body_tree = sum([body_tree[i] for i in range(len(body_tree))], [])
 
-    # track qLD updates for factor_m
-    qLD_updates, dof_depth = {}, np.zeros(mjm.nv, dtype=int) - 1
-    for k in range(mjm.nv):
-        dof_depth[k] = dof_depth[mjm.dof_parentid[k]] + 1
-        i = mjm.dof_parentid[k]
-        Madr_ki = mjm.dof_Madr[k] + 1
-        while i > -1:
-            qLD_updates.setdefault(dof_depth[i], []).append((i, k, Madr_ki))
-            i = mjm.dof_parentid[i]
-            Madr_ki += 1
+  # track qLD updates for factor_m
+  qLD_updates, dof_depth = {}, np.zeros(mjm.nv, dtype=int) - 1
+  for k in range(mjm.nv):
+    dof_depth[k] = dof_depth[mjm.dof_parentid[k]] + 1
+    i = mjm.dof_parentid[k]
+    Madr_ki = mjm.dof_Madr[k] + 1
+    while i > -1:
+      qLD_updates.setdefault(dof_depth[i], []).append((i, k, Madr_ki))
+      i = mjm.dof_parentid[i]
+      Madr_ki += 1
 
-    # qLD_leveladr, qLD_levelsize specify the bounds of level ranges in qLD updates
-    qLD_levelsize = np.array([len(qLD_updates[i]) for i in range(len(qLD_updates))])
-    qLD_leveladr = np.cumsum(np.insert(qLD_levelsize, 0, 0))[:-1]
-    qLD_updates = np.array(sum([qLD_updates[i] for i in range(len(qLD_updates))], []))
+  # qLD_leveladr, qLD_levelsize specify the bounds of level ranges in qLD updates
+  qLD_levelsize = np.array([len(qLD_updates[i]) for i in range(len(qLD_updates))])
+  qLD_leveladr = np.cumsum(np.insert(qLD_levelsize, 0, 0))[:-1]
+  qLD_updates = np.array(sum([qLD_updates[i] for i in range(len(qLD_updates))], []))
 
-    m.body_leveladr = wp.array(body_leveladr, dtype=wp.int32, ndim=1, device="cpu")
-    m.body_levelsize = wp.array(body_levelsize, dtype=wp.int32, ndim=1, device="cpu")
-    m.body_tree = wp.array(body_tree, dtype=wp.int32, ndim=1)
-    m.qLD_leveladr = wp.array(qLD_leveladr, dtype=wp.int32, ndim=1, device="cpu")
-    m.qLD_levelsize = wp.array(qLD_levelsize, dtype=wp.int32, ndim=1, device="cpu")
-    m.qLD_updates = wp.array(qLD_updates, dtype=wp.vec3i, ndim=1)
-    m.body_jntadr = wp.array(mjm.body_jntadr, dtype=wp.int32, ndim=1)
-    m.body_jntnum = wp.array(mjm.body_jntnum, dtype=wp.int32, ndim=1)
-    m.body_parentid = wp.array(mjm.body_parentid, dtype=wp.int32, ndim=1)
-    m.body_mocapid = wp.array(mjm.body_mocapid, dtype=wp.int32, ndim=1)
-    m.body_pos = wp.array(mjm.body_pos, dtype=wp.vec3, ndim=1)
-    m.body_quat = wp.array(mjm.body_quat, dtype=wp.quat, ndim=1)
-    m.body_ipos = wp.array(mjm.body_ipos, dtype=wp.vec3, ndim=1)
-    m.body_iquat = wp.array(mjm.body_iquat, dtype=wp.quat, ndim=1)
-    m.body_rootid = wp.array(mjm.body_rootid, dtype=wp.int32, ndim=1)
-    m.body_inertia = wp.array(mjm.body_inertia, dtype=wp.vec3, ndim=1)
-    m.body_mass = wp.array(mjm.body_mass, dtype=wp.float32, ndim=1)
-    m.jnt_bodyid = wp.array(mjm.jnt_bodyid, dtype=wp.int32, ndim=1)
-    m.jnt_type = wp.array(mjm.jnt_type, dtype=wp.int32, ndim=1)
-    m.jnt_qposadr = wp.array(mjm.jnt_qposadr, dtype=wp.int32, ndim=1)
-    m.jnt_dofadr = wp.array(mjm.jnt_dofadr, dtype=wp.int32, ndim=1)
-    m.jnt_axis = wp.array(mjm.jnt_axis, dtype=wp.vec3, ndim=1)
-    m.jnt_pos = wp.array(mjm.jnt_pos, dtype=wp.vec3, ndim=1)
-    m.geom_pos = wp.array(mjm.geom_pos, dtype=wp.vec3, ndim=1)
-    m.geom_quat = wp.array(mjm.geom_quat, dtype=wp.quat, ndim=1)
-    m.site_pos = wp.array(mjm.site_pos, dtype=wp.vec3, ndim=1)
-    m.site_quat = wp.array(mjm.site_quat, dtype=wp.quat, ndim=1)
-    m.dof_bodyid = wp.array(mjm.dof_bodyid, dtype=wp.int32, ndim=1)
-    m.dof_parentid = wp.array(mjm.dof_parentid, dtype=wp.int32, ndim=1)
-    m.dof_Madr = wp.array(mjm.dof_Madr, dtype=wp.int32, ndim=1)
-    m.dof_armature = wp.array(mjm.dof_armature, dtype=wp.float32, ndim=1)
+  m.body_leveladr = wp.array(body_leveladr, dtype=wp.int32, ndim=1, device="cpu")
+  m.body_levelsize = wp.array(body_levelsize, dtype=wp.int32, ndim=1, device="cpu")
+  m.body_tree = wp.array(body_tree, dtype=wp.int32, ndim=1)
+  m.qLD_leveladr = wp.array(qLD_leveladr, dtype=wp.int32, ndim=1, device="cpu")
+  m.qLD_levelsize = wp.array(qLD_levelsize, dtype=wp.int32, ndim=1, device="cpu")
+  m.qLD_updates = wp.array(qLD_updates, dtype=wp.vec3i, ndim=1)
+  m.body_jntadr = wp.array(mjm.body_jntadr, dtype=wp.int32, ndim=1)
+  m.body_jntnum = wp.array(mjm.body_jntnum, dtype=wp.int32, ndim=1)
+  m.body_parentid = wp.array(mjm.body_parentid, dtype=wp.int32, ndim=1)
+  m.body_mocapid = wp.array(mjm.body_mocapid, dtype=wp.int32, ndim=1)
+  m.body_pos = wp.array(mjm.body_pos, dtype=wp.vec3, ndim=1)
+  m.body_quat = wp.array(mjm.body_quat, dtype=wp.quat, ndim=1)
+  m.body_ipos = wp.array(mjm.body_ipos, dtype=wp.vec3, ndim=1)
+  m.body_iquat = wp.array(mjm.body_iquat, dtype=wp.quat, ndim=1)
+  m.body_rootid = wp.array(mjm.body_rootid, dtype=wp.int32, ndim=1)
+  m.body_inertia = wp.array(mjm.body_inertia, dtype=wp.vec3, ndim=1)
+  m.body_mass = wp.array(mjm.body_mass, dtype=wp.float32, ndim=1)
+  m.jnt_bodyid = wp.array(mjm.jnt_bodyid, dtype=wp.int32, ndim=1)
+  m.jnt_type = wp.array(mjm.jnt_type, dtype=wp.int32, ndim=1)
+  m.jnt_qposadr = wp.array(mjm.jnt_qposadr, dtype=wp.int32, ndim=1)
+  m.jnt_dofadr = wp.array(mjm.jnt_dofadr, dtype=wp.int32, ndim=1)
+  m.jnt_axis = wp.array(mjm.jnt_axis, dtype=wp.vec3, ndim=1)
+  m.jnt_pos = wp.array(mjm.jnt_pos, dtype=wp.vec3, ndim=1)
+  m.geom_pos = wp.array(mjm.geom_pos, dtype=wp.vec3, ndim=1)
+  m.geom_quat = wp.array(mjm.geom_quat, dtype=wp.quat, ndim=1)
+  m.site_pos = wp.array(mjm.site_pos, dtype=wp.vec3, ndim=1)
+  m.site_quat = wp.array(mjm.site_quat, dtype=wp.quat, ndim=1)
+  m.dof_bodyid = wp.array(mjm.dof_bodyid, dtype=wp.int32, ndim=1)
+  m.dof_parentid = wp.array(mjm.dof_parentid, dtype=wp.int32, ndim=1)
+  m.dof_Madr = wp.array(mjm.dof_Madr, dtype=wp.int32, ndim=1)
+  m.dof_armature = wp.array(mjm.dof_armature, dtype=wp.float32, ndim=1)
 
-    return m
+  return m
 
 
 def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
