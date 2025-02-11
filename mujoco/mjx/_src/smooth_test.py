@@ -74,8 +74,18 @@ class SmoothTest(absltest.TestCase):
       arr.zero_()
 
     mjx.factor_m(m, d)
-    _assert_eq(d.qLD.numpy()[0], mjd.qLD, 'qLD')
+    _assert_eq(d.qLD.numpy()[0], mjd.qLD, 'qLD (sparse)')
     _assert_eq(d.qLDiagInv.numpy()[0], mjd.qLDiagInv, 'qLDiagInv')
+
+  def test_factor_m_dense(self):
+    """Tests MJX factor_m_dense."""
+    _, mjd, m, d = self._humanoid()
+
+    qLD = d.qLD_dense.numpy().copy()
+    d.qLD_dense.zero_()
+
+    mjx.factor_m_dense(m, d)
+    _assert_eq(d.qLD_dense.numpy()[0].T, qLD[0], 'qLD')
 
 if __name__ == '__main__':
   wp.init()

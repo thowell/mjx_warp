@@ -258,3 +258,19 @@ def factor_m(m: types.Model, d: types.Data):
     wp.launch(qLD_acc, dim=(d.nworld, size), inputs=[m, d, adr])
   
   wp.launch(qLDiag_div, dim=(d.nworld, m.nv), inputs=[m, d])
+
+
+def factor_m_dense(m: types.Model, d: types.Data, block_dim: int = 256):
+  """Dense Cholesky factorizaton of inertia-like matrix M, assumed spd."""
+
+  TILE = m.nv
+  BLOCK_DIM = block_dim
+  @wp.kernel
+  def cholesky_factorization(m: types.Model, d: types.Data):
+    worldid = wp.tid()
+    qM_tile = wp.tile_load(d.qM_dense[worldid], shape=(TILE, TILE))
+    qLD_tile = wp.tile_cholesky(qM_tile)
+    wp.tile_store(d.qLD_dense[worldid], qLD_tile)
+
+  wp.launch_tiled(cholesky_factorization, dim=(d.nworld), inputs=[m, d], block_dim=BLOCK_DIM)
+
