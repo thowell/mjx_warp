@@ -88,6 +88,15 @@ class SmoothTest(absltest.TestCase):
     mjx.factor_m(m, d)
     _assert_eq(d.qLD.numpy()[0].T, qLD, 'qLD (dense)')
 
+  def test_rne(self):
+    """Tests MJX rne."""
+    _, mjd, m, d = self._humanoid()
+
+    d.qfrc_bias.zero_()
+
+    mjx.rne(m, d)
+    _assert_eq(d.qfrc_bias.numpy()[0], mjd.qfrc_bias, 'qfrc_bias')
+
 
 if __name__ == '__main__':
   wp.init()

@@ -50,6 +50,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.qLD_leveladr = wp.array(qLD_leveladr, dtype=wp.int32, ndim=1, device="cpu")
   m.qLD_levelsize = wp.array(qLD_levelsize, dtype=wp.int32, ndim=1, device="cpu")
   m.qLD_updates = wp.array(qLD_updates, dtype=wp.vec3i, ndim=1)
+  m.body_dofadr = wp.array(mjm.body_dofadr, dtype=wp.int32, ndim=1)
   m.body_jntadr = wp.array(mjm.body_jntadr, dtype=wp.int32, ndim=1)
   m.body_jntnum = wp.array(mjm.body_jntnum, dtype=wp.int32, ndim=1)
   m.body_parentid = wp.array(mjm.body_parentid, dtype=wp.int32, ndim=1)
@@ -78,6 +79,8 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
 
   m.is_sparse = support.is_sparse(mjm)
 
+  m.opt.gravity = wp.vec3(mjm.opt.gravity)
+
   return m
 
 
@@ -87,6 +90,7 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
 
   qpos0 = np.tile(mjm.qpos0, (nworld, 1))
   d.qpos = wp.array(qpos0, dtype=wp.float32, ndim=2)
+  d.qvel = wp.zeros((nworld, mjm.nv), dtype=wp.float32, ndim=2)
   d.mocap_pos = wp.zeros((nworld, mjm.nmocap), dtype=wp.vec3)
   d.mocap_quat = wp.zeros((nworld, mjm.nmocap), dtype=wp.quat)
   d.xanchor = wp.zeros((nworld, mjm.njnt), dtype=wp.vec3)
@@ -111,6 +115,9 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
     d.qM = wp.zeros((nworld, mjm.nv, mjm.nv), dtype=wp.float32)
     d.qLD = wp.zeros((nworld, mjm.nv, mjm.nv), dtype=wp.float32)
   d.qLDiagInv = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
+  d.cvel = wp.zeros((nworld, mjm.nbody, 6), dtype=wp.float32)
+  d.cdof_dot = wp.zeros((nworld, mjm.nv, 6), dtype=wp.float32)
+  d.qfrc_bias = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
 
   return d
 
@@ -131,6 +138,7 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
     qLD = np.linalg.cholesky(qM, upper=True)
 
   d.qpos = wp.array(tile_fn(mjd.qpos), dtype=wp.float32, ndim=2)
+  d.qvel = wp.array(tile_fn(mjd.qvel), dtype=wp.float32, ndim=2)
   d.mocap_pos = wp.array(tile_fn(mjd.mocap_pos), dtype=wp.vec3, ndim=2)
   d.mocap_quat = wp.array(tile_fn(mjd.mocap_quat), dtype=wp.quat, ndim=2)
   d.xanchor = wp.array(tile_fn(mjd.xanchor), dtype=wp.vec3, ndim=2)
@@ -151,5 +159,8 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
   d.qM = wp.array(tile_fn(qM), dtype=wp.float32, ndim=3)
   d.qLD = wp.array(tile_fn(qLD), dtype=wp.float32, ndim=3)
   d.qLDiagInv = wp.array(tile_fn(mjd.qLDiagInv), dtype=wp.float32, ndim=2)
+  d.cvel = wp.array(tile_fn(mjd.cvel), dtype=wp.float32, ndim=3)
+  d.cdof_dot = wp.array(tile_fn(mjd.cdof_dot), dtype=wp.float32, ndim=3)
+  d.qfrc_bias = wp.array(tile_fn(mjd.qfrc_bias), dtype=wp.float32, ndim=2)
 
   return d
