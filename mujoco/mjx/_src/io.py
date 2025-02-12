@@ -1,9 +1,14 @@
 import warp as wp
 import mujoco
 import numpy as np
-import jax
 
 from . import types
+
+
+def _is_sparse(m: mujoco.MjModel):
+  if m.opt.jacobian == mujoco.mjtJacobian.mjJAC_AUTO:
+    return m.nv >= 60
+  return m.opt.jacobian == mujoco.mjtJacobian.mjJAC_SPARSE
 
 
 def put_model(mjm: mujoco.MjModel) -> types.Model:
@@ -76,12 +81,16 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.dof_Madr = wp.array(mjm.dof_Madr, dtype=wp.int32, ndim=1)
   m.dof_armature = wp.array(mjm.dof_armature, dtype=wp.float32, ndim=1)
 
+  m.is_sparse = _is_sparse(mjm)
+
   return m
 
 
 def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   d = types.Data()
   d.nworld = nworld
+
+  is_sparse = _is_sparse(mjm)
 
   qpos0 = np.tile(mjm.qpos0, (nworld, 1))
   d.qpos = wp.array(qpos0, dtype=wp.float32, ndim=2)
@@ -102,10 +111,8 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   d.cinert = wp.zeros((nworld, mjm.nbody), dtype=types.vec10)
   d.cdof = wp.zeros((nworld, mjm.nv), dtype=wp.spatial_vector)
   d.crb = wp.zeros((nworld, mjm.nbody), dtype=types.vec10)
-  d.qM = wp.zeros((nworld, mjm.nM), dtype=wp.float32)
-  d.qM_dense = wp.zeros((nworld, mjm.nv, mjm.nv), dtype=wp.float32)
-  d.qLD = wp.zeros((nworld, mjm.nM), dtype=wp.float32)
-  d.qLD_dense = wp.zeros((nworld, mjm.nv, mjm.nv), dtype=wp.float32)
+  d.qM = wp.zeros((nworld, 1, mjm.nM) if is_sparse else (nworld, mjm.nv, mjm.nv), dtype=wp.float32)
+  d.qLD = wp.zeros((nworld, 1, mjm.nM) if is_sparse else (nworld, mjm.nv, mjm.nv), dtype=wp.float32)
   d.qLDiagInv = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
 
   return d
@@ -118,22 +125,13 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
   # TODO(erikfrey): would it be better to tile on the gpu?
   tile_fn = lambda x: np.tile(x, (nworld,) + (1,) * len(x.shape))
 
-  # sparse
-  qM = mjd.qM
-  qLD = mjd.qLD
-
-  # dense
-  qM_dense = np.zeros((mjm.nv, mjm.nv))
-  adr = 0
-  for i in range(mjm.nv):
-    j = i
-    while j >= 0:
-      qM_dense[i, j] = mjd.qM[adr]
-      qM_dense[j, i] = mjd.qM[adr]
-      j = mjm.dof_parentid[j]
-      adr += 1
-
-  qLD_dense = np.array(jax.scipy.linalg.cho_factor(qM_dense)[0])
+  if _is_sparse(mjm):
+    qM = np.expand_dims(mjd.qM, axis=0)
+    qLD = np.expand_dims(mjd.qLD, axis=0)
+  else:
+    qM = np.zeros((mjm.nv, mjm.nv))
+    mujoco.mj_fullM(mjm, qM, mjd.qM)
+    qLD = np.linalg.cholesky(qM, upper=True)
 
   d.qpos = wp.array(tile_fn(mjd.qpos), dtype=wp.float32, ndim=2)
   d.mocap_pos = wp.array(tile_fn(mjd.mocap_pos), dtype=wp.vec3, ndim=2)
@@ -153,10 +151,8 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
   d.cinert = wp.array(tile_fn(mjd.cinert), dtype=types.vec10, ndim=2)
   d.cdof = wp.array(tile_fn(mjd.cdof), dtype=wp.spatial_vector, ndim=2)
   d.crb = wp.array(tile_fn(mjd.crb), dtype=types.vec10, ndim=2)
-  d.qM = wp.array(tile_fn(qM), dtype=wp.float32, ndim=2)
-  d.qM_dense = wp.array(tile_fn(qM_dense), dtype=wp.float32, ndim=3)
-  d.qLD = wp.array(tile_fn(qLD), dtype=wp.float32, ndim=2)
-  d.qLD_dense = wp.array(tile_fn(qLD_dense), dtype=wp.float32, ndim=3)
+  d.qM = wp.array(tile_fn(qM), dtype=wp.float32, ndim=3)
+  d.qLD = wp.array(tile_fn(qLD), dtype=wp.float32, ndim=3)
   d.qLDiagInv = wp.array(tile_fn(mjd.qLDiagInv), dtype=wp.float32, ndim=2)
 
   return d

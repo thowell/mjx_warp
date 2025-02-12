@@ -6,6 +6,6 @@ from ._src.io import put_data
 from ._src.smooth import kinematics
 from ._src.smooth import com_pos
 from ._src.smooth import crb
-from ._src.smooth import factor_m, factor_m_dense
+from ._src.smooth import factor_m
 from ._src.test_util import benchmark
 from ._src.types import *
