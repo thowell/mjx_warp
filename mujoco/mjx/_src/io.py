@@ -2,6 +2,7 @@ import warp as wp
 import mujoco
 import numpy as np
 
+from . import support
 from . import types
 
 
@@ -75,6 +76,8 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.dof_Madr = wp.array(mjm.dof_Madr, dtype=wp.int32, ndim=1)
   m.dof_armature = wp.array(mjm.dof_armature, dtype=wp.float32, ndim=1)
 
+  m.is_sparse = support.is_sparse(mjm)
+
   return m
 
 
@@ -101,8 +104,12 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   d.cinert = wp.zeros((nworld, mjm.nbody), dtype=types.vec10)
   d.cdof = wp.zeros((nworld, mjm.nv), dtype=wp.spatial_vector)
   d.crb = wp.zeros((nworld, mjm.nbody), dtype=types.vec10)
-  d.qM = wp.zeros((nworld, mjm.nM), dtype=wp.float32)
-  d.qLD = wp.zeros((nworld, mjm.nM), dtype=wp.float32)
+  if support.is_sparse(mjm):
+    d.qM = wp.zeros((nworld, 1, mjm.nM), dtype=wp.float32)
+    d.qLD = wp.zeros((nworld, 1, mjm.nM), dtype=wp.float32)
+  else:
+    d.qM = wp.zeros((nworld, mjm.nv, mjm.nv), dtype=wp.float32)
+    d.qLD = wp.zeros((nworld, mjm.nv, mjm.nv), dtype=wp.float32)
   d.qLDiagInv = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
 
   return d
@@ -114,6 +121,14 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
 
   # TODO(erikfrey): would it be better to tile on the gpu?
   tile_fn = lambda x: np.tile(x, (nworld,) + (1,) * len(x.shape))
+
+  if support.is_sparse(mjm):
+    qM = np.expand_dims(mjd.qM, axis=0)
+    qLD = np.expand_dims(mjd.qLD, axis=0)
+  else:
+    qM = np.zeros((mjm.nv, mjm.nv))
+    mujoco.mj_fullM(mjm, qM, mjd.qM)
+    qLD = np.linalg.cholesky(qM, upper=True)
 
   d.qpos = wp.array(tile_fn(mjd.qpos), dtype=wp.float32, ndim=2)
   d.mocap_pos = wp.array(tile_fn(mjd.mocap_pos), dtype=wp.vec3, ndim=2)
@@ -133,8 +148,8 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
   d.cinert = wp.array(tile_fn(mjd.cinert), dtype=types.vec10, ndim=2)
   d.cdof = wp.array(tile_fn(mjd.cdof), dtype=wp.spatial_vector, ndim=2)
   d.crb = wp.array(tile_fn(mjd.crb), dtype=types.vec10, ndim=2)
-  d.qM = wp.array(tile_fn(mjd.qM), dtype=wp.float32, ndim=2)
-  d.qLD = wp.array(tile_fn(mjd.qLD), dtype=wp.float32, ndim=2)
+  d.qM = wp.array(tile_fn(qM), dtype=wp.float32, ndim=3)
+  d.qLD = wp.array(tile_fn(qLD), dtype=wp.float32, ndim=3)
   d.qLDiagInv = wp.array(tile_fn(mjd.qLDiagInv), dtype=wp.float32, ndim=2)
 
   return d

@@ -47,6 +47,7 @@ class Model:
   dof_parentid: wp.array(dtype=wp.int32, ndim=1)
   dof_Madr: wp.array(dtype=wp.int32, ndim=1)
   dof_armature: wp.array(dtype=wp.float32, ndim=1)
+  is_sparse: bool  # warp only
 
 
 @wp.struct
@@ -70,6 +71,6 @@ class Data:
   cinert: wp.array(dtype=vec10, ndim=2)
   cdof: wp.array(dtype=wp.spatial_vector, ndim=2)
   crb: wp.array(dtype=vec10, ndim=2)
-  qM: wp.array(dtype=wp.float32, ndim=2)
-  qLD: wp.array(dtype=wp.float32, ndim=2)
+  qM: wp.array(dtype=wp.float32, ndim=3)
+  qLD: wp.array(dtype=wp.float32, ndim=3)
   qLDiagInv: wp.array(dtype=wp.float32, ndim=2)
