@@ -2,13 +2,8 @@ import warp as wp
 import mujoco
 import numpy as np
 
+from . import support
 from . import types
-
-
-def _is_sparse(m: mujoco.MjModel):
-  if m.opt.jacobian == mujoco.mjtJacobian.mjJAC_AUTO:
-    return m.nv >= 60
-  return m.opt.jacobian == mujoco.mjtJacobian.mjJAC_SPARSE
 
 
 def put_model(mjm: mujoco.MjModel) -> types.Model:
@@ -81,7 +76,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.dof_Madr = wp.array(mjm.dof_Madr, dtype=wp.int32, ndim=1)
   m.dof_armature = wp.array(mjm.dof_armature, dtype=wp.float32, ndim=1)
 
-  m.is_sparse = _is_sparse(mjm)
+  m.is_sparse = support.is_sparse(mjm)
 
   return m
 
@@ -90,7 +85,7 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   d = types.Data()
   d.nworld = nworld
 
-  is_sparse = _is_sparse(mjm)
+  is_sparse = support.is_sparse(mjm)
 
   qpos0 = np.tile(mjm.qpos0, (nworld, 1))
   d.qpos = wp.array(qpos0, dtype=wp.float32, ndim=2)
@@ -125,7 +120,7 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
   # TODO(erikfrey): would it be better to tile on the gpu?
   tile_fn = lambda x: np.tile(x, (nworld,) + (1,) * len(x.shape))
 
-  if _is_sparse(mjm):
+  if support.is_sparse(mjm):
     qM = np.expand_dims(mjd.qM, axis=0)
     qLD = np.expand_dims(mjd.qLD, axis=0)
   else:
