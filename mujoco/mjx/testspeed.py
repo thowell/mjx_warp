@@ -65,6 +65,7 @@ def _main(argv: Sequence[str]):
   else:
     m.opt.jacobian = mujoco.mjtJacobian.mjJAC_DENSE
 
+  print(f"Model nbody: {m.nbody} nv: {m.nv} ngeom: {m.ngeom} is_sparse: {_IS_SPARSE.value}")
   print(f"Rolling out {_NSTEP.value} steps at dt = {m.opt.timestep:.3f}...")
   fn = {
     'kinematics': mjx.kinematics,
@@ -93,9 +94,7 @@ Summary for {_BATCH_SIZE.value} parallel rollouts
  Total simulation time: {run_time:.2f} s
  Total steps per second: {steps / run_time:.0f}
  Total realtime factor: {steps * m.opt.timestep / run_time:.2f} x
- Total time per step: {1e6 * run_time / steps:.2f} µs
- 
- Sparse matrices: {_IS_SPARSE.value}""")
+ Total time per step: {1e6 * run_time / steps:.2f} µs""")
   elif _OUTPUT.value == "tsv":
     name = name.split("/")[-1].replace("testspeed_", "")
     print(f"{name}\tjit: {jit_time:.2f}s\tsteps/second: {steps / run_time:.0f}")

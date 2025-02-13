@@ -256,7 +256,7 @@ def _factor_m_sparse(m: types.Model, d: types.Data):
   for i in range(len(leveladr) - 1, -1, -1):
     adr, size = leveladr[i], levelsize[i]
     wp.launch(qLD_acc, dim=(d.nworld, size), inputs=[m, d, adr])
-  
+
   wp.launch(qLDiag_div, dim=(d.nworld, m.nv), inputs=[m, d])
 
 
@@ -267,14 +267,13 @@ def _factor_m_dense(m: types.Model, d: types.Data, block_dim: int = 32):
   BLOCK_DIM = block_dim
 
   @wp.kernel
-  def cholesky_factorization(m: types.Model, d: types.Data):
+  def cholesky(m: types.Model, d: types.Data):
     worldid = wp.tid()
     qM_tile = wp.tile_load(d.qM[worldid], shape=(TILE, TILE))
     qLD_tile = wp.tile_cholesky(qM_tile)
     wp.tile_store(d.qLD[worldid], qLD_tile)
 
-  wp.launch_tiled(cholesky_factorization, dim=(
-      d.nworld), inputs=[m, d], block_dim=BLOCK_DIM)
+  wp.launch_tiled(cholesky, dim=(d.nworld), inputs=[m, d], block_dim=BLOCK_DIM)
 
 
 def factor_m(m: types.Model, d: types.Data, block_dim: int = 32):
