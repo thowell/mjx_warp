@@ -26,6 +26,7 @@ class SmoothTest(parameterized.TestCase):
     mjm.opt.jacobian = is_sparse
     mjd = mujoco.MjData(mjm)
     mujoco.mj_resetDataKeyframe(mjm, mjd, 1) # reset to stand_on_left_leg
+    mjd.qvel = np.random.uniform(low=-0.01, high=0.01, size=mjd.qvel.shape)
     mujoco.mj_forward(mjm, mjd)
     m = mjx.put_model(mjm)
     d = mjx.put_data(mjm, mjd)
@@ -93,6 +94,16 @@ class SmoothTest(parameterized.TestCase):
 
     mjx.factor_m(m, d)
     _assert_eq(d.qLD.numpy()[0].T, qLD, 'qLD (dense)')
+
+  @parameterized.parameters('humanoid/humanoid.xml', 'humanoid/n_humanoids.xml')
+  def test_rne(self, fname):
+    """Tests MJX rne."""
+    _, mjd, m, d = self._load(fname, is_sparse=False)
+
+    d.qfrc_bias.zero_()
+
+    mjx.rne(m, d)
+    _assert_eq(d.qfrc_bias.numpy()[0], mjd.qfrc_bias, 'qfrc_bias')
 
 
 if __name__ == '__main__':
