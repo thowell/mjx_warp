@@ -25,6 +25,7 @@ class SmoothTest(absltest.TestCase):
     mjm.opt.jacobian = is_sparse
     mjd = mujoco.MjData(mjm)
     mujoco.mj_resetDataKeyframe(mjm, mjd, 1) # reset to stand_on_left_leg
+    mjd.qvel = np.random.uniform(low=-0.01, high=0.01, size=mjd.qvel.shape)
     mujoco.mj_forward(mjm, mjd)
     m = mjx.put_model(mjm)
     d = mjx.put_data(mjm, mjd)

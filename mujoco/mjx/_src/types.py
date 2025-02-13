@@ -8,6 +8,7 @@ vec10 = vec10f
 @wp.struct
 class Option:
   gravity: wp.vec3
+  is_sparse: bool # warp only
 
 @wp.struct
 class Model:
@@ -27,6 +28,7 @@ class Model:
   qLD_levelsize: wp.array(dtype=wp.int32, ndim=1)  # warp only
   qLD_updates: wp.array(dtype=wp.vec3i, ndim=1)  # warp only
   body_dofadr: wp.array(dtype=wp.int32, ndim=1)
+  body_dofnum: wp.array(dtype=wp.int32, ndim=1)
   body_jntadr: wp.array(dtype=wp.int32, ndim=1)
   body_jntnum: wp.array(dtype=wp.int32, ndim=1)
   body_parentid: wp.array(dtype=wp.int32, ndim=1)
@@ -52,7 +54,6 @@ class Model:
   dof_parentid: wp.array(dtype=wp.int32, ndim=1)
   dof_Madr: wp.array(dtype=wp.int32, ndim=1)
   dof_armature: wp.array(dtype=wp.float32, ndim=1)
-  is_sparse: bool  # warp only
   opt: Option
 
 
@@ -81,6 +82,6 @@ class Data:
   qM: wp.array(dtype=wp.float32, ndim=3)
   qLD: wp.array(dtype=wp.float32, ndim=3)
   qLDiagInv: wp.array(dtype=wp.float32, ndim=2)
-  cvel: wp.array(dtype=wp.float32, ndim=3)
-  cdof_dot: wp.array(dtype=wp.float32, ndim=3)
+  cvel: wp.array(dtype=wp.spatial_vector, ndim=2)
+  cdof_dot: wp.array(dtype=wp.spatial_vector, ndim=2)
   qfrc_bias: wp.array(dtype=wp.float32, ndim=2)

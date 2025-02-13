@@ -42,19 +42,20 @@ def quat_to_mat(quat: wp.quat) -> wp.mat33:
 
 
 @wp.func
-def inert_vec(res: wp.array(shape=6, dtype=wp.float32), i: wp.types.vector(length=10, dtype=wp.float32), v: wp.array(shape=6, dtype=wp.float32)):
+def inert_vec(i: wp.types.vector(length=10, dtype=wp.float32), v: wp.spatial_vector) -> wp.spatial_vector:
   """mju_mulInertVec: multiply 6D vector (rotation, translation) by 6D inertia matrix."""
-  
-  res[0] = i[0] * v[0] + i[3] * v[1] + i[4] * v[2] - i[8] * v[4] + i[7] * v[5]
-  res[1] = i[3] * v[0] + i[1] * v[1] + i[5] * v[2] + i[8] * v[3] - i[6] * v[5]
-  res[2] = i[4] * v[0] + i[5] * v[1] + i[2] * v[2] - i[7] * v[3] + i[6] * v[4]
-  res[3] = i[8] * v[1] - i[7] * v[2] + i[9] * v[3]
-  res[4] = i[6] * v[2] - i[8] * v[0] + i[9] * v[4]
-  res[5] = i[7] * v[0] - i[6] * v[1] + i[9] * v[5]
-  
+  return wp.spatial_vector(
+      i[0] * v[0] + i[3] * v[1] + i[4] * v[2] - i[8] * v[4] + i[7] * v[5],
+      i[3] * v[0] + i[1] * v[1] + i[5] * v[2] + i[8] * v[3] - i[6] * v[5],
+      i[4] * v[0] + i[5] * v[1] + i[2] * v[2] - i[7] * v[3] + i[6] * v[4],
+      i[8] * v[1] - i[7] * v[2] + i[9] * v[3],
+      i[6] * v[2] - i[8] * v[0] + i[9] * v[4],
+      i[7] * v[0] - i[6] * v[1] + i[9] * v[5],
+  )
+
 
 @wp.func
-def motion_cross_force(res: wp.array(shape=6, dtype=wp.float32), v: wp.array(shape=6, dtype=wp.float32), f: wp.array(shape=6, dtype=wp.float32)):
+def motion_cross_force(v: wp.spatial_vector, f: wp.spatial_vector) -> wp.spatial_vector:
   """Cross product of a motion and a force."""
 
   v0 = wp.vec3(v[0], v[1], v[2], dtype=wp.float32)
@@ -64,10 +65,5 @@ def motion_cross_force(res: wp.array(shape=6, dtype=wp.float32), v: wp.array(sha
 
   ang = wp.cross(v0, f0) + wp.cross(v1, f1)
   vel = wp.cross(v0, f1)
-  
-  res[0] = ang[0]
-  res[1] = ang[1]
-  res[2] = ang[2]
-  res[3] = vel[0]
-  res[4] = vel[1]
-  res[5] = vel[2]
+
+  return wp.spatial_vector(ang, vel)
