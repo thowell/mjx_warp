@@ -6,6 +6,11 @@ class vec10f(wp.types.vector(length=10, dtype=wp.float32)):
 vec10 = vec10f
 
 @wp.struct
+class Option:
+  gravity: wp.vec3
+  is_sparse: bool # warp only
+
+@wp.struct
 class Model:
   nq: int
   nv: int
@@ -50,7 +55,7 @@ class Model:
   dof_parentid: wp.array(dtype=wp.int32, ndim=1)
   dof_Madr: wp.array(dtype=wp.int32, ndim=1)
   dof_armature: wp.array(dtype=wp.float32, ndim=1)
-  is_sparse: bool  # warp only
+  opt: Option
 
 
 @wp.struct
@@ -80,3 +85,4 @@ class Data:
   qLDiagInv: wp.array(dtype=wp.float32, ndim=2)
   cvel: wp.array(dtype=wp.spatial_vector, ndim=2)
   cdof_dot: wp.array(dtype=wp.spatial_vector, ndim=2)
+  qfrc_bias: wp.array(dtype=wp.float32, ndim=2)

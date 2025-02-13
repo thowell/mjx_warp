@@ -78,8 +78,8 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.dof_parentid = wp.array(mjm.dof_parentid, dtype=wp.int32, ndim=1)
   m.dof_Madr = wp.array(mjm.dof_Madr, dtype=wp.int32, ndim=1)
   m.dof_armature = wp.array(mjm.dof_armature, dtype=wp.float32, ndim=1)
-
-  m.is_sparse = support.is_sparse(mjm)
+  m.opt.gravity = wp.vec3(mjm.opt.gravity)
+  m.opt.is_sparse = support.is_sparse(mjm)
 
   return m
 
@@ -117,6 +117,7 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   d.qLDiagInv = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.cvel = wp.zeros((nworld, mjm.nbody), dtype=wp.spatial_vector)
   d.cdof_dot = wp.zeros((nworld, mjm.nv), dtype=wp.spatial_vector)
+  d.qfrc_bias = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
 
   return d
 
@@ -160,5 +161,6 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
   d.qLDiagInv = wp.array(tile_fn(mjd.qLDiagInv), dtype=wp.float32, ndim=2)
   d.cvel = wp.array(tile_fn(mjd.cvel), dtype=wp.spatial_vector, ndim=2)
   d.cdof_dot = wp.array(tile_fn(mjd.cdof_dot), dtype=wp.spatial_vector, ndim=2)
+  d.qfrc_bias = wp.array(tile_fn(mjd.qfrc_bias), dtype=wp.float32, ndim=2)
 
   return d
