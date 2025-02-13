@@ -95,9 +95,10 @@ class SmoothTest(parameterized.TestCase):
     mjx.factor_m(m, d)
     _assert_eq(d.qLD.numpy()[0].T, qLD, 'qLD (dense)')
 
-  def test_rne(self):
+  @parameterized.parameters('humanoid/humanoid.xml', 'humanoid/n_humanoids.xml')
+  def test_rne(self, fname):
     """Tests MJX rne."""
-    _, mjd, m, d = self._humanoid()
+    _, mjd, m, d = self._load(fname, is_sparse=False)
 
     d.qfrc_bias.zero_()
 
