@@ -20,7 +20,7 @@ def _assert_eq(a, b, name):
 
 class SmoothTest(parameterized.TestCase):
 
-  def _load(self, fname: str, is_sparse: bool = False):
+  def _load(self, fname: str, is_sparse: bool = True):
     path = epath.resource_path('mujoco.mjx') / 'test_data' / fname
     mjm = mujoco.MjModel.from_xml_path(path.as_posix())
     mjm.opt.jacobian = is_sparse
@@ -31,7 +31,7 @@ class SmoothTest(parameterized.TestCase):
     d = mjx.put_data(mjm, mjd)
     return mjm, mjd, m, d
 
-  @parameterized.parameters('humanoid/humanoid.xml', 'humanoid/10_humanoids.xml')
+  @parameterized.parameters('humanoid/humanoid.xml', 'humanoid/n_humanoids.xml')
   def test_kinematics(self, fname: str):
     """Tests MJX kinematics."""
     _, mjd, m, d = self._load(fname)
@@ -46,7 +46,7 @@ class SmoothTest(parameterized.TestCase):
     _assert_eq(d.xquat.numpy()[0], mjd.xquat, 'xquat')
     _assert_eq(d.xpos.numpy()[0], mjd.xpos, 'xpos')
 
-  @parameterized.parameters('humanoid/humanoid.xml', 'humanoid/10_humanoids.xml')
+  @parameterized.parameters('humanoid/humanoid.xml', 'humanoid/n_humanoids.xml')
   def test_com_pos(self, fname: str):
     """Tests MJX com_pos."""
     _, mjd, m, d = self._load(fname)
@@ -59,7 +59,7 @@ class SmoothTest(parameterized.TestCase):
     _assert_eq(d.cinert.numpy()[0], mjd.cinert, 'cinert')
     _assert_eq(d.cdof.numpy()[0], mjd.cdof, 'cdof')
 
-  @parameterized.parameters('humanoid/humanoid.xml', 'humanoid/10_humanoids.xml')
+  @parameterized.parameters('humanoid/humanoid.xml', 'humanoid/n_humanoids.xml')
   def test_crb(self, fname: str):
     """Tests MJX crb."""
     _, mjd, m, d = self._load(fname)
@@ -71,7 +71,7 @@ class SmoothTest(parameterized.TestCase):
     _assert_eq(d.crb.numpy()[0], mjd.crb, 'crb')
     _assert_eq(d.qM.numpy()[0, 0], mjd.qM, 'qM')
 
-  @parameterized.parameters('humanoid/humanoid.xml', 'humanoid/10_humanoids.xml')
+  @parameterized.parameters('humanoid/humanoid.xml', 'humanoid/n_humanoids.xml')
   def test_factor_m(self, fname: str):
     """Tests MJX factor_m."""
     _, mjd, m, d = self._load(fname)
@@ -83,9 +83,10 @@ class SmoothTest(parameterized.TestCase):
     _assert_eq(d.qLD.numpy()[0, 0], mjd.qLD, 'qLD (sparse)')
     _assert_eq(d.qLDiagInv.numpy()[0], mjd.qLDiagInv, 'qLDiagInv')
 
-  def test_factor_m_dense(self):
+  @parameterized.parameters('humanoid/humanoid.xml', 'humanoid/n_humanoids.xml')
+  def test_factor_m_dense(self, fname):
     """Tests MJX factor_m (dense)."""
-    _, _, m, d = self._humanoid(is_sparse=False)
+    _, _, m, d = self._load(fname, is_sparse=False)
 
     qLD = d.qLD.numpy()[0].copy()
     d.qLD.zero_()
