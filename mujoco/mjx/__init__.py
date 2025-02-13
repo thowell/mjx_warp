@@ -8,5 +8,6 @@ from ._src.smooth import com_pos
 from ._src.smooth import crb
 from ._src.smooth import factor_m
 from ._src.smooth import com_vel
+from ._src.support import is_sparse
 from ._src.test_util import benchmark
 from ._src.types import *
