@@ -24,6 +24,7 @@ class SmoothTest(absltest.TestCase):
     mjm = mujoco.MjModel.from_xml_path(path.as_posix())
     mjd = mujoco.MjData(mjm)
     mujoco.mj_resetDataKeyframe(mjm, mjd, 1) # reset to stand_on_left_leg
+    mjd.qvel = np.random.uniform(low=-0.01, high=0.01, size=mjd.qvel.shape)
     mujoco.mj_forward(mjm, mjd)
     m = mjx.put_model(mjm)
     d = mjx.put_data(mjm, mjd)
@@ -76,6 +77,17 @@ class SmoothTest(absltest.TestCase):
     mjx.factor_m(m, d)
     _assert_eq(d.qLD.numpy()[0], mjd.qLD, 'qLD')
     _assert_eq(d.qLDiagInv.numpy()[0], mjd.qLDiagInv, 'qLDiagInv')
+
+  def test_com_vel(self):
+    """Tests MJX com_vel."""
+    _, mjd, m, d = self._humanoid()
+
+    for arr in (d.cvel, d.cdof_dot):
+      arr.zero_()
+
+    mjx.com_vel(m, d)
+    _assert_eq(d.cvel.numpy()[0], mjd.cvel, 'cvel')
+    _assert_eq(d.cdof_dot.numpy()[0], mjd.cdof_dot, 'cdof_dot')
 
 if __name__ == '__main__':
   wp.init()

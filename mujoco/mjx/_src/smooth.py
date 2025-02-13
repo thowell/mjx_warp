@@ -258,3 +258,52 @@ def factor_m(m: types.Model, d: types.Data):
     wp.launch(qLD_acc, dim=(d.nworld, size), inputs=[m, d, adr])
   
   wp.launch(qLDiag_div, dim=(d.nworld, m.nv), inputs=[m, d])
+
+
+def com_vel(m: types.Model, d: types.Data):
+  """Computes cvel, cdof_dot."""
+
+  @wp.kernel
+  def _root(d: types.Data):
+    worldid, elementid = wp.tid()
+    d.cvel[worldid, 0][elementid] = 0.0
+
+  @wp.kernel
+  def _level(m: types.Model, d: types.Data, leveladr: int):
+    worldid, nodeid = wp.tid()
+    bodyid = m.body_tree[leveladr + nodeid]
+    dofnum = m.body_dofnum[bodyid]
+    dofadr = m.body_dofadr[bodyid]
+
+    pid = m.body_parentid[bodyid]
+    d.cvel[worldid, bodyid] = d.cvel[worldid, pid]
+
+    j = int(0)
+    while j < dofnum:
+      jntid = m.dof_jntid[dofadr + j]
+      jnttype = m.jnt_type[jntid]
+
+      if jnttype == 0: # free
+        for k in range(wp.static(3)):
+          static_k = wp.static(k)
+          dofadrk = dofadr + static_k
+          d.cvel[worldid, bodyid] += d.cdof[worldid, dofadrk] * d.qvel[worldid, dofadrk]
+
+        cvel = wp.spatial_vector(d.cvel[worldid, bodyid][0], d.cvel[worldid, bodyid][1], d.cvel[worldid, bodyid]
+                                 [2], d.cvel[worldid, bodyid][3], d.cvel[worldid, bodyid][4], d.cvel[worldid, bodyid][5])
+
+        for k in range(wp.static(3)):
+          static_k = wp.static(k)
+          dofadrjk = dofadr + j + 3 + static_k
+          d.cdof_dot[worldid, dofadrjk] = math.motion_cross(cvel, d.cdof[worldid, dofadrjk])
+          d.cvel[worldid, bodyid] += d.cdof[worldid, dofadrjk] * d.qvel[worldid, dofadrjk]
+        j += 6
+      else:
+        dofadrj =  dofadr + j
+        d.cdof_dot[worldid, dofadrj] = math.motion_cross(d.cvel[worldid, bodyid], d.cdof[worldid, dofadrj])
+        d.cvel[worldid, bodyid] += d.cdof[worldid, dofadrj] * d.qvel[worldid, dofadrj]
+        j += 1
+
+  wp.launch(_root, dim=(d.nworld, 6), inputs=[d])
+  for adr, size in zip(m.body_leveladr.numpy()[1:], m.body_levelsize.numpy()[1:]):
+    wp.launch(_level, dim=(d.nworld, size), inputs=[m, d, adr])

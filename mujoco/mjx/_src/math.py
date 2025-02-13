@@ -1,4 +1,5 @@
 import warp as wp
+from . import types
 
 @wp.func
 def mul_quat(u: wp.quat, v: wp.quat) -> wp.quat:
@@ -39,3 +40,17 @@ def quat_to_mat(quat: wp.quat) -> wp.mat33:
           2.0 * (q[2, 3] + q[0, 1]),
           q[0, 0] - q[1, 1] - q[2, 2] + q[3, 3],
   )
+
+@wp.func
+def motion_cross(u: wp.spatial_vector, v: wp.spatial_vector) -> wp.spatial_vector:
+  """Cross product of two motions."""
+
+  u0 = wp.vec3(u[0], u[1], u[2], dtype=wp.float32)
+  u1 = wp.vec3(u[3], u[4], u[5], dtype=wp.float32)
+  v0 = wp.vec3(v[0], v[1], v[2], dtype=wp.float32)
+  v1 = wp.vec3(v[3], v[4], v[5], dtype=wp.float32)
+
+  ang = wp.cross(u0, v0)
+  vel = wp.cross(u1, v0) + wp.cross(u0, v1)
+
+  return wp.spatial_vector(ang, vel)
