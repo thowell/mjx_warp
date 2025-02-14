@@ -16,7 +16,8 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.nsite = mjm.nsite
   m.nmocap = mjm.nmocap
   m.nM = mjm.nM
-  m.qpos0 = wp.array(mjm.qpos0, dtype=wp.float32, ndim=2)
+  m.qpos0 = wp.array(mjm.qpos0, dtype=wp.float32, ndim=1)
+  m.qpos_spring = wp.array(mjm.qpos_spring, dtype=wp.float32, ndim=1)
 
   # body_tree is BFS ordering of body ids
   body_tree, body_depth = {}, np.zeros(mjm.nbody, dtype=int) - 1
@@ -69,6 +70,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.jnt_dofadr = wp.array(mjm.jnt_dofadr, dtype=wp.int32, ndim=1)
   m.jnt_axis = wp.array(mjm.jnt_axis, dtype=wp.vec3, ndim=1)
   m.jnt_pos = wp.array(mjm.jnt_pos, dtype=wp.vec3, ndim=1)
+  m.jnt_stiffness = wp.array(mjm.jnt_stiffness, dtype=wp.float32, ndim=1)
   m.geom_pos = wp.array(mjm.geom_pos, dtype=wp.vec3, ndim=1)
   m.geom_quat = wp.array(mjm.geom_quat, dtype=wp.quat, ndim=1)
   m.site_pos = wp.array(mjm.site_pos, dtype=wp.vec3, ndim=1)
@@ -77,6 +79,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.dof_parentid = wp.array(mjm.dof_parentid, dtype=wp.int32, ndim=1)
   m.dof_Madr = wp.array(mjm.dof_Madr, dtype=wp.int32, ndim=1)
   m.dof_armature = wp.array(mjm.dof_armature, dtype=wp.float32, ndim=1)
+  m.dof_damping = wp.array(mjm.dof_damping, dtype=wp.float32, ndim=1)
   m.opt.gravity = wp.vec3(mjm.opt.gravity)
   m.opt.is_sparse = support.is_sparse(mjm)
 
@@ -117,6 +120,9 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   d.cvel = wp.zeros((nworld, mjm.nbody), dtype=wp.spatial_vector)
   d.cdof_dot = wp.zeros((nworld, mjm.nv), dtype=wp.spatial_vector)
   d.qfrc_bias = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
+  d.qfrc_passive = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
+  d.qfrc_spring = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
+  d.qfrc_damper = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
 
   return d
 
@@ -161,5 +167,8 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
   d.cvel = wp.array(tile_fn(mjd.cvel), dtype=wp.spatial_vector, ndim=2)
   d.cdof_dot = wp.array(tile_fn(mjd.cdof_dot), dtype=wp.spatial_vector, ndim=2)
   d.qfrc_bias = wp.array(tile_fn(mjd.qfrc_bias), dtype=wp.float32, ndim=2)
+  d.qfrc_passive = wp.array(tile_fn(mjd.qfrc_passive), dtype=wp.float32, ndim=2)
+  d.qfrc_spring = wp.array(tile_fn(mjd.qfrc_spring), dtype=wp.float32, ndim=2)
+  d.qfrc_damper = wp.array(tile_fn(mjd.qfrc_damper), dtype=wp.float32, ndim=2)
 
   return d
