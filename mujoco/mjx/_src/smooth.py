@@ -41,13 +41,25 @@ def kinematics(m: types.Model, d: types.Data):
       for _ in range(jntnum):
         qadr = m.jnt_qposadr[jntadr]
         jnt_type = m.jnt_type[jntadr]
+        jnt_axis = m.jnt_axis[jntadr]
         xanchor = math.rot_vec_quat(m.jnt_pos[jntadr], xquat) + xpos
-        xaxis = math.rot_vec_quat(m.jnt_axis[jntadr], xquat)
+        xaxis = math.rot_vec_quat(jnt_axis, xquat)
 
-        if jnt_type == 3:  # hinge
-          qloc = math.axis_angle_to_quat(
-            m.jnt_axis[jntadr], d.qpos[worldid, qadr] - m.qpos0[qadr]
+        if jnt_type == 1:  # ball
+          qloc = wp.quat(
+            d.qpos[worldid, qadr + 0],
+            d.qpos[worldid, qadr + 1],
+            d.qpos[worldid, qadr + 2],
+            d.qpos[worldid, qadr + 3],
           )
+          xquat = math.mul_quat(xquat, qloc)
+          # correct for off-center rotation
+          xpos = xanchor - math.rot_vec_quat(m.jnt_pos[jntadr], xquat)
+        elif jnt_type == 2:  # ball
+          xpos += xaxis * (d.qpos[worldid, qadr] - m.qpos0[qadr])
+        elif jnt_type == 3:  # hinge
+          qpos0 = m.qpos0[qadr]
+          qloc = math.axis_angle_to_quat(jnt_axis, d.qpos[worldid, qadr] - qpos0)
           xquat = math.mul_quat(xquat, qloc)
           # correct for off-center rotation
           xpos = xanchor - math.rot_vec_quat(m.jnt_pos[jntadr], xquat)
@@ -201,16 +213,8 @@ def crb(m: types.Model, d: types.Data):
     d.qM[worldid, 0, madr_ij] = m.dof_armature[dofid]
 
     # precompute buf = crb_body_i * cdof_i
-    i = d.crb[worldid, bodyid]
-    v = d.cdof[worldid, dofid]
-    # multiply 6D vector (rotation, translation) by 6D inertia matrix (mju_mulInertVec)
-    buf = wp.spatial_vector()
-    buf[0] = i[0] * v[0] + i[3] * v[1] + i[4] * v[2] - i[8] * v[4] + i[7] * v[5]
-    buf[1] = i[3] * v[0] + i[1] * v[1] + i[5] * v[2] + i[8] * v[3] - i[6] * v[5]
-    buf[2] = i[4] * v[0] + i[5] * v[1] + i[2] * v[2] - i[7] * v[3] + i[6] * v[4]
-    buf[3] = i[8] * v[1] - i[7] * v[2] + i[9] * v[3]
-    buf[4] = i[6] * v[2] - i[8] * v[0] + i[9] * v[4]
-    buf[5] = i[7] * v[0] - i[6] * v[1] + i[9] * v[5]
+    buf = math.inert_vec(d.crb[worldid, bodyid], d.cdof[worldid, dofid])
+
     # sparse backward pass over ancestors
     while dofid >= 0:
       d.qM[worldid, 0, madr_ij] += wp.dot(d.cdof[worldid, dofid], buf)
@@ -297,7 +301,12 @@ def rne(m: types.Model, d: types.Data):
     cacc[worldid, 0] = wp.spatial_vector(wp.vec3(0.0), -m.opt.gravity)
 
   @wp.kernel
-  def cacc_level(m: types.Model, d: types.Data, cacc: wp.array(dtype=wp.spatial_vector, ndim=2), leveladr: int):
+  def cacc_level(
+    m: types.Model,
+    d: types.Data,
+    cacc: wp.array(dtype=wp.spatial_vector, ndim=2),
+    leveladr: int,
+  ):
     worldid, nodeid = wp.tid()
     bodyid = m.body_tree[leveladr + nodeid]
     dofnum = m.body_dofnum[bodyid]
@@ -309,7 +318,11 @@ def rne(m: types.Model, d: types.Data):
     cacc[worldid, bodyid] = local_cacc
 
   @wp.kernel
-  def frc(d: types.Data, cfrc: wp.array(dtype=wp.spatial_vector, ndim=2), cacc: wp.array(dtype=wp.spatial_vector, ndim=2)):
+  def frc(
+    d: types.Data,
+    cfrc: wp.array(dtype=wp.spatial_vector, ndim=2),
+    cacc: wp.array(dtype=wp.spatial_vector, ndim=2),
+  ):
     worldid, bodyid = wp.tid()
     tmp0 = math.inert_vec(d.cinert[worldid, bodyid], cacc[worldid, bodyid])
     tmp1 = math.inert_vec(d.cinert[worldid, bodyid], d.cvel[worldid, bodyid])
@@ -317,14 +330,18 @@ def rne(m: types.Model, d: types.Data):
     cfrc[worldid, bodyid] += tmp0 + tmp2
 
   @wp.kernel
-  def cfrc_fn(m: types.Model, cfrc: wp.array(dtype=wp.spatial_vector, ndim=2), leveladr: int):
+  def cfrc_fn(
+    m: types.Model, cfrc: wp.array(dtype=wp.spatial_vector, ndim=2), leveladr: int
+  ):
     worldid, nodeid = wp.tid()
     bodyid = m.body_tree[leveladr + nodeid]
     pid = m.body_parentid[bodyid]
     wp.atomic_add(cfrc[worldid], pid, cfrc[worldid, bodyid])
 
   @wp.kernel
-  def qfrc_bias(m: types.Model, d: types.Data, cfrc: wp.array(dtype=wp.spatial_vector, ndim=2)):
+  def qfrc_bias(
+    m: types.Model, d: types.Data, cfrc: wp.array(dtype=wp.spatial_vector, ndim=2)
+  ):
     worldid, dofid = wp.tid()
     bodyid = m.dof_bodyid[dofid]
     d.qfrc_bias[worldid, dofid] = wp.dot(d.cdof[worldid, dofid], cfrc[worldid, bodyid])

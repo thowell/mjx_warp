@@ -17,19 +17,32 @@
 import time
 from typing import Callable, Tuple
 
+from etils import epath
 import mujoco
+import numpy as np
 import warp as wp
 
-# pylint: disable=g-importing-member
 from . import io
-from . import smooth
-from .types import Data
-from .types import Model
-# pylint: enable=g-importing-member
+from . import types
+
+def fixture(fname: str, keyframe: int = -1, sparse: bool = True):
+  path = epath.resource_path('mujoco.mjx') / 'test_data' / fname
+  mjm = mujoco.MjModel.from_xml_path(path.as_posix())
+  mjd = mujoco.MjData(mjm)
+  if keyframe > -1:
+    mujoco.mj_resetDataKeyframe(mjm, mjd, keyframe)
+  # give the system a little kick to ensure we have non-identity rotations
+  mjd.qvel = np.random.uniform(-0.01, 0.01, mjm.nv)
+  mujoco.mj_step(mjm, mjd, 3)  # let dynamics get state significantly non-zero
+  mujoco.mj_forward(mjm, mjd)
+  mjm.opt.jacobian = sparse
+  m = io.put_model(mjm)
+  d = io.put_data(mjm, mjd)
+  return mjm, mjd, m, d
 
 
 def benchmark(
-  fn: Callable[[Model, Data], None],
+  fn: Callable[[types.Model, types.Data], None],
   m: mujoco.MjModel,
   nstep: int = 1000,
   batch_size: int = 1024,
