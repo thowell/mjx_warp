@@ -309,12 +309,11 @@ def rne(m: types.Model, d: types.Data):
                                           dofadr + i] * d.qvel[worldid, dofadr + i]
 
   @wp.kernel
-  def frc(d: types.Data, cfrc: wp.array(dtype=wp.spatial_vector, ndim=2), cacc: wp.array(dtype=wp.spatial_vector, ndim=2)):
+  def frc_fn(d: types.Data, cfrc: wp.array(dtype=wp.spatial_vector, ndim=2), cacc: wp.array(dtype=wp.spatial_vector, ndim=2)):
     worldid, bodyid = wp.tid()
-    tmp0 = math.inert_vec(d.cinert[worldid, bodyid], cacc[worldid, bodyid])
-    tmp1 = math.inert_vec(d.cinert[worldid, bodyid], d.cvel[worldid, bodyid])
-    tmp2 = math.motion_cross_force(d.cvel[worldid, bodyid], tmp1)
-    cfrc[worldid, bodyid] += tmp0 + tmp2
+    frc = math.inert_vec(d.cinert[worldid, bodyid], cacc[worldid, bodyid])
+    frc += math.motion_cross_force(d.cvel[worldid, bodyid], math.inert_vec(d.cinert[worldid, bodyid], d.cvel[worldid, bodyid]))
+    cfrc[worldid, bodyid] += frc
 
   @wp.kernel
   def cfrc_fn(m: types.Model, cfrc: wp.array(dtype=wp.spatial_vector, ndim=2), leveladr: int):
@@ -337,7 +336,7 @@ def rne(m: types.Model, d: types.Data):
   for adr, size in zip(leveladr, levelsize):
     wp.launch(cacc_level, dim=(d.nworld, size), inputs=[m, d, cacc, adr])
 
-  wp.launch(frc, dim=[d.nworld, m.nbody], inputs=[d, cfrc, cacc])
+  wp.launch(frc_fn, dim=[d.nworld, m.nbody], inputs=[d, cfrc, cacc])
 
   for i in range(len(leveladr) - 1, 0, -1):
     adr, size = leveladr[i], levelsize[i]
@@ -361,8 +360,11 @@ def com_vel(m: types.Model, d: types.Data):
     dofnum = m.body_dofnum[bodyid]
     dofadr = m.body_dofadr[bodyid]
 
+    qvel = d.qvel[worldid]
+    cdof = d.cdof[worldid]
+
     pid = m.body_parentid[bodyid]
-    d.cvel[worldid, bodyid] = d.cvel[worldid, pid]
+    cvel = wp.spatial_vector(d.cvel[worldid, pid][0], d.cvel[worldid, pid][1], d.cvel[worldid, pid][2], d.cvel[worldid, pid][3], d.cvel[worldid, pid][4], d.cvel[worldid, pid][5])
 
     j = int(0)
     while j < dofnum:
@@ -373,27 +375,23 @@ def com_vel(m: types.Model, d: types.Data):
         for k in range(wp.static(3)):
           static_k = wp.static(k)
           dofadrk = dofadr + static_k
-          d.cvel[worldid, bodyid] += d.cdof[worldid,
-                                            dofadrk] * d.qvel[worldid, dofadrk]
+          cvel += cdof[dofadrk] * qvel[dofadrk]
 
-        cvel = wp.spatial_vector(d.cvel[worldid, bodyid][0], d.cvel[worldid, bodyid][1], d.cvel[worldid, bodyid]
-                                 [2], d.cvel[worldid, bodyid][3], d.cvel[worldid, bodyid][4], d.cvel[worldid, bodyid][5])
+        cvel_cache = wp.spatial_vector(cvel[0], cvel[1], cvel[2], cvel[3], cvel[4], cvel[5])
 
         for k in range(wp.static(3)):
           static_k = wp.static(k)
           dofadrjk = dofadr + j + 3 + static_k
-          d.cdof_dot[worldid, dofadrjk] = math.motion_cross(
-              cvel, d.cdof[worldid, dofadrjk])
-          d.cvel[worldid, bodyid] += d.cdof[worldid,
-                                            dofadrjk] * d.qvel[worldid, dofadrjk]
+          d.cdof_dot[worldid, dofadrjk] = math.motion_cross(cvel_cache, cdof[dofadrjk])
+          cvel += cdof[dofadrjk] * qvel[dofadrjk]
         j += 6
       else:
         dofadrj = dofadr + j
-        d.cdof_dot[worldid, dofadrj] = math.motion_cross(
-            d.cvel[worldid, bodyid], d.cdof[worldid, dofadrj])
-        d.cvel[worldid, bodyid] += d.cdof[worldid,
-                                          dofadrj] * d.qvel[worldid, dofadrj]
+        d.cdof_dot[worldid, dofadrj] = math.motion_cross(cvel, cdof[dofadrj])
+        cvel += cdof[dofadrj] * qvel[dofadrj]
         j += 1
+
+    d.cvel[worldid, bodyid] = cvel
 
   wp.launch(_root, dim=(d.nworld, 6), inputs=[d])
   for adr, size in zip(m.body_leveladr.numpy()[1:], m.body_levelsize.numpy()[1:]):
