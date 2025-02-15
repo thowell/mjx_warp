@@ -22,6 +22,7 @@ class Model:
   nmocap: int
   nM: int
   qpos0: wp.array(dtype=wp.float32, ndim=1)
+  qpos_spring: wp.array(dtype=wp.float32, ndim=1)
   body_leveladr: wp.array(dtype=wp.int32, ndim=1)  # warp only
   body_levelsize: wp.array(dtype=wp.int32, ndim=1)  # warp only
   body_tree: wp.array(dtype=wp.int32, ndim=1)   # warp only
@@ -47,6 +48,7 @@ class Model:
   jnt_dofadr: wp.array(dtype=wp.int32, ndim=1)
   jnt_axis: wp.array(dtype=wp.vec3, ndim=1)
   jnt_pos: wp.array(dtype=wp.vec3, ndim=1)
+  jnt_stiffness: wp.array(dtype=wp.float32, ndim=1)
   geom_pos: wp.array(dtype=wp.vec3, ndim=1)
   geom_quat: wp.array(dtype=wp.quat, ndim=1)
   site_pos: wp.array(dtype=wp.vec3, ndim=1)
@@ -55,6 +57,7 @@ class Model:
   dof_parentid: wp.array(dtype=wp.int32, ndim=1)
   dof_Madr: wp.array(dtype=wp.int32, ndim=1)
   dof_armature: wp.array(dtype=wp.float32, ndim=1)
+  dof_damping: wp.array(dtype=wp.float32, ndim=1)
   opt: Option
 
 
@@ -87,3 +90,6 @@ class Data:
   cvel: wp.array(dtype=wp.spatial_vector, ndim=2)
   cdof_dot: wp.array(dtype=wp.spatial_vector, ndim=2)
   qfrc_bias: wp.array(dtype=wp.float32, ndim=2)
+  qfrc_passive: wp.array(dtype=wp.float32, ndim=2)
+  qfrc_spring: wp.array(dtype=wp.float32, ndim=2)
+  qfrc_damper: wp.array(dtype=wp.float32, ndim=2)
