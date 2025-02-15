@@ -303,10 +303,10 @@ def rne(m: types.Model, d: types.Data):
     dofnum = m.body_dofnum[bodyid]
     pid = m.body_parentid[bodyid]
     dofadr = m.body_dofadr[bodyid]
-    cacc[worldid, bodyid] = cacc[worldid, pid]
+    local_cacc = cacc[worldid, pid]
     for i in range(dofnum):
-      cacc[worldid, bodyid] += d.cdof_dot[worldid,
-                                          dofadr + i] * d.qvel[worldid, dofadr + i]
+      local_cacc += d.cdof_dot[worldid, dofadr + i] * d.qvel[worldid, dofadr + i]
+    cacc[worldid, bodyid] = local_cacc
 
   @wp.kernel
   def frc_fn(d: types.Data, cfrc: wp.array(dtype=wp.spatial_vector, ndim=2), cacc: wp.array(dtype=wp.spatial_vector, ndim=2)):
@@ -326,8 +326,7 @@ def rne(m: types.Model, d: types.Data):
   def qfrc_bias(m: types.Model, d: types.Data, cfrc: wp.array(dtype=wp.spatial_vector, ndim=2)):
     worldid, dofid = wp.tid()
     bodyid = m.dof_bodyid[dofid]
-    d.qfrc_bias[worldid, dofid] = wp.dot(
-        d.cdof[worldid, dofid], cfrc[worldid, bodyid])
+    d.qfrc_bias[worldid, dofid] = wp.dot(d.cdof[worldid, dofid], cfrc[worldid, bodyid])
 
   leveladr, levelsize = m.body_leveladr.numpy(), m.body_levelsize.numpy()
 
