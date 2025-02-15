@@ -29,28 +29,47 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   body_leveladr = np.cumsum(np.insert(body_levelsize, 0, 0))[:-1]
   body_tree = sum([body_tree[i] for i in range(len(body_tree))], [])
 
-  # track qLD updates for factor_m
-  qLD_updates, dof_depth = {}, np.zeros(mjm.nv, dtype=int) - 1
-  for k in range(mjm.nv):
-    dof_depth[k] = dof_depth[mjm.dof_parentid[k]] + 1
-    i = mjm.dof_parentid[k]
-    Madr_ki = mjm.dof_Madr[k] + 1
-    while i > -1:
-      qLD_updates.setdefault(dof_depth[i], []).append((i, k, Madr_ki))
-      i = mjm.dof_parentid[i]
-      Madr_ki += 1
+  qLD_sparse_updates = np.empty(shape=(0, 3), dtype=int)
+  qld_dense_tilesize = np.empty(shape=(0,), dtype=int)
+  qld_dense_tileid = np.empty(shape=(0,), dtype=int)
+  if support.is_sparse(mjm):
+    # track qLD updates for factor_m
+    qLD_updates, dof_depth = {}, np.zeros(mjm.nv, dtype=int) - 1
+    for k in range(mjm.nv):
+      dof_depth[k] = dof_depth[mjm.dof_parentid[k]] + 1
+      i = mjm.dof_parentid[k]
+      Madr_ki = mjm.dof_Madr[k] + 1
+      while i > -1:
+        qLD_updates.setdefault(dof_depth[i], []).append((i, k, Madr_ki))
+        i = mjm.dof_parentid[i]
+        Madr_ki += 1
 
-  # qLD_leveladr, qLD_levelsize specify the bounds of level ranges in qLD updates
-  qLD_levelsize = np.array([len(qLD_updates[i]) for i in range(len(qLD_updates))])
-  qLD_leveladr = np.cumsum(np.insert(qLD_levelsize, 0, 0))[:-1]
-  qLD_updates = np.array(sum([qLD_updates[i] for i in range(len(qLD_updates))], []))
+    # qLD_leveladr, qLD_levelsize specify the bounds of level ranges in qLD updates
+    qLD_levelsize = np.array([len(qLD_updates[i]) for i in range(len(qLD_updates))])
+    qLD_leveladr = np.cumsum(np.insert(qLD_levelsize, 0, 0))[:-1]
+    qLD_sparse_updates = np.array(sum([qLD_updates[i] for i in range(len(qLD_updates))], []))
+  else:
+    # track tile sizes for dense cholesky
+    tile_corners = [i for i in range(mjm.nv) if mjm.dof_parentid[i] == -1]
+    tiles = {}
+    for i in range(len(tile_corners)):
+      tile_beg = tile_corners[i]
+      tile_end = mjm.nv if i == len(tile_corners) - 1 else tile_corners[i + 1]
+      tiles.setdefault(tile_end - tile_beg, []).append(tile_beg)
+    # qLD_leveladr, qLD_levelsize specify the bounds of level ranges in cholesky tiles
+    qLD_levelsize = np.array([len(tiles[sz]) for sz in sorted(tiles.keys())])
+    qLD_leveladr = np.cumsum(np.insert(qLD_levelsize, 0, 0))[:-1]
+    qld_dense_tilesize = np.array(sorted(tiles.keys()))
+    qld_dense_tileid = np.array(sum([tiles[sz] for sz in sorted(tiles.keys())], []))
 
   m.body_leveladr = wp.array(body_leveladr, dtype=wp.int32, ndim=1, device="cpu")
   m.body_levelsize = wp.array(body_levelsize, dtype=wp.int32, ndim=1, device="cpu")
   m.body_tree = wp.array(body_tree, dtype=wp.int32, ndim=1)
   m.qLD_leveladr = wp.array(qLD_leveladr, dtype=wp.int32, ndim=1, device="cpu")
   m.qLD_levelsize = wp.array(qLD_levelsize, dtype=wp.int32, ndim=1, device="cpu")
-  m.qLD_updates = wp.array(qLD_updates, dtype=wp.vec3i, ndim=1)
+  m.qLD_sparse_updates = wp.array(qLD_sparse_updates, dtype=wp.vec3i, ndim=1)
+  m.qLD_dense_tilesize = wp.array(qld_dense_tilesize, dtype=wp.int32, ndim=1, device="cpu")
+  m.qLD_dense_tileid = wp.array(qld_dense_tileid, dtype=wp.int32, ndim=1)
   m.body_dofadr = wp.array(mjm.body_dofadr, dtype=wp.int32, ndim=1)
   m.body_dofnum = wp.array(mjm.body_dofnum, dtype=wp.int32, ndim=1)
   m.body_jntadr = wp.array(mjm.body_jntadr, dtype=wp.int32, ndim=1)

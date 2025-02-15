@@ -233,7 +233,7 @@ def _factor_m_sparse(m: types.Model, d: types.Data):
   @wp.kernel
   def qLD_acc(m: types.Model, d: types.Data, leveladr: int):
     worldid, nodeid = wp.tid()
-    update = m.qLD_updates[leveladr + nodeid]
+    update = m.qLD_sparse_updates[leveladr + nodeid]
     i, k, Madr_ki = update[0], update[1], update[2]
     Madr_i = m.dof_Madr[i]
     # tmp = M(k,i) / M(k,k)
@@ -260,29 +260,38 @@ def _factor_m_sparse(m: types.Model, d: types.Data):
   wp.launch(qLDiag_div, dim=(d.nworld, m.nv), inputs=[m, d])
 
 
-def _factor_m_dense(m: types.Model, d: types.Data, block_dim: int = 32):
+def _factor_m_dense(m: types.Model, d: types.Data):
   """Dense Cholesky factorizaton of inertia-like matrix M, assumed spd."""
 
-  TILE = m.nv
-  BLOCK_DIM = block_dim
+  # TODO(team): develop heuristic for block dim, or make configurable
+  block_dim = 32
 
-  @wp.kernel
-  def cholesky(m: types.Model, d: types.Data):
-    worldid = wp.tid()
-    qM_tile = wp.tile_load(d.qM[worldid], shape=(TILE, TILE))
-    qLD_tile = wp.tile_cholesky(qM_tile)
-    wp.tile_store(d.qLD[worldid], qLD_tile)
+  def cholesky(adr, size, tilesize):
 
-  wp.launch_tiled(cholesky, dim=(d.nworld), inputs=[m, d], block_dim=BLOCK_DIM)
+    @wp.kernel
+    def cholesky(m: types.Model, d: types.Data, leveladr: int):
+      worldid, nodeid = wp.tid()
+      dofid = m.qLD_dense_tileid[leveladr + nodeid]
+      qM_tile = wp.tile_load(d.qM[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid))
+      qLD_tile = wp.tile_cholesky(qM_tile)
+      wp.tile_store(d.qLD[worldid], qLD_tile, offset=(dofid, dofid))
+
+    wp.launch_tiled(cholesky, dim=(d.nworld, size), inputs=[m, d, adr], block_dim=block_dim)
+
+  leveladr, levelsize = m.qLD_leveladr.numpy(), m.qLD_levelsize.numpy()
+  tilesize = m.qLD_dense_tilesize.numpy()
+
+  for i in range(len(leveladr)):
+    cholesky(leveladr[i], levelsize[i], int(tilesize[i]))
 
 
-def factor_m(m: types.Model, d: types.Data, block_dim: int = 32):
+def factor_m(m: types.Model, d: types.Data):
   """Factorizaton of inertia-like matrix M, assumed spd."""
 
   if wp.static(m.opt.is_sparse):
     _factor_m_sparse(m, d)
   else:
-    _factor_m_dense(m, d, block_dim=block_dim)
+    _factor_m_dense(m, d)
 
 
 def rne(m: types.Model, d: types.Data):
