@@ -28,7 +28,9 @@ class Model:
   body_tree: wp.array(dtype=wp.int32, ndim=1)   # warp only
   qLD_leveladr: wp.array(dtype=wp.int32, ndim=1)  # warp only
   qLD_levelsize: wp.array(dtype=wp.int32, ndim=1)  # warp only
-  qLD_updates: wp.array(dtype=wp.vec3i, ndim=1)  # warp only
+  qLD_sparse_updates: wp.array(dtype=wp.vec3i, ndim=1)  # warp only
+  qLD_dense_tilesize: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  qLD_dense_tileid: wp.array(dtype=wp.int32, ndim=1)  # warp only
   body_dofadr: wp.array(dtype=wp.int32, ndim=1)
   body_dofnum: wp.array(dtype=wp.int32, ndim=1)
   body_jntadr: wp.array(dtype=wp.int32, ndim=1)
@@ -54,6 +56,7 @@ class Model:
   site_pos: wp.array(dtype=wp.vec3, ndim=1)
   site_quat: wp.array(dtype=wp.quat, ndim=1)
   dof_bodyid: wp.array(dtype=wp.int32, ndim=1)
+  dof_jntid: wp.array(dtype=wp.int32, ndim=1)
   dof_parentid: wp.array(dtype=wp.int32, ndim=1)
   dof_Madr: wp.array(dtype=wp.int32, ndim=1)
   dof_armature: wp.array(dtype=wp.float32, ndim=1)
@@ -66,6 +69,7 @@ class Data:
   nworld: int
   qpos: wp.array(dtype=wp.float32, ndim=2)
   qvel: wp.array(dtype=wp.float32, ndim=2)
+  qfrc_applied: wp.array(dtype=wp.float32, ndim=2)
   mocap_pos: wp.array(dtype=wp.vec3, ndim=2)
   mocap_quat: wp.array(dtype=wp.quat, ndim=2)
   xanchor: wp.array(dtype=wp.vec3, ndim=2)
@@ -94,3 +98,6 @@ class Data:
   qfrc_passive: wp.array(dtype=wp.float32, ndim=2)
   qfrc_spring: wp.array(dtype=wp.float32, ndim=2)
   qfrc_damper: wp.array(dtype=wp.float32, ndim=2)
+  qfrc_actuator: wp.array(dtype=wp.float32, ndim=2)
+  qfrc_smooth: wp.array(dtype=wp.float32, ndim=2)
+  qacc_smooth: wp.array(dtype=wp.float32, ndim=2)

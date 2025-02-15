@@ -1,4 +1,4 @@
-"""Tests for smooth dynamics functions."""
+"""Tests for forward dynamics functions."""
 
 from absl.testing import absltest
 from etils import epath
@@ -40,6 +40,19 @@ class ForwardTest(absltest.TestCase):
     mjx.fwd_velocity(m, d)
 
     _assert_eq(d.actuator_velocity.numpy()[0], mjd.actuator_velocity, 'actuator_velocity')
+
+  def test_fwd_acceleration(self):
+    """Tests MJX fwd_acceleration."""
+    _, mjd, m, d = self._load('humanoid/humanoid.xml', is_sparse=False)
+
+    for arr in (d.qfrc_smooth, d.qacc_smooth):
+      arr.zero_()
+
+    mjx.factor_m(m, d) # for dense, get tile cholesky factorization
+    mjx.fwd_acceleration(m, d)
+
+    _assert_eq(d.qfrc_smooth.numpy()[0], mjd.qfrc_smooth, 'qfrc_smooth')
+    _assert_eq(d.qacc_smooth.numpy()[0], mjd.qacc_smooth, 'qacc_smooth')
 
 
 if __name__ == '__main__':
