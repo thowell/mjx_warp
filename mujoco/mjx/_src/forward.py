@@ -32,10 +32,10 @@ def fwd_velocity(m: types.Model, d: types.Data):
 
   wp.launch(_actuator_velocity, dim=(d.nworld, m.nu, m.nv), inputs=[d])
 
-  # TODO(taylorhowell): smooth.com_vel
+  smooth.com_vel(m, d)
   passive.passive(m, d)
   smooth.rne(m, d)
-  
+
 
 def fwd_acceleration(m: types.Model, d: types.Data):
   """Add up all non-constraint forces, compute qacc_smooth."""

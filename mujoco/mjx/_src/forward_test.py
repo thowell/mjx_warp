@@ -40,6 +40,7 @@ class ForwardTest(absltest.TestCase):
     mjx.fwd_velocity(m, d)
 
     _assert_eq(d.actuator_velocity.numpy()[0], mjd.actuator_velocity, 'actuator_velocity')
+    _assert_eq(d.qfrc_bias.numpy()[0], mjd.qfrc_bias, 'qfrc_bias')
 
   def test_fwd_acceleration(self):
     """Tests MJX fwd_acceleration."""
