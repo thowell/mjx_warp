@@ -12,8 +12,7 @@ def fwd_acceleration(m: types.Model, d: types.Data):
   @wp.kernel
   def _qfrc_smooth(d: types.Data, qfrc_applied: wp.array(ndim=2, dtype=wp.float32)):
     worldid, dofid = wp.tid()
-    d.qfrc_smooth[worldid, dofid] = d.qfrc_passive[worldid, dofid] - d.qfrc_bias[worldid, dofid] + qfrc_applied[worldid, dofid]
-    # TODO(team): += d.qfrc_actuator[worldid, dofid]
+    d.qfrc_smooth[worldid, dofid] = d.qfrc_passive[worldid, dofid] - d.qfrc_bias[worldid, dofid] + d.qfrc_actuator[worldid, dofid] + qfrc_applied[worldid, dofid]
 
   wp.launch(_qfrc_smooth, dim=(d.nworld, m.nv), inputs=[d, qfrc_applied])
 
