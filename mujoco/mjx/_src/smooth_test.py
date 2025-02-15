@@ -105,6 +105,18 @@ class SmoothTest(parameterized.TestCase):
     mjx.rne(m, d)
     _assert_eq(d.qfrc_bias.numpy()[0], mjd.qfrc_bias, 'qfrc_bias')
 
+  @parameterized.parameters('humanoid/humanoid.xml', 'humanoid/n_humanoids.xml')
+  def test_com_vel(self, fname):
+    """Tests MJX com_vel."""
+    _, mjd, m, d = self._load(fname, is_sparse=False)
+
+    for arr in (d.cvel, d.cdof_dot):
+      arr.zero_()
+
+    mjx.com_vel(m, d)
+    _assert_eq(d.cvel.numpy()[0], mjd.cvel, 'cvel')
+    _assert_eq(d.cdof_dot.numpy()[0], mjd.cdof_dot, 'cdof_dot')
+
 
 if __name__ == '__main__':
   wp.init()
