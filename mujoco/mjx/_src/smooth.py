@@ -357,39 +357,41 @@ def com_vel(m: types.Model, d: types.Data):
   def _level(m: types.Model, d: types.Data, leveladr: int):
     worldid, nodeid = wp.tid()
     bodyid = m.body_tree[leveladr + nodeid]
-    dofnum = m.body_dofnum[bodyid]
-    dofadr = m.body_dofadr[bodyid]
+    dofid = m.body_dofadr[bodyid]
+    jntid = m.body_jntadr[bodyid]
+    jntnum = m.body_jntnum[bodyid]
+    pid = m.body_parentid[bodyid]
 
+    if jntnum == 0:
+      d.cvel[worldid, bodyid] = d.cvel[worldid, pid]
+      return
+    
+    cvel = d.cvel[worldid, pid]
     qvel = d.qvel[worldid]
     cdof = d.cdof[worldid]
 
-    pid = m.body_parentid[bodyid]
-    cvel = wp.spatial_vector(d.cvel[worldid, pid][0], d.cvel[worldid, pid][1], d.cvel[worldid, pid][2], d.cvel[worldid, pid][3], d.cvel[worldid, pid][4], d.cvel[worldid, pid][5])
-
-    j = int(0)
-    while j < dofnum:
-      jntid = m.dof_jntid[dofadr + j]
-      jnttype = m.jnt_type[jntid]
+    for j in range(jntid, jntid + jntnum):
+      jnttype = m.jnt_type[j]
 
       if jnttype == 0:  # free
-        for k in range(wp.static(3)):
-          static_k = wp.static(k)
-          dofadrk = dofadr + static_k
-          cvel += cdof[dofadrk] * qvel[dofadrk]
+        cvel += cdof[dofid + 0] * qvel[dofid + 0]
+        cvel += cdof[dofid + 1] * qvel[dofid + 1]
+        cvel += cdof[dofid + 2] * qvel[dofid + 2]
 
-        cvel_cache = wp.spatial_vector(cvel[0], cvel[1], cvel[2], cvel[3], cvel[4], cvel[5])
+        d.cdof_dot[worldid, dofid + 3] = math.motion_cross(cvel, cdof[dofid + 3])
+        d.cdof_dot[worldid, dofid + 4] = math.motion_cross(cvel, cdof[dofid + 4])
+        d.cdof_dot[worldid, dofid + 5] = math.motion_cross(cvel, cdof[dofid + 5])
 
-        for k in range(wp.static(3)):
-          static_k = wp.static(k)
-          dofadrjk = dofadr + j + 3 + static_k
-          d.cdof_dot[worldid, dofadrjk] = math.motion_cross(cvel_cache, cdof[dofadrjk])
-          cvel += cdof[dofadrjk] * qvel[dofadrjk]
-        j += 6
+        cvel += cdof[dofid + 3] * qvel[dofid + 3]
+        cvel += cdof[dofid + 4] * qvel[dofid + 4]
+        cvel += cdof[dofid + 5] * qvel[dofid + 5]
+
+        dofid += 6
       else:
-        dofadrj = dofadr + j
-        d.cdof_dot[worldid, dofadrj] = math.motion_cross(cvel, cdof[dofadrj])
-        cvel += cdof[dofadrj] * qvel[dofadrj]
-        j += 1
+        d.cdof_dot[worldid, dofid] = math.motion_cross(cvel, cdof[dofid])
+        cvel += cdof[dofid] * qvel[dofid]
+
+        dofid += 1
 
     d.cvel[worldid, bodyid] = cvel
 
