@@ -14,6 +14,7 @@ class Option:
 class Model:
   nq: int
   nv: int
+  nu: int
   nbody: int
   njnt: int
   ngeom: int
@@ -62,6 +63,7 @@ class Data:
   nworld: int
   qpos: wp.array(dtype=wp.float32, ndim=2)
   qvel: wp.array(dtype=wp.float32, ndim=2)
+  ctrl: wp.array(dtype=wp.float32, ndim=2)
   mocap_pos: wp.array(dtype=wp.vec3, ndim=2)
   mocap_quat: wp.array(dtype=wp.quat, ndim=2)
   xanchor: wp.array(dtype=wp.vec3, ndim=2)
