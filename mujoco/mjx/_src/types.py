@@ -68,6 +68,7 @@ class Data:
   nworld: int
   qpos: wp.array(dtype=wp.float32, ndim=2)
   qvel: wp.array(dtype=wp.float32, ndim=2)
+  qfrc_applied: wp.array(dtype=wp.float32, ndim=2)
   mocap_pos: wp.array(dtype=wp.vec3, ndim=2)
   mocap_quat: wp.array(dtype=wp.quat, ndim=2)
   xanchor: wp.array(dtype=wp.vec3, ndim=2)
@@ -94,3 +95,6 @@ class Data:
   qfrc_passive: wp.array(dtype=wp.float32, ndim=2)
   qfrc_spring: wp.array(dtype=wp.float32, ndim=2)
   qfrc_damper: wp.array(dtype=wp.float32, ndim=2)
+  qfrc_actuator: wp.array(dtype=wp.float32, ndim=2)
+  qfrc_smooth: wp.array(dtype=wp.float32, ndim=2)
+  qacc_smooth: wp.array(dtype=wp.float32, ndim=2)

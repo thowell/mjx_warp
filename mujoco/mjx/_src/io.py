@@ -113,6 +113,7 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   qpos0 = np.tile(mjm.qpos0, (nworld, 1))
   d.qpos = wp.array(qpos0, dtype=wp.float32, ndim=2)
   d.qvel = wp.zeros((nworld, mjm.nv), dtype=wp.float32, ndim=2)
+  d.qfrc_applied = wp.zeros((nworld, mjm.nv), dtype=wp.float32, ndim=2)
   d.mocap_pos = wp.zeros((nworld, mjm.nmocap), dtype=wp.vec3)
   d.mocap_quat = wp.zeros((nworld, mjm.nmocap), dtype=wp.quat)
   d.xanchor = wp.zeros((nworld, mjm.njnt), dtype=wp.vec3)
@@ -143,6 +144,9 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   d.qfrc_passive = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qfrc_spring = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qfrc_damper = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
+  d.qfrc_actuator = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
+  d.qfrc_smooth = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
+  d.qacc_smooth = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
 
   return d
 
@@ -164,6 +168,7 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
 
   d.qpos = wp.array(tile_fn(mjd.qpos), dtype=wp.float32, ndim=2)
   d.qvel = wp.array(tile_fn(mjd.qvel), dtype=wp.float32, ndim=2)
+  d.qfrc_applied = wp.array(tile_fn(mjd.qfrc_applied), dtype=wp.float32, ndim=2)
   d.mocap_pos = wp.array(tile_fn(mjd.mocap_pos), dtype=wp.vec3, ndim=2)
   d.mocap_quat = wp.array(tile_fn(mjd.mocap_quat), dtype=wp.quat, ndim=2)
   d.xanchor = wp.array(tile_fn(mjd.xanchor), dtype=wp.vec3, ndim=2)
@@ -190,5 +195,8 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
   d.qfrc_passive = wp.array(tile_fn(mjd.qfrc_passive), dtype=wp.float32, ndim=2)
   d.qfrc_spring = wp.array(tile_fn(mjd.qfrc_spring), dtype=wp.float32, ndim=2)
   d.qfrc_damper = wp.array(tile_fn(mjd.qfrc_damper), dtype=wp.float32, ndim=2)
+  d.qfrc_actuator = wp.array(tile_fn(mjd.qfrc_actuator), dtype=wp.float32, ndim=2)
+  d.qfrc_smooth = wp.array(tile_fn(mjd.qfrc_smooth), dtype=wp.float32, ndim=2)
+  d.qacc_smooth = wp.array(tile_fn(mjd.qacc_smooth), dtype=wp.float32, ndim=2)
 
   return d

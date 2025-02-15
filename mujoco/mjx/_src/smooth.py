@@ -406,3 +406,19 @@ def com_vel(m: types.Model, d: types.Data):
   wp.launch(_root, dim=(d.nworld, 6), inputs=[d])
   for adr, size in zip(m.body_leveladr.numpy()[1:], m.body_levelsize.numpy()[1:]):
     wp.launch(_level, dim=(d.nworld, size), inputs=[m, d, adr])
+
+
+def solve_m(m: types.Model, d: types.Data, input: wp.array(ndim=2, dtype=wp.float32), output: wp.array(ndim=2, dtype=wp.float32)):
+  """Computes backsubstitution."""
+
+  TILE = m.nv
+
+  @wp.kernel
+  def cholesky(d: types.Data, input: wp.array(ndim=2, dtype=wp.float32), output: wp.array(ndim=2, dtype=wp.float32)):
+    worldid = wp.tid()
+    input_tile = wp.tile_load(input[worldid], shape=TILE)
+    qLD_tile = wp.tile_load(d.qLD[worldid], shape=(TILE, TILE))
+    output_tile = wp.tile_cholesky_solve(qLD_tile, input_tile)
+    wp.tile_store(output[worldid], output_tile)
+
+  wp.launch_tiled(cholesky, dim=(d.nworld), inputs=[d, input, output], block_dim=32)
