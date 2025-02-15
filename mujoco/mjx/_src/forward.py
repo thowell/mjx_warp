@@ -17,3 +17,17 @@ def fwd_acceleration(m: types.Model, d: types.Data):
   wp.launch(_qfrc_smooth, dim=(d.nworld, m.nv), inputs=[d, qfrc_applied])
 
   smooth.solve_m(m, d, d.qfrc_smooth, d.qacc_smooth)
+
+  
+  def fwd_position(m: types.Model, d: types.Data):
+  """Position-dependent computations."""
+
+  smooth.kinematics(m, d)
+  smooth.com_pos(m, d)
+  # TODO(team): smooth.camlight
+  # TODO(team): smooth.tendon
+  smooth.crb(m, d)
+  smooth.factor_m(m, d)
+  # TODO(team): collision_driver.collision
+  # TODO(team): constraint.make_constraint
+  # TODO(team): smooth.transmission

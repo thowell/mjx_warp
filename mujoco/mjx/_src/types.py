@@ -53,6 +53,7 @@ class Model:
   site_pos: wp.array(dtype=wp.vec3, ndim=1)
   site_quat: wp.array(dtype=wp.quat, ndim=1)
   dof_bodyid: wp.array(dtype=wp.int32, ndim=1)
+  dof_jntid: wp.array(dtype=wp.int32, ndim=1)
   dof_parentid: wp.array(dtype=wp.int32, ndim=1)
   dof_Madr: wp.array(dtype=wp.int32, ndim=1)
   dof_armature: wp.array(dtype=wp.float32, ndim=1)
