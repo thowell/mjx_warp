@@ -71,6 +71,7 @@ class Data:
   qfrc_applied: wp.array(dtype=wp.float32, ndim=2)
   mocap_pos: wp.array(dtype=wp.vec3, ndim=2)
   mocap_quat: wp.array(dtype=wp.quat, ndim=2)
+  qacc: wp.array(dtype=wp.float32, ndim=2)
   xanchor: wp.array(dtype=wp.vec3, ndim=2)
   xaxis: wp.array(dtype=wp.vec3, ndim=2)
   xmat: wp.array(dtype=wp.mat33, ndim=2)

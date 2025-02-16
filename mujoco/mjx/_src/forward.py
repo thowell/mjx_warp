@@ -31,3 +31,20 @@ def fwd_acceleration(m: types.Model, d: types.Data):
   wp.launch(_qfrc_smooth, dim=(d.nworld, m.nv), inputs=[d, qfrc_applied])
 
   smooth.solve_m(m, d, d.qfrc_smooth, d.qacc_smooth)
+
+
+def forward(m: types.Model, d: type.Data):
+  """Forward dynamics."""
+
+  fwd_position(m, d)
+  # TODO(team): sensor.sensor_pos
+  # TODO(taylorhowell): fwd_velocity
+  # TODO(team): sensor.sensor_vel
+  # TODO(team): fwd_actuation
+  fwd_acceleration(m, d)
+  # TODO(team): sensor.sensor_acc
+
+  # if nefc == 0
+  wp.copy(d.qacc, d.qacc_smooth)
+
+  # TODO(team): solver.solve
