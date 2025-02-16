@@ -1,7 +1,6 @@
 """Tests for smooth dynamics functions."""
 
 from absl.testing import absltest
-from absl.testing import parameterized
 from mujoco import mjx
 import numpy as np
 import warp as wp
@@ -70,7 +69,7 @@ class SmoothTest(absltest.TestCase):
 
   def test_factor_m_dense(self):
     """Tests MJX factor_m (dense)."""
-    _, mjd, m, d = test_util.fixture('pendula.xml', sparse=False)
+    _, mjd, m, d = test_util.fixture('humanoid/humanoid.xml', sparse=False)
 
     qLD = d.qLD.numpy()[0].copy()
     d.qLD.zero_()
@@ -86,6 +85,17 @@ class SmoothTest(absltest.TestCase):
 
     mjx.rne(m, d)
     _assert_eq(d.qfrc_bias.numpy()[0], mjd.qfrc_bias, 'qfrc_bias')
+
+  def test_com_vel(self):
+    """Tests MJX com_vel."""
+    _, mjd, m, d = test_util.fixture('pendula.xml')
+
+    for arr in (d.cvel, d.cdof_dot):
+      arr.zero_()
+
+    mjx.com_vel(m, d)
+    _assert_eq(d.cvel.numpy()[0], mjd.cvel, 'cvel')
+    _assert_eq(d.cdof_dot.numpy()[0], mjd.cdof_dot, 'cdof_dot')
 
 
 if __name__ == '__main__':
