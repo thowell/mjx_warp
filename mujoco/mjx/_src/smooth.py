@@ -55,7 +55,7 @@ def kinematics(m: types.Model, d: types.Data):
           xquat = math.mul_quat(xquat, qloc)
           # correct for off-center rotation
           xpos = xanchor - math.rot_vec_quat(m.jnt_pos[jntadr], xquat)
-        elif jnt_type == 2:  # ball
+        elif jnt_type == 2:  # slide
           xpos += xaxis * (d.qpos[worldid, qadr] - m.qpos0[qadr])
         elif jnt_type == 3:  # hinge
           qpos0 = m.qpos0[qadr]
