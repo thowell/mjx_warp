@@ -1,5 +1,6 @@
 import warp as wp
 
+from . import types
 
 @wp.func
 def mul_quat(u: wp.quat, v: wp.quat) -> wp.quat:
@@ -46,9 +47,7 @@ def quat_to_mat(quat: wp.quat) -> wp.mat33:
 
 
 @wp.func
-def inert_vec(
-  i: wp.types.vector(length=10, dtype=wp.float32), v: wp.spatial_vector
-) -> wp.spatial_vector:
+def inert_vec(i: types.vec10, v: wp.spatial_vector) -> wp.spatial_vector:
   """mju_mulInertVec: multiply 6D vector (rotation, translation) by 6D inertia matrix."""
   return wp.spatial_vector(
     i[0] * v[0] + i[3] * v[1] + i[4] * v[2] - i[8] * v[4] + i[7] * v[5],
@@ -94,6 +93,10 @@ def motion_cross_force(v: wp.spatial_vector, f: wp.spatial_vector) -> wp.spatial
 def quat_to_vel(quat: wp.quat) -> wp.vec3:
   axis  = wp.vec3(quat[1], quat[2], quat[3])
   sin_a_2 = wp.norm_l2(axis)
+
+  if sin_a_2 == 0.0:
+    return wp.vec3(0.0)
+
   speed = 2.0 * wp.atan2(sin_a_2, quat[0])
   # when axis-angle is larger than pi, rotation is in the opposite direction
   if speed > wp.pi:
