@@ -33,7 +33,7 @@ def fwd_acceleration(m: types.Model, d: types.Data):
   smooth.solve_m(m, d, d.qfrc_smooth, d.qacc_smooth)
 
 
-def forward(m: types.Model, d: type.Data):
+def forward(m: types.Model, d: types.Data):
   """Forward dynamics."""
 
   fwd_position(m, d)
