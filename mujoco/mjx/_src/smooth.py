@@ -47,19 +47,19 @@ def kinematics(m: types.Model, d: types.Data):
 
         if jnt_type == 1:  # ball
           qloc = wp.quat(
-            d.qpos[worldid, qadr + 0],
-            d.qpos[worldid, qadr + 1],
-            d.qpos[worldid, qadr + 2],
-            d.qpos[worldid, qadr + 3],
+            qpos[qadr + 0],
+            qpos[qadr + 1],
+            qpos[qadr + 2],
+            qpos[qadr + 3],
           )
           xquat = math.mul_quat(xquat, qloc)
           # correct for off-center rotation
           xpos = xanchor - math.rot_vec_quat(m.jnt_pos[jntadr], xquat)
         elif jnt_type == 2:  # slide
-          xpos += xaxis * (d.qpos[worldid, qadr] - m.qpos0[qadr])
+          xpos += xaxis * (qpos[qadr] - m.qpos0[qadr])
         elif jnt_type == 3:  # hinge
           qpos0 = m.qpos0[qadr]
-          qloc = math.axis_angle_to_quat(jnt_axis, d.qpos[worldid, qadr] - qpos0)
+          qloc = math.axis_angle_to_quat(jnt_axis, qpos[qadr] - qpos0)
           xquat = math.mul_quat(xquat, qloc)
           # correct for off-center rotation
           xpos = xanchor - math.rot_vec_quat(m.jnt_pos[jntadr], xquat)
@@ -73,8 +73,12 @@ def kinematics(m: types.Model, d: types.Data):
     d.xmat[worldid, bodyid] = math.quat_to_mat(xquat)
 
   wp.launch(_root, dim=(d.nworld), inputs=[m, d])
-  for adr, size in zip(m.body_leveladr.numpy(), m.body_levelsize.numpy()):
-    wp.launch(_level, dim=(d.nworld, size), inputs=[m, d, adr])
+
+  body_treeadr = m.body_treeadr.numpy()
+  for i in range(len(body_treeadr)):
+    beg = body_treeadr[i]
+    end = m.nbody if i == len(body_treeadr) - 1 else body_treeadr[i + 1]
+    wp.launch(_level, dim=(d.nworld, end - beg), inputs=[m, d, beg])
 
 
 def com_pos(m: types.Model, d: types.Data):
@@ -171,18 +175,19 @@ def com_pos(m: types.Model, d: types.Data):
     elif jnt_type == 3:  # hinge
       res[dofid] = wp.spatial_vector(xaxis, wp.cross(xaxis, offset))
 
-  leveladr, levelsize = m.body_leveladr.numpy(), m.body_levelsize.numpy()
-
+  body_treeadr = m.body_treeadr.numpy()
   mass_subtree = wp.clone(m.body_mass)
-  for i in range(len(leveladr) - 1, -1, -1):
-    adr, size = leveladr[i], levelsize[i]
-    wp.launch(mass_subtree_acc, dim=(size,), inputs=[m, mass_subtree, adr])
+  for i in reversed(range(len(body_treeadr))):
+    beg = body_treeadr[i]
+    end = m.nbody if i == len(body_treeadr) - 1 else body_treeadr[i + 1]
+    wp.launch(mass_subtree_acc, dim=(end - beg,), inputs=[m, mass_subtree, beg])
 
   wp.launch(subtree_com_init, dim=(d.nworld, m.nbody), inputs=[m, d])
 
-  for i in range(len(leveladr) - 1, -1, -1):
-    adr, size = leveladr[i], levelsize[i]
-    wp.launch(subtree_com_acc, dim=(d.nworld, size), inputs=[m, d, adr])
+  for i in reversed(range(len(body_treeadr))):
+    beg = body_treeadr[i]
+    end = m.nbody if i == len(body_treeadr) - 1 else body_treeadr[i + 1]
+    wp.launch(subtree_com_acc, dim=(d.nworld, end - beg), inputs=[m, d, beg])
 
   wp.launch(subtree_div, dim=(d.nworld, m.nbody), inputs=[mass_subtree, d])
   wp.launch(cinert, dim=(d.nworld, m.nbody), inputs=[m, d])
@@ -221,11 +226,11 @@ def crb(m: types.Model, d: types.Data):
       madr_ij += 1
       dofid = m.dof_parentid[dofid]
 
-  leveladr, levelsize = m.body_leveladr.numpy(), m.body_levelsize.numpy()
-
-  for i in range(len(leveladr) - 1, -1, -1):
-    adr, size = leveladr[i], levelsize[i]
-    wp.launch(crb_accumulate, dim=(d.nworld, size), inputs=[m, d, adr])
+  body_treeadr = m.body_treeadr.numpy()
+  for i in reversed(range(len(body_treeadr))):
+    beg = body_treeadr[i]
+    end = m.nbody if i == len(body_treeadr) - 1 else body_treeadr[i + 1]
+    wp.launch(crb_accumulate, dim=(d.nworld, end - beg), inputs=[m, d, beg])
 
   d.qM.zero_()
   wp.launch(qM_sparse, dim=(d.nworld, m.nv), inputs=[m, d])
@@ -237,7 +242,7 @@ def _factor_m_sparse(m: types.Model, d: types.Data):
   @wp.kernel
   def qLD_acc(m: types.Model, d: types.Data, leveladr: int):
     worldid, nodeid = wp.tid()
-    update = m.qLD_sparse_updates[leveladr + nodeid]
+    update = m.qLD_update_tree[leveladr + nodeid]
     i, k, Madr_ki = update[0], update[1], update[2]
     Madr_i = m.dof_Madr[i]
     # tmp = M(k,i) / M(k,k)
@@ -255,11 +260,14 @@ def _factor_m_sparse(m: types.Model, d: types.Data):
 
   wp.copy(d.qLD, d.qM)
 
-  leveladr, levelsize = m.qLD_leveladr.numpy(), m.qLD_levelsize.numpy()
+  qLD_update_treeadr = m.qLD_update_treeadr.numpy()
 
-  for i in range(len(leveladr) - 1, -1, -1):
-    adr, size = leveladr[i], levelsize[i]
-    wp.launch(qLD_acc, dim=(d.nworld, size), inputs=[m, d, adr])
+  for i in reversed(range(len(qLD_update_treeadr))):
+    if i == len(qLD_update_treeadr) - 1:
+      beg, end = qLD_update_treeadr[i], m.qLD_update_tree.shape[0]
+    else:
+      beg, end = qLD_update_treeadr[i], qLD_update_treeadr[i + 1]
+    wp.launch(qLD_acc, dim=(d.nworld, end - beg), inputs=[m, d, beg])
 
   wp.launch(qLDiag_div, dim=(d.nworld, m.nv), inputs=[m, d])
 
@@ -275,18 +283,19 @@ def _factor_m_dense(m: types.Model, d: types.Data):
     @wp.kernel
     def cholesky(m: types.Model, d: types.Data, leveladr: int):
       worldid, nodeid = wp.tid()
-      dofid = m.qLD_dense_tileid[leveladr + nodeid]
+      dofid = m.qLD_tile[leveladr + nodeid]
       qM_tile = wp.tile_load(d.qM[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid))
       qLD_tile = wp.tile_cholesky(qM_tile)
       wp.tile_store(d.qLD[worldid], qLD_tile, offset=(dofid, dofid))
 
     wp.launch_tiled(cholesky, dim=(d.nworld, size), inputs=[m, d, adr], block_dim=block_dim)
 
-  leveladr, levelsize = m.qLD_leveladr.numpy(), m.qLD_levelsize.numpy()
-  tilesize = m.qLD_dense_tilesize.numpy()
+  qLD_tileadr, qLD_tilesize = m.qLD_tileadr.numpy(), m.qLD_tilesize.numpy()
 
-  for i in range(len(leveladr)):
-    cholesky(leveladr[i], levelsize[i], int(tilesize[i]))
+  for i in range(len(qLD_tileadr)):
+    beg = qLD_tileadr[i]
+    end = m.qLD_tile.shape[0] if i == len(qLD_tileadr) - 1 else qLD_tileadr[i + 1]
+    cholesky(beg, end - beg, int(qLD_tilesize[i]))
 
 
 def factor_m(m: types.Model, d: types.Data):
@@ -350,18 +359,20 @@ def rne(m: types.Model, d: types.Data):
     bodyid = m.dof_bodyid[dofid]
     d.qfrc_bias[worldid, dofid] = wp.dot(d.cdof[worldid, dofid], cfrc[worldid, bodyid])
 
-  leveladr, levelsize = m.body_leveladr.numpy(), m.body_levelsize.numpy()
-
   wp.launch(cacc_gravity, dim=[d.nworld], inputs=[m, cacc])
 
-  for adr, size in zip(leveladr, levelsize):
-    wp.launch(cacc_level, dim=(d.nworld, size), inputs=[m, d, cacc, adr])
+  body_treeadr = m.body_treeadr.numpy()
+  for i in range(len(body_treeadr)):
+    beg = body_treeadr[i]
+    end = m.nbody if i == len(body_treeadr) - 1 else body_treeadr[i + 1]
+    wp.launch(cacc_level, dim=(d.nworld, end - beg), inputs=[m, d, cacc, beg])
 
   wp.launch(frc_fn, dim=[d.nworld, m.nbody], inputs=[d, cfrc, cacc])
 
-  for i in range(len(leveladr) - 1, 0, -1):
-    adr, size = leveladr[i], levelsize[i]
-    wp.launch(cfrc_fn, dim=[d.nworld, size], inputs=[m, cfrc, adr])
+  for i in reversed(range(len(body_treeadr))):
+    beg = body_treeadr[i]
+    end = m.nbody if i == len(body_treeadr) - 1 else body_treeadr[i + 1]
+    wp.launch(cfrc_fn, dim=[d.nworld, end - beg], inputs=[m, cfrc, beg])
 
   wp.launch(qfrc_bias, dim=[d.nworld, m.nv], inputs=[m, d, cfrc])
 
@@ -427,8 +438,12 @@ def com_vel(m: types.Model, d: types.Data):
     d.cvel[worldid, bodyid] = cvel
 
   wp.launch(_root, dim=(d.nworld, 6), inputs=[d])
-  for adr, size in zip(m.body_leveladr.numpy()[1:], m.body_levelsize.numpy()[1:]):
-    wp.launch(_level, dim=(d.nworld, size), inputs=[m, d, adr])
+
+  body_treeadr = m.body_treeadr.numpy()
+  for i in range(1, len(body_treeadr)):
+    beg = body_treeadr[i]
+    end = m.nbody if i == len(body_treeadr) - 1 else body_treeadr[i + 1]
+    wp.launch(_level, dim=(d.nworld, end - beg), inputs=[m, d, beg])
 
 
 def solve_m(m: types.Model, d: types.Data, input: wp.array(ndim=2, dtype=wp.float32), output: wp.array(ndim=2, dtype=wp.float32)):
