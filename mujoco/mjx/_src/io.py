@@ -101,7 +101,14 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.dof_armature = wp.array(mjm.dof_armature, dtype=wp.float32, ndim=1)
   m.dof_damping = wp.array(mjm.dof_damping, dtype=wp.float32, ndim=1)
   m.opt.gravity = wp.vec3(mjm.opt.gravity)
+  m.opt.tolerance = mjm.opt.tolerance
+  m.opt.ls_tolerance = mjm.opt.ls_tolerance
+  m.opt.cone = mjm.opt.cone
+  m.opt.solver = mjm.opt.solver
+  m.opt.iterations = mjm.opt.iterations
+  m.opt.ls_iterations = mjm.opt.ls_iterations
   m.opt.is_sparse = support.is_sparse(mjm)
+  m.stat.meaninertia = mjm.stat.meaninertia
 
   return m
 
@@ -109,13 +116,15 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
 def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   d = types.Data()
   d.nworld = nworld
-
+  d.nefc = 0 # TODO(team): set maximum size?
   qpos0 = np.tile(mjm.qpos0, (nworld, 1))
   d.qpos = wp.array(qpos0, dtype=wp.float32, ndim=2)
   d.qvel = wp.zeros((nworld, mjm.nv), dtype=wp.float32, ndim=2)
+  d.qacc_warmstart = wp.zeros((nworld, mjm.nv), dtype=wp.float32, ndim=2)
   d.qfrc_applied = wp.zeros((nworld, mjm.nv), dtype=wp.float32, ndim=2)
   d.mocap_pos = wp.zeros((nworld, mjm.nmocap), dtype=wp.vec3)
   d.mocap_quat = wp.zeros((nworld, mjm.nmocap), dtype=wp.quat)
+  d.qacc = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.xanchor = wp.zeros((nworld, mjm.njnt), dtype=wp.vec3)
   d.xaxis = wp.zeros((nworld, mjm.njnt), dtype=wp.vec3)
   d.xmat = wp.zeros((nworld, mjm.nbody), dtype=wp.mat33)
@@ -147,6 +156,11 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   d.qfrc_actuator = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qfrc_smooth = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qacc_smooth = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
+  d.qfrc_constraint = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
+  d.efc_J = wp.zeros((nworld, d.nefc, mjm.nv), dtype=wp.float32)
+  d.efc_D = wp.zeros((nworld, d.nefc), dtype=wp.float32)
+  d.efc_aref = wp.zeros((nworld, d.nefc), dtype=wp.float32)
+  d.efc_force = wp.zeros((nworld, d.nefc), dtype=wp.float32)
 
   return d
 
@@ -154,7 +168,7 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
 def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.Data:
   d = types.Data()
   d.nworld = nworld
-
+  d.nefc = mjd.nefc # TODO(team): set maximum size?
   # TODO(erikfrey): would it be better to tile on the gpu?
   def tile(x):
     return np.tile(x, (nworld,) + (1,) * len(x.shape))
@@ -167,11 +181,15 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
     mujoco.mj_fullM(mjm, qM, mjd.qM)
     qLD = np.linalg.cholesky(qM, upper=True)
 
+  efc_J = mjd.efc_J.reshape((mjd.nefc, mjm.nv))
+
   d.qpos = wp.array(tile(mjd.qpos), dtype=wp.float32, ndim=2)
   d.qvel = wp.array(tile(mjd.qvel), dtype=wp.float32, ndim=2)
+  d.qacc_warmstart = wp.array(tile(mjd.qacc_warmstart), dtype=wp.float32, ndim=2)
   d.qfrc_applied = wp.array(tile(mjd.qfrc_applied), dtype=wp.float32, ndim=2)
   d.mocap_pos = wp.array(tile(mjd.mocap_pos), dtype=wp.vec3, ndim=2)
   d.mocap_quat = wp.array(tile(mjd.mocap_quat), dtype=wp.quat, ndim=2)
+  d.qacc = wp.array(tile(mjd.qacc), dtype=wp.float32, ndim=2)
   d.xanchor = wp.array(tile(mjd.xanchor), dtype=wp.vec3, ndim=2)
   d.xaxis = wp.array(tile(mjd.xaxis), dtype=wp.vec3, ndim=2)
   d.xmat = wp.array(tile(mjd.xmat), dtype=wp.mat33, ndim=2)
@@ -199,5 +217,10 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
   d.qfrc_actuator = wp.array(tile(mjd.qfrc_actuator), dtype=wp.float32, ndim=2)
   d.qfrc_smooth = wp.array(tile(mjd.qfrc_smooth), dtype=wp.float32, ndim=2)
   d.qacc_smooth = wp.array(tile(mjd.qacc_smooth), dtype=wp.float32, ndim=2)
+  d.qfrc_constraint = wp.array(tile(mjd.qfrc_constraint), dtype=wp.float32, ndim=2)
+  d.efc_J = wp.array(tile(efc_J), dtype=wp.float32, ndim=3)
+  d.efc_D = wp.array(tile(mjd.efc_D), dtype=wp.float32, ndim=2)
+  d.efc_aref = wp.array(tile(mjd.efc_aref), dtype=wp.float32, ndim=2)
+  d.efc_force = wp.array(tile(mjd.efc_force), dtype=wp.float32, ndim=2)
 
   return d
