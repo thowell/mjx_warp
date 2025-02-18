@@ -27,7 +27,12 @@ def kinematics(m: Model, d: Data):
     jntnum = m.body_jntnum[bodyid]
     qpos = d.qpos[worldid]
 
-    if jntnum == 1 and m.jnt_type[jntadr] == 0:
+    if jntnum == 0:
+      # no joints - apply fixed translation and rotation relative to parent
+      pid = m.body_parentid[bodyid]
+      xpos = (d.xmat[worldid, pid] * m.body_pos[bodyid]) + d.xpos[worldid, pid]
+      xquat = math.mul_quat(d.xquat[worldid, pid], m.body_quat[bodyid])
+    elif jntnum == 1 and m.jnt_type[jntadr] == 0:
       # free joint
       qadr = m.jnt_qposadr[jntadr]
       # TODO(erikfrey): would it be better to use some kind of wp.copy here?
@@ -79,7 +84,7 @@ def kinematics(m: Model, d: Data):
   wp.launch(_root, dim=(d.nworld), inputs=[m, d])
 
   body_treeadr = m.body_treeadr.numpy()
-  for i in range(len(body_treeadr)):
+  for i in range(1, len(body_treeadr)):
     beg = body_treeadr[i]
     end = m.nbody if i == len(body_treeadr) - 1 else body_treeadr[i + 1]
     wp.launch(_level, dim=(d.nworld, end - beg), inputs=[m, d, beg])
@@ -228,6 +233,23 @@ def crb(m: Model, d: Data):
       madr_ij += 1
       dofid = m.dof_parentid[dofid]
 
+  @wp.kernel
+  def qM_dense(m: Model, d: Data):
+    worldid, dofid = wp.tid()
+    bodyid = m.dof_bodyid[dofid]
+
+    # init M(i,i) with armature inertia
+    d.qM[worldid, dofid, dofid] = m.dof_armature[dofid]
+
+    # precompute buf = crb_body_i * cdof_i
+    buf = math.inert_vec(d.crb[worldid, bodyid], d.cdof[worldid, dofid])
+
+    # sparse backward pass over ancestors
+    dofidi = dofid
+    while dofid >= 0:
+      d.qM[worldid, dofidi, dofid] += wp.dot(d.cdof[worldid, dofid], buf)
+      dofid = m.dof_parentid[dofid]
+
   body_treeadr = m.body_treeadr.numpy()
   for i in reversed(range(len(body_treeadr))):
     beg = body_treeadr[i]
@@ -235,7 +257,10 @@ def crb(m: Model, d: Data):
     wp.launch(crb_accumulate, dim=(d.nworld, end - beg), inputs=[m, d, beg])
 
   d.qM.zero_()
-  wp.launch(qM_sparse, dim=(d.nworld, m.nv), inputs=[m, d])
+  if m.opt.is_sparse:
+    wp.launch(qM_sparse, dim=(d.nworld, m.nv), inputs=[m, d])
+  else:
+    wp.launch(qM_dense, dim=(d.nworld, m.nv), inputs=[m, d])
 
 
 def _factor_m_sparse(m: Model, d: Data):
@@ -306,7 +331,7 @@ def _factor_m_dense(m: Model, d: Data):
 def factor_m(m: Model, d: Data):
   """Factorizaton of inertia-like matrix M, assumed spd."""
 
-  if wp.static(m.opt.is_sparse):
+  if m.opt.is_sparse:
     _factor_m_sparse(m, d)
   else:
     _factor_m_dense(m, d)
@@ -530,7 +555,7 @@ def _solve_m_dense(m: Model, d: Data, x: array2df, y: array2df):
 def solve_m(m: Model, d: Data, x: array2df, y: array2df):
   """Computes backsubstitution: x = qLD * y."""
 
-  if wp.static(m.opt.is_sparse):
+  if m.opt.is_sparse:
     _solve_m_sparse(m, d, x, y)
   else:
     _solve_m_dense(m, d, x, y)
