@@ -1,3 +1,8 @@
+# Copyright (c) 2025, The Physics-Next Project Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
 import warp as wp
 from . import math
 from . import types
@@ -271,16 +276,19 @@ def _factor_m_dense(m: types.Model, d: types.Data):
   block_dim = 32
 
   def cholesky(adr, size, tilesize):
-
     @wp.kernel
     def cholesky(m: types.Model, d: types.Data, leveladr: int):
       worldid, nodeid = wp.tid()
       dofid = m.qLD_dense_tileid[leveladr + nodeid]
-      qM_tile = wp.tile_load(d.qM[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid))
+      qM_tile = wp.tile_load(
+        d.qM[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid)
+      )
       qLD_tile = wp.tile_cholesky(qM_tile)
       wp.tile_store(d.qLD[worldid], qLD_tile, offset=(dofid, dofid))
 
-    wp.launch_tiled(cholesky, dim=(d.nworld, size), inputs=[m, d, adr], block_dim=block_dim)
+    wp.launch_tiled(
+      cholesky, dim=(d.nworld, size), inputs=[m, d, adr], block_dim=block_dim
+    )
 
   leveladr, levelsize = m.qLD_leveladr.numpy(), m.qLD_levelsize.numpy()
   tilesize = m.qLD_dense_tilesize.numpy()
@@ -327,10 +335,17 @@ def rne(m: types.Model, d: types.Data):
     cacc[worldid, bodyid] = local_cacc
 
   @wp.kernel
-  def frc_fn(d: types.Data, cfrc: wp.array(dtype=wp.spatial_vector, ndim=2), cacc: wp.array(dtype=wp.spatial_vector, ndim=2)):
+  def frc_fn(
+    d: types.Data,
+    cfrc: wp.array(dtype=wp.spatial_vector, ndim=2),
+    cacc: wp.array(dtype=wp.spatial_vector, ndim=2),
+  ):
     worldid, bodyid = wp.tid()
     frc = math.inert_vec(d.cinert[worldid, bodyid], cacc[worldid, bodyid])
-    frc += math.motion_cross_force(d.cvel[worldid, bodyid], math.inert_vec(d.cinert[worldid, bodyid], d.cvel[worldid, bodyid]))
+    frc += math.motion_cross_force(
+      d.cvel[worldid, bodyid],
+      math.inert_vec(d.cinert[worldid, bodyid], d.cvel[worldid, bodyid]),
+    )
     cfrc[worldid, bodyid] += frc
 
   @wp.kernel
@@ -386,7 +401,7 @@ def com_vel(m: types.Model, d: types.Data):
     if jntnum == 0:
       d.cvel[worldid, bodyid] = d.cvel[worldid, pid]
       return
-    
+
     cvel = d.cvel[worldid, pid]
     qvel = d.qvel[worldid]
     cdof = d.cdof[worldid]
@@ -408,7 +423,7 @@ def com_vel(m: types.Model, d: types.Data):
         cvel += cdof[dofid + 5] * qvel[dofid + 5]
 
         dofid += 6
-      elif jnttype == 1: # ball
+      elif jnttype == 1:  # ball
         d.cdof_dot[worldid, dofid + 0] = math.motion_cross(cvel, cdof[dofid + 0])
         d.cdof_dot[worldid, dofid + 1] = math.motion_cross(cvel, cdof[dofid + 1])
         d.cdof_dot[worldid, dofid + 2] = math.motion_cross(cvel, cdof[dofid + 2])
@@ -431,13 +446,22 @@ def com_vel(m: types.Model, d: types.Data):
     wp.launch(_level, dim=(d.nworld, size), inputs=[m, d, adr])
 
 
-def solve_m(m: types.Model, d: types.Data, input: wp.array(ndim=2, dtype=wp.float32), output: wp.array(ndim=2, dtype=wp.float32)):
+def solve_m(
+  m: types.Model,
+  d: types.Data,
+  input: wp.array(ndim=2, dtype=wp.float32),
+  output: wp.array(ndim=2, dtype=wp.float32),
+):
   """Computes backsubstitution."""
 
   TILE = m.nv
 
   @wp.kernel
-  def cholesky(d: types.Data, input: wp.array(ndim=2, dtype=wp.float32), output: wp.array(ndim=2, dtype=wp.float32)):
+  def cholesky(
+    d: types.Data,
+    input: wp.array(ndim=2, dtype=wp.float32),
+    output: wp.array(ndim=2, dtype=wp.float32),
+  ):
     worldid = wp.tid()
     input_tile = wp.tile_load(input[worldid], shape=TILE)
     qLD_tile = wp.tile_load(d.qLD[worldid], shape=(TILE, TILE))

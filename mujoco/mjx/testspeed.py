@@ -1,17 +1,8 @@
-# Copyright 2023 DeepMind Technologies Limited
+# Copyright (c) 2025, The Physics-Next Project Developers.
+# All rights reserved.
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# ==============================================================================
+# SPDX-License-Identifier: Apache-2.0
+
 """Run benchmarks on various devices."""
 
 from typing import Sequence
@@ -24,7 +15,10 @@ from mujoco import mjx
 import warp as wp
 
 _FUNCTION = flags.DEFINE_enum(
-  "function", "kinematics", ["kinematics", "com_pos", "crb", "factor_m", "rne", "com_vel"], "the function to run"
+  "function",
+  "kinematics",
+  ["kinematics", "com_pos", "crb", "factor_m", "rne", "com_vel"],
+  "the function to run",
 )
 _MJCF = flags.DEFINE_string(
   "mjcf", None, "path to model `.xml` or `.mjb`", required=True
@@ -65,15 +59,17 @@ def _main(argv: Sequence[str]):
   else:
     m.opt.jacobian = mujoco.mjtJacobian.mjJAC_DENSE
 
-  print(f"Model nbody: {m.nbody} nv: {m.nv} ngeom: {m.ngeom} is_sparse: {_IS_SPARSE.value}")
+  print(
+    f"Model nbody: {m.nbody} nv: {m.nv} ngeom: {m.ngeom} is_sparse: {_IS_SPARSE.value}"
+  )
   print(f"Rolling out {_NSTEP.value} steps at dt = {m.opt.timestep:.3f}...")
   fn = {
-    'kinematics': mjx.kinematics,
-    'com_pos': mjx.com_pos,
-    'crb': mjx.crb,
-    'factor_m': mjx.factor_m,
-    'rne': mjx.rne,
-    'com_vel': mjx.com_vel,
+    "kinematics": mjx.kinematics,
+    "com_pos": mjx.com_pos,
+    "crb": mjx.crb,
+    "factor_m": mjx.factor_m,
+    "rne": mjx.rne,
+    "com_vel": mjx.com_vel,
   }[_FUNCTION.value]
   jit_time, run_time, steps = mjx.benchmark(
     fn,

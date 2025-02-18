@@ -1,14 +1,23 @@
+# Copyright (c) 2025, The Physics-Next Project Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
 import warp as wp
 
+
 class vec10f(wp.types.vector(length=10, dtype=wp.float32)):
-    pass
+  pass
+
 
 vec10 = vec10f
+
 
 @wp.struct
 class Option:
   gravity: wp.vec3
-  is_sparse: bool # warp only
+  is_sparse: bool  # warp only
+
 
 @wp.struct
 class Model:
@@ -25,7 +34,7 @@ class Model:
   qpos_spring: wp.array(dtype=wp.float32, ndim=1)
   body_leveladr: wp.array(dtype=wp.int32, ndim=1)  # warp only
   body_levelsize: wp.array(dtype=wp.int32, ndim=1)  # warp only
-  body_tree: wp.array(dtype=wp.int32, ndim=1)   # warp only
+  body_tree: wp.array(dtype=wp.int32, ndim=1)  # warp only
   qLD_leveladr: wp.array(dtype=wp.int32, ndim=1)  # warp only
   qLD_levelsize: wp.array(dtype=wp.int32, ndim=1)  # warp only
   qLD_sparse_updates: wp.array(dtype=wp.vec3i, ndim=1)  # warp only

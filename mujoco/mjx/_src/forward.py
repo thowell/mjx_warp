@@ -1,3 +1,8 @@
+# Copyright (c) 2025, The Physics-Next Project Developers.
+# All rights reserved.
+#
+# SPDX-License-Identifier: Apache-2.0
+
 import warp as wp
 from . import passive
 from . import smooth
@@ -27,8 +32,7 @@ def fwd_velocity(m: types.Model, d: types.Data):
     worldid, actid, dofid = wp.tid()
     moment = d.actuator_moment[worldid, actid]
     qvel = d.qvel[worldid]
-    wp.atomic_add(d.actuator_velocity[worldid],
-                  actid, moment[dofid] * qvel[dofid])
+    wp.atomic_add(d.actuator_velocity[worldid], actid, moment[dofid] * qvel[dofid])
 
   wp.launch(_actuator_velocity, dim=(d.nworld, m.nu, m.nv), inputs=[d])
 
@@ -46,7 +50,12 @@ def fwd_acceleration(m: types.Model, d: types.Data):
   @wp.kernel
   def _qfrc_smooth(d: types.Data, qfrc_applied: wp.array(ndim=2, dtype=wp.float32)):
     worldid, dofid = wp.tid()
-    d.qfrc_smooth[worldid, dofid] = d.qfrc_passive[worldid, dofid] - d.qfrc_bias[worldid, dofid] + d.qfrc_actuator[worldid, dofid] + qfrc_applied[worldid, dofid]
+    d.qfrc_smooth[worldid, dofid] = (
+      d.qfrc_passive[worldid, dofid]
+      - d.qfrc_bias[worldid, dofid]
+      + d.qfrc_actuator[worldid, dofid]
+      + qfrc_applied[worldid, dofid]
+    )
 
   wp.launch(_qfrc_smooth, dim=(d.nworld, m.nv), inputs=[d, qfrc_applied])
 
