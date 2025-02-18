@@ -44,7 +44,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
 
   if support.is_sparse(mjm):
     # qLD_update_tree has dof tree ordering of qLD updates for sparse factor m
-    # qLD_update_treeadr containts starting index of each dof tree level
+    # qLD_update_treeadr contains starting index of each dof tree level
     qLD_updates, dof_depth = {}, np.zeros(mjm.nv, dtype=int) - 1
     for k in range(mjm.nv):
       dof_depth[k] = dof_depth[mjm.dof_parentid[k]] + 1
@@ -61,7 +61,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
     qLD_update_treeadr = np.cumsum(tree_off)[:-1]
   else:
     # qLD_tile has the dof id of each tile in qLD for dense factor m
-    # qLD_tileadr containts starting index in qLD_tile of each tile group
+    # qLD_tileadr contains starting index in qLD_tile of each tile group
     # qLD_tilesize has the square tile size of each tile group
     tile_corners = [i for i in range(mjm.nv) if mjm.dof_parentid[i] == -1]
     tiles = {}
