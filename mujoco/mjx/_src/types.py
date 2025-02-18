@@ -4,6 +4,7 @@ class vec10f(wp.types.vector(length=10, dtype=wp.float32)):
     pass
 
 vec10 = vec10f
+array2df = wp.array2d(dtype=wp.float32, ndim=2)
 
 @wp.struct
 class Option:
