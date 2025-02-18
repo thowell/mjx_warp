@@ -1,6 +1,7 @@
 """Tests for smooth dynamics functions."""
 
 from absl.testing import absltest
+import mujoco
 from mujoco import mjx
 import numpy as np
 import warp as wp
@@ -49,8 +50,7 @@ class SmoothTest(absltest.TestCase):
     """Tests MJX crb."""
     _, mjd, m, d = test_util.fixture('pendula.xml')
 
-    for arr in (d.crb,):
-      arr.zero_()
+    d.crb.zero_()
 
     mjx.crb(m, d)
     _assert_eq(d.crb.numpy()[0], mjd.crb, 'crb')
@@ -75,7 +75,33 @@ class SmoothTest(absltest.TestCase):
     d.qLD.zero_()
 
     mjx.factor_m(m, d)
-    _assert_eq(d.qLD.numpy()[0].T, qLD, 'qLD (dense)')
+    _assert_eq(d.qLD.numpy()[0], qLD, 'qLD (dense)')
+
+  def test_solve_m_dense(self):
+    """Tests MJX solve_m (dense)."""
+    mjm, mjd, m, d = test_util.fixture('humanoid/humanoid.xml', sparse=False)
+
+    qfrc_smooth = np.tile(mjd.qfrc_smooth, (1, 1))
+    qacc_smooth = np.zeros(shape=(1, mjm.nv,), dtype=float)
+    mujoco.mj_solveM(mjm, mjd, qacc_smooth, qfrc_smooth)
+
+    d.qacc_smooth.zero_()
+
+    mjx.solve_m(m, d, d.qacc_smooth, d.qfrc_smooth)
+    _assert_eq(d.qacc_smooth.numpy()[0], qacc_smooth[0], 'qacc_smooth')
+
+  def test_solve_m_sparse(self):
+    """Tests MJX solve_m (sparse)."""
+    mjm, mjd, m, d = test_util.fixture('humanoid/humanoid.xml', sparse=True)
+
+    qfrc_smooth = np.tile(mjd.qfrc_smooth, (1, 1))
+    qacc_smooth = np.zeros(shape=(1, mjm.nv,), dtype=float)
+    mujoco.mj_solveM(mjm, mjd, qacc_smooth, qfrc_smooth)
+
+    d.qacc_smooth.zero_()
+
+    mjx.solve_m(m, d, d.qacc_smooth, d.qfrc_smooth)
+    _assert_eq(d.qacc_smooth.numpy()[0], qacc_smooth[0], 'qacc_smooth')
 
   def test_rne(self):
     """Tests MJX rne."""
