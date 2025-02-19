@@ -78,11 +78,10 @@ def _update_data(
 
   # Update constraints
   r = wp.max(efc.invweight[0] * (1.0 - imp) / imp, types.MINVAL)
-  aref = 0.0
-  for i in range(efc.J.size):
+  aref = float(0.0)
+  for i in range(m.nv):
     #TODO: temporary change to test without the jacobian computation
-    #aref += -b * (efc.J[i] * d.qvel[worldid, i])
-    aref += -b * (d.efc_J[worldid, id, i] * d.qvel[worldid, i])
+    aref += -b * (efc.J[i] * d.qvel[worldid, i])
     #d.efc_J[worldid, id, i] = efc.J[i]
   aref -= k * imp * efc.pos_aref[0]
   d.efc_D[worldid, id] = 1.0 / r
@@ -428,6 +427,7 @@ def _efc_contact_elliptic(m: types.Model, d: types.Data, con_id: wp.array(dtype=
   worldid = contact_elliptic[id].worldid
   con_dim = con_dim_id[id]
 
+
   for i in range(types.NIMP):
     contact_elliptic[nrow + id].solimp[i] = d.contact.solimp[worldid, n_id, i]
   contact_elliptic[nrow + id].margin[0] = d.contact.includemargin[worldid, n_id]
@@ -523,10 +523,16 @@ def make_constraint(m: types.Model, d: types.Data):
       for i in range(d.ncon):
         for w in range(d.nworld):
           if (con_dim[w, i] == condim):
-            for j in range(condim-1):
-              temp_con_id += (i,i,)
-              temp_con_dim_id += (j+1,j+1,)
-              worldid += (w,w,)
+            if m.opt.cone == types.ConeType.ELLIPTIC:
+              for j in range(condim):
+                temp_con_id += (i,)
+                temp_con_dim_id += (j,)
+                worldid += (w,)
+            else:
+              for j in range(condim-1):
+                temp_con_id += (i,i,)
+                temp_con_dim_id += (j+1,j+1,)
+                worldid += (w,w,)
 
     eq_connect_id = wp.array(temp_eq_connect_id, dtype=wp.int32)
     eq_weld_id = wp.array(temp_eq_weld_id, dtype=wp.int32)

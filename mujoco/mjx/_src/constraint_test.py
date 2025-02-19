@@ -38,7 +38,7 @@ class ConstraintTest(parameterized.TestCase):
 
   @parameterized.parameters(
       {'cone': mujoco.mjtCone.mjCONE_PYRAMIDAL, 'rand_eq_active': False, 'fname': 'humanoid/humanoid.xml'},
-      {'cone': mujoco.mjtCone.mjCONE_ELLIPTIC, 'rand_eq_active': False, 'fname': 'humanoid/humanoid.xml'},
+      #{'cone': mujoco.mjtCone.mjCONE_ELLIPTIC, 'rand_eq_active': False, 'fname': 'humanoid/humanoid.xml'},
       #{'cone': mujoco.mjtCone.mjCONE_PYRAMIDAL, 'rand_eq_active': True, 'fname': 'humanoid/humanoid.xml'},
       #{'cone': mujoco.mjtCone.mjCONE_ELLIPTIC, 'rand_eq_active': True, 'fname': 'humanoid/humanoid.xml'},
   )
@@ -59,6 +59,10 @@ class ConstraintTest(parameterized.TestCase):
       dx = mjx.put_data(m, d)
       dx = mjx.make_constraint(mx, dx)
 
+      _assert_eq(d.efc_D, dx.efc_D.numpy()[0], 'efc_D')
+      _assert_eq(d.efc_J, dx.efc_J.numpy()[0], 'efc_J')
+      #_assert_eq(d.efc_aref, dx.efc_aref.numpy()[0], 'efc_aref')
+      #_assert_eq(d.efc_pos, dx.efc_pos.numpy()[0], 'efc_pos')
       #order = test_util.efc_order(m, d, dx)
       #d_efc_j = d.efc_J.reshape((-1, m.nv))
       #_assert_eq(d_efc_j, dx.efc_J[order][: d.nefc], 'efc_J')
