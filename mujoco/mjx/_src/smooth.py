@@ -1,4 +1,5 @@
 import warp as wp
+import numpy as np
 from . import math
 
 from .types import Model
@@ -310,15 +311,11 @@ def _factor_m_dense(m: Model, d: Data):
     def cholesky(m: Model, d: Data, leveladr: int):
       worldid, nodeid = wp.tid()
       dofid = m.qLD_tile[leveladr + nodeid]
-      qM_tile = wp.tile_load(
-        d.qM[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid)
-      )
+      qM_tile = wp.tile_load(d.qM[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid))
       qLD_tile = wp.tile_cholesky(qM_tile)
       wp.tile_store(d.qLD[worldid], qLD_tile, offset=(dofid, dofid))
 
-    wp.launch_tiled(
-      cholesky, dim=(d.nworld, size), inputs=[m, d, adr], block_dim=block_dim
-    )
+    wp.launch_tiled(cholesky, dim=(d.nworld, size), inputs=[m, d, adr], block_dim=block_dim)
 
   qLD_tileadr, qLD_tilesize = m.qLD_tileadr.numpy(), m.qLD_tilesize.numpy()
 
@@ -422,14 +419,14 @@ def fwd_actuation(m: Model, d: Data):
     worldid, dofid = wp.tid()
     if m.actuator_ctrllimited[dofid]:
       ctrl[worldid, dofid] = wp.clamp(ctrl[worldid, dofid], m.actuator_ctrlrange[dofid, 0], m.actuator_ctrlrange[dofid, 1])
-    
+
   wp.launch(clamp_ctrl, dim=[d.nworld, m.nu], inputs=[m, ctrl])
 
   # TODO support stateful actuators
 
   @wp.kernel
   def get_force(
-    m: Model, 
+    m: Model,
     ctrl: wp.array(dtype=wp.float32, ndim=2),
     # outputs
     force: wp.array(dtype=wp.float32, ndim=2),
@@ -451,14 +448,145 @@ def fwd_actuation(m: Model, d: Data):
 
   # clamp qfrc_actuator
   actfrcrange = jp.where(
-      m.jnt_actfrclimited[:, None],
-      m.jnt_actfrcrange,
-      jp.array([-jp.inf, jp.inf]),
+    m.jnt_actfrclimited[:, None],
+    m.jnt_actfrcrange,
+    jp.array([-jp.inf, jp.inf]),
   )
   actfrcrange = actfrcrange[m.dof_jntid]
   d.qfrc_actuator = jp.clip(qfrc_actuator, actfrcrange[:, 0], actfrcrange[:, 1])
 
   return d
+
+
+def transmission(m: Model, d: Data):
+  """Computes actuator/transmission lengths and moments."""
+  if not m.nu:
+    return d
+  
+  
+  def _site_dof_mask(m: Model) -> np.ndarray:
+    """Creates a dof mask for site transmissions."""
+    # TODO: write this as Warp kernel
+    mask = np.ones((m.nu, m.nv))
+    for i in np.nonzero(m.actuator_trnid[:, 1] != -1)[0]:
+      id_, refid = m.actuator_trnid[i]
+      # initialize last dof address for each body
+      b0 = m.body_weldid[m.site_bodyid[id_]]
+      b1 = m.body_weldid[m.site_bodyid[refid]]
+      dofadr0 = m.body_dofadr[b0] + m.body_dofnum[b0] - 1
+      dofadr1 = m.body_dofadr[b1] + m.body_dofnum[b1] - 1
+
+      # find common ancestral dof, if any
+      while dofadr0 != dofadr1:
+        if dofadr0 < dofadr1:
+          dofadr1 = m.dof_parentid[dofadr1]
+        else:
+          dofadr0 = m.dof_parentid[dofadr0]
+        if dofadr0 == -1 or dofadr1 == -1:
+          break
+
+      # if common ancestral dof was found, clear the columns of its parental chain
+      da = dofadr0 if dofadr0 == dofadr1 else -1
+      while da >= 0:
+        mask[i, da] = 0.0
+        da = m.dof_parentid[da]
+
+    return mask
+
+  @wp.kernel
+  def compute_transmission(
+    trntype,
+    trnid,
+    gear,
+    jnt_typ,
+    m_j,
+    qpos,
+    has_refsite,
+    site_dof_mask,
+    site_xpos,
+    site_xmat,
+    site_quat,
+  ):
+    if trntype in (TrnType.JOINT, TrnType.JOINTINPARENT):
+      if jnt_typ == JointType.FREE:
+        length = jp.zeros(1)
+        moment = gear
+        if trntype == TrnType.JOINTINPARENT:
+          quat_neg = math.quat_inv(qpos[3:])
+          gearaxis = math.rotate(gear[3:], quat_neg)
+          moment = moment.at[3:].set(gearaxis)
+        m_j = m_j + jp.arange(6)
+      elif jnt_typ == JointType.BALL:
+        axis, angle = math.quat_to_axis_angle(qpos)
+        gearaxis = gear[:3]
+        if trntype == TrnType.JOINTINPARENT:
+          quat_neg = math.quat_inv(qpos)
+          gearaxis = math.rotate(gear[:3], quat_neg)
+        length = jp.dot(axis * angle, gearaxis)[None]
+        moment = gearaxis
+        m_j = m_j + jp.arange(3)
+      elif jnt_typ in (JointType.SLIDE, JointType.HINGE):
+        length = qpos * gear[0]
+        moment = gear[:1]
+        m_j = m_j[None]
+      else:
+        raise RuntimeError(f"unrecognized joint type: {JointType(jnt_typ)}")
+
+      moment = jp.zeros((m.nv,)).at[m_j].set(moment)
+    elif trntype == TrnType.SITE:
+      length = jp.zeros(1)
+      id_, refid = jp.array(m.site_bodyid)[trnid]
+      jacp, jacr = support.jac(m, d, site_xpos[0], id_)
+      frame_xmat = site_xmat[0]
+      if has_refsite:
+        vecp = site_xmat[1].T @ (site_xpos[0] - site_xpos[1])
+        vecr = math.quat_sub(site_quat[0], site_quat[1])
+        length += jp.dot(jp.concatenate([vecp, vecr]), gear)
+        jacrefp, jacrefr = support.jac(m, d, site_xpos[1], refid)
+        jacp, jacr = jacp - jacrefp, jacr - jacrefr
+        frame_xmat = site_xmat[1]
+
+      jac = jp.concatenate((jacp, jacr), axis=1) * site_dof_mask[:, None]
+      wrench = jp.concatenate((frame_xmat @ gear[:3], frame_xmat @ gear[3:]))
+      moment = jac @ wrench
+    elif trntype == TrnType.TENDON:
+      length = d.ten_length[trnid[0]] * gear[:1]
+      moment = d.ten_J[trnid[0]] * gear[0]
+    else:
+      raise RuntimeError(f"unrecognized trntype: {TrnType(trntype)}")
+
+    return length, moment
+
+  # pre-compute values for site transmissions
+  has_refsite = m.actuator_trnid[:, 1] != -1
+  site_dof_mask = _site_dof_mask(m)
+  site_quat = jax.vmap(math.quat_mul)(m.site_quat, d.xquat[m.site_bodyid])
+
+  length, moment = scan.flat(
+    m,
+    fn,
+    "uuujjquusss",
+    "uu",
+    m.actuator_trntype,
+    jp.array(m.actuator_trnid),
+    m.actuator_gear,
+    m.jnt_type,
+    jp.array(m.jnt_dofadr),
+    d.qpos,
+    has_refsite,
+    jp.array(site_dof_mask),
+    d.site_xpos,
+    d.site_xmat,
+    site_quat,
+    group_by="u",
+  )
+  length = length.reshape((m.nu,))
+  moment = moment.reshape((m.nu, m.nv))
+
+  d = d.replace(actuator_length=length, actuator_moment=moment)
+  return d
+
+
 def com_vel(m: Model, d: Data):
   """Computes cvel, cdof_dot."""
 
@@ -583,15 +711,11 @@ def _solve_m_dense(m: Model, d: Data, x: array2df, y: array2df):
       worldid, nodeid = wp.tid()
       dofid = m.qLD_tile[leveladr + nodeid]
       y_slice = wp.tile_load(y[worldid], shape=(tilesize,), offset=(dofid,))
-      qLD_tile = wp.tile_load(
-        d.qLD[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid)
-      )
+      qLD_tile = wp.tile_load(d.qLD[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid))
       x_slice = wp.tile_cholesky_solve(qLD_tile, y_slice)
       wp.tile_store(x[worldid], x_slice, offset=(dofid,))
 
-    wp.launch_tiled(
-      cho_solve, dim=(d.nworld, size), inputs=[m, d, x, y, adr], block_dim=block_dim
-    )
+    wp.launch_tiled(cho_solve, dim=(d.nworld, size), inputs=[m, d, x, y, adr], block_dim=block_dim)
 
   qLD_tileadr, qLD_tilesize = m.qLD_tileadr.numpy(), m.qLD_tilesize.numpy()
 
