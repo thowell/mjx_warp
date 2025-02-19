@@ -343,3 +343,54 @@ def rne(m: types.Model, d: types.Data):
     wp.launch(cfrc_fn, dim=[d.nworld, size], inputs=[m, cfrc, adr])
 
   wp.launch(qfrc_bias, dim=[d.nworld, m.nv], inputs=[m, d, cfrc])
+
+
+def fwd_actuation(m: types.Model, d: types.Data):
+  """Actuation-dependent computations."""
+  if not m.nu:
+    return
+
+  ctrl = d.ctrl
+
+  @wp.kernel
+  def clamp_ctrl(m: types.Model, ctrl: wp.array(dtype=wp.float32, ndim=2)):
+    worldid, dofid = wp.tid()
+    if m.actuator_ctrllimited[dofid]:
+      ctrl[worldid, dofid] = wp.clamp(ctrl[worldid, dofid], m.actuator_ctrlrange[dofid, 0], m.actuator_ctrlrange[dofid, 1])
+    
+  wp.launch(clamp_ctrl, dim=[d.nworld, m.nu], inputs=[m, ctrl])
+
+  # TODO support stateful actuators
+
+  @wp.kernel
+  def get_force(
+    m: types.Model, 
+    ctrl: wp.array(dtype=wp.float32, ndim=2),
+    # outputs
+    force: wp.array(dtype=wp.float32, ndim=2),
+  ):
+    worldid, dofid = wp.tid()
+    gain = m.actuator_gainprm[dofid, 0]
+    bias = m.actuator_biasprm[dofid, 0]
+    # TODO support gain types other than FIXED
+    f = gain * ctrl[worldid, dofid] + bias
+    if m.actuator_forcelimited[dofid]:
+      f = wp.clamp(f, m.actuator_forcerange[dofid, 0], m.actuator_forcerange[dofid, 1])
+    force[worldid, dofid] = f
+
+  wp.launch(get_force, dim=[d.nworld, m.nu], inputs=[m, ctrl], outputs=[d.actuator_force])
+
+  qfrc_actuator = d.actuator_moment.T @ d.actuator_force
+
+  # TODO actuator-level gravity compensation, skip if added as passive force
+
+  # clamp qfrc_actuator
+  actfrcrange = jp.where(
+      m.jnt_actfrclimited[:, None],
+      m.jnt_actfrcrange,
+      jp.array([-jp.inf, jp.inf]),
+  )
+  actfrcrange = actfrcrange[m.dof_jntid]
+  d.qfrc_actuator = jp.clip(qfrc_actuator, actfrcrange[:, 0], actfrcrange[:, 1])
+
+  return d
