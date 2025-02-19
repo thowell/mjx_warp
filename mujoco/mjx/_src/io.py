@@ -34,7 +34,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.nM = mjm.nM
   m.opt.gravity = wp.vec3(mjm.opt.gravity)
   m.opt.is_sparse = support.is_sparse(mjm)
- 
+
   m.qpos0 = wp.array(mjm.qpos0, dtype=wp.float32, ndim=1)
   m.qpos_spring = wp.array(mjm.qpos_spring, dtype=wp.float32, ndim=1)
 
@@ -90,10 +90,12 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
     qLD_tilesize = np.array(sorted(tiles.keys()))
 
   m.qLD_update_tree = wp.array(qLD_update_tree, dtype=wp.vec3i, ndim=1)
-  m.qLD_update_treeadr = wp.array(qLD_update_treeadr, dtype=wp.int32, ndim=1, device="cpu")
+  m.qLD_update_treeadr = wp.array(
+    qLD_update_treeadr, dtype=wp.int32, ndim=1, device="cpu"
+  )
   m.qLD_tile = wp.array(qLD_tile, dtype=wp.int32, ndim=1)
-  m.qLD_tileadr = wp.array(qLD_tileadr, dtype=wp.int32, ndim=1, device='cpu')
-  m.qLD_tilesize = wp.array(qLD_tilesize, dtype=wp.int32, ndim=1, device='cpu')
+  m.qLD_tileadr = wp.array(qLD_tileadr, dtype=wp.int32, ndim=1, device="cpu")
+  m.qLD_tilesize = wp.array(qLD_tilesize, dtype=wp.int32, ndim=1, device="cpu")
   m.body_dofadr = wp.array(mjm.body_dofadr, dtype=wp.int32, ndim=1)
   m.body_dofnum = wp.array(mjm.body_dofnum, dtype=wp.int32, ndim=1)
   m.body_jntadr = wp.array(mjm.body_jntadr, dtype=wp.int32, ndim=1)
