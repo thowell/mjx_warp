@@ -35,7 +35,7 @@ def _assert_eq(a, b, name):
 
 class ForwardTest(absltest.TestCase):
   def _load(self, fname: str, is_sparse: bool = True):
-    path = epath.resource_path('mujoco.mjx') / "test_data" / fname
+    path = epath.resource_path("mujoco.mjx") / "test_data" / fname
     mjm = mujoco.MjModel.from_xml_path(path.as_posix())
     mjm.opt.jacobian = is_sparse
     mjd = mujoco.MjData(mjm)
