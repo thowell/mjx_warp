@@ -1,15 +1,85 @@
 import warp as wp
+from enum import Enum, IntFlag
 
 class vec10f(wp.types.vector(length=10, dtype=wp.float32)):
     pass
 
 vec10 = vec10f
+MINIMP = 0.0001  # minimum constraint impedance
+MAXIMP = 0.9999  # maximum constraint impedance
+MINVAL = 1E-15
+NREF = 2
+NIMP = 5
+
+class DisableBit(IntFlag):
+  CONSTRAINT = 1
+  EQUALITY = 2
+  FRICTIONLOSS = 4
+  LIMIT = 8
+  CONTACT = 16
+  PASSIVE = 32
+  GRAVITY = 64
+  CLAMPCTRL = 128
+  WARMSTART = 256
+  FILTERPARENT = 512
+  ACTUATION = 1024
+  REFSAFE = 2048
+  SENSOR = 4096
+  # unsupported: MIDPHASE
+  EULERDAMP = 16384
+
+
+class JointType(IntFlag):
+  FREE = 0
+  BALL = 1
+  SLIDE = 2
+  HINGE = 3
+
+
+class ConeType(IntFlag):
+  PYRAMIDAL = 0
+  ELLIPTIC = 1
+
+
+class EqType(IntFlag):
+  CONNECT = 0
+  WELD = 1
+  JOINT = 2
+  TENDON = 3
+  # unsupported: DISTANCE
+
+
+class ConstraintType(IntFlag):
+  EQUALITY = 0
+  FRICTION_DOF = 1
+  FRICTION_TENDON = 2
+  LIMIT_JOINT = 3
+  LIMIT_TENDON = 4
+  CONTACT_FRICTIONLESS = 5
+  CONTACT_PYRAMIDAL = 6
+  CONTACT_ELLIPTIC = 7
+
+@wp.struct
+class ObjType(Enum):
+  UNKNOWN = 0
+  BODY = 1
+  XBODY = 2
+  GEOM = 5
+  SITE = 6
+  CAMERA = 7
+
 array2df = wp.array2d(dtype=wp.float32, ndim=2)
 
 @wp.struct
 class Option:
   gravity: wp.vec3
   is_sparse: bool # warp only
+  cone: wp.int32
+  disableflags: wp.int32
+  impratio: wp.float32
+  timestep: wp.float32
+
+
 
 @wp.struct
 class Model:
@@ -20,6 +90,7 @@ class Model:
   njnt: int
   ngeom: int
   nsite: int
+  neq: int
   nmocap: int
   nM: int
   opt: Option
@@ -45,29 +116,73 @@ class Model:
   body_rootid: wp.array(dtype=wp.int32, ndim=1)
   body_inertia: wp.array(dtype=wp.vec3, ndim=1)
   body_mass: wp.array(dtype=wp.float32, ndim=1)
+  body_invweight0: wp.array(dtype=wp.float32, ndim=2)
   jnt_bodyid: wp.array(dtype=wp.int32, ndim=1)
+  jnt_limited: wp.array(dtype=wp.int32, ndim=1)
+  jnt_solref: wp.array(dtype=wp.float32, ndim=2)
+  jnt_solimp: wp.array(dtype=wp.float32, ndim=2)
   jnt_type: wp.array(dtype=wp.int32, ndim=1)
   jnt_qposadr: wp.array(dtype=wp.int32, ndim=1)
   jnt_dofadr: wp.array(dtype=wp.int32, ndim=1)
   jnt_axis: wp.array(dtype=wp.vec3, ndim=1)
   jnt_pos: wp.array(dtype=wp.vec3, ndim=1)
+  jnt_range: wp.array(dtype=wp.float32, ndim=2)
+  jnt_margin: wp.array(dtype=wp.float32, ndim=1)
   jnt_stiffness: wp.array(dtype=wp.float32, ndim=1)
+  geom_bodyid: wp.array(dtype=wp.int32, ndim=1)
   geom_pos: wp.array(dtype=wp.vec3, ndim=1)
   geom_quat: wp.array(dtype=wp.quat, ndim=1)
+  site_bodyid: wp.array(dtype=wp.int32, ndim=1)
   site_pos: wp.array(dtype=wp.vec3, ndim=1)
   site_quat: wp.array(dtype=wp.quat, ndim=1)
   dof_bodyid: wp.array(dtype=wp.int32, ndim=1)
   dof_jntid: wp.array(dtype=wp.int32, ndim=1)
   dof_parentid: wp.array(dtype=wp.int32, ndim=1)
   dof_Madr: wp.array(dtype=wp.int32, ndim=1)
+  dof_solref: wp.array(dtype=wp.float32, ndim=2)
+  dof_solimp: wp.array(dtype=wp.float32, ndim=2)
+  dof_frictionloss: wp.array(dtype=wp.float32, ndim=1)
+  dof_hasfrictionloss: wp.array(dtype=wp.int32, ndim=1)
   dof_armature: wp.array(dtype=wp.float32, ndim=1)
+  dof_invweight0: wp.array(dtype=wp.float32, ndim=1)
   dof_damping: wp.array(dtype=wp.float32, ndim=1)
+  eq_type: wp.array(dtype=wp.int32, ndim=1)
+  eq_obj1id: wp.array(dtype=wp.int32, ndim=1)
+  eq_obj2id: wp.array(dtype=wp.int32, ndim=1)
+  eq_objtype: wp.array(dtype=wp.int32, ndim=1)
+  eq_solref: wp.array(dtype=wp.float32, ndim=2)
+  eq_solimp: wp.array(dtype=wp.float32, ndim=2)
+  eq_data: wp.array(dtype=wp.float32, ndim=2)
+  opt: Option
+
+
+@wp.struct
+class Contact:
+  dist: wp.array(dtype=wp.float32, ndim=2)
+  pos: wp.array(dtype=wp.vec3f, ndim=2)
+  frame: wp.array(dtype=wp.float32, ndim=3)
+  includemargin: wp.array(dtype=wp.float32, ndim=2)
+  friction: wp.array(dtype=wp.float32, ndim=3)
+  solref: wp.array(dtype=wp.float32, ndim=3)
+  solreffriction: wp.array(dtype=wp.float32, ndim=3)
+  solimp: wp.array(dtype=wp.float32, ndim=3)
+  dim: wp.array(dtype=wp.int32, ndim=2)
+  geom1: wp.array(dtype=wp.int32, ndim=2)
+  geom2: wp.array(dtype=wp.int32, ndim=2)
+  geom: wp.array(dtype=wp.int32, ndim=3)
+  efc_address: wp.array(dtype=wp.int32, ndim=2)
 
 
 @wp.struct
 class Data:
   nworld: int
+  ncon: int
+  ne: int
+  nf: int
+  nl: int
+  nefc: int
   qpos: wp.array(dtype=wp.float32, ndim=2)
+  eq_active: wp.array(dtype=wp.int32, ndim=2)
   qvel: wp.array(dtype=wp.float32, ndim=2)
   qfrc_applied: wp.array(dtype=wp.float32, ndim=2)
   mocap_pos: wp.array(dtype=wp.vec3, ndim=2)
@@ -102,3 +217,10 @@ class Data:
   qfrc_actuator: wp.array(dtype=wp.float32, ndim=2)
   qfrc_smooth: wp.array(dtype=wp.float32, ndim=2)
   qacc_smooth: wp.array(dtype=wp.float32, ndim=2)
+  contact: Contact
+  efc_J: wp.array(dtype=wp.float32, ndim=3)
+  efc_pos: wp.array(dtype=wp.float32, ndim=2)
+  efc_margin: wp.array(dtype=wp.float32, ndim=2)
+  efc_frictionloss: wp.array(dtype=wp.float32, ndim=2)
+  efc_D: wp.array(dtype=wp.float32, ndim=2)
+  efc_aref: wp.array(dtype=wp.float32, ndim=2)

@@ -3,6 +3,10 @@ import warp as wp
 from . import types
 
 @wp.func
+def quat_inv(q: wp.quat) -> wp.quat:
+  return wp.quat(q[0], -q[1], -q[2], -q[3])
+
+@wp.func
 def mul_quat(u: wp.quat, v: wp.quat) -> wp.quat:
   return wp.quat(
     u[0] * v[0] - u[1] * v[1] - u[2] * v[2] - u[3] * v[3],
@@ -28,6 +32,18 @@ def axis_angle_to_quat(axis: wp.vec3, angle: wp.float32) -> wp.quat:
 
 
 @wp.func
+def quat_to_axis_angle(q: wp.quat):
+  """Converts a quaternion into axis and angle."""
+  axis = wp.vec3(q[1], q[2], q[3])
+  sin_a_2 = wp.norm_l2(axis)
+  print(sin_a_2)
+  axis = wp.normalize(axis)
+  angle = 2.0 * wp.atan2(sin_a_2, q[0])
+  angle = where(angle > wp.pi, angle - 2.0 * wp.pi, angle)
+
+  return axis, angle
+
+@wp.func
 def quat_to_mat(quat: wp.quat) -> wp.mat33:
   """Converts a quaternion into a 9-dimensional rotation matrix."""
   vec = wp.vec4(quat[0], quat[1], quat[2], quat[3])
@@ -45,6 +61,12 @@ def quat_to_mat(quat: wp.quat) -> wp.mat33:
     q[0, 0] - q[1, 1] - q[2, 2] + q[3, 3],
   )
 
+@wp.func
+def where(condition: bool, returnOnTrue: float, returnOnFalse: float) -> float:
+    if condition:
+        return returnOnTrue
+    else:
+        return returnOnFalse
 
 @wp.func
 def inert_vec(i: types.vec10, v: wp.spatial_vector) -> wp.spatial_vector:
