@@ -59,9 +59,6 @@ class ConstraintTest(parameterized.TestCase):
       dx = mjx.put_data(m, d)
       dx = mjx.make_constraint(mx, dx)
 
-      print(d.ne, d.nf, d.nl, d.nefc, d.ncon)
-      print(dx.efc_D)
-      print(d.efc_D)
       #order = test_util.efc_order(m, d, dx)
       #d_efc_j = d.efc_J.reshape((-1, m.nv))
       #_assert_eq(d_efc_j, dx.efc_J[order][: d.nefc], 'efc_J')
@@ -76,7 +73,6 @@ class ConstraintTest(parameterized.TestCase):
       #    dx.efc_frictionloss[order][: d.nefc],
       #    'efc_frictionloss',
       #)
-    _assert_eq(0, 1, 'dummy')
 
 if __name__ == '__main__':
   absltest.main()
