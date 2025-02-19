@@ -5,10 +5,23 @@ class vec10f(wp.types.vector(length=10, dtype=wp.float32)):
 
 vec10 = vec10f
 
+
 @wp.struct
 class Option:
   gravity: wp.vec3
+  tolerance: float
+  ls_tolerance: float
+  cone: int  # mjtCone
+  solver: int  # mjtSolver
+  iterations: int
+  ls_iterations: int
   is_sparse: bool # warp only
+
+
+@wp.struct
+class Statistic:
+  meaninertia: float
+
 
 @wp.struct
 class Model:
@@ -61,6 +74,7 @@ class Model:
   dof_armature: wp.array(dtype=wp.float32, ndim=1)
   dof_damping: wp.array(dtype=wp.float32, ndim=1)
   opt: Option
+  stat: Statistic
 
 
 @wp.struct
@@ -68,9 +82,11 @@ class Data:
   nworld: int
   qpos: wp.array(dtype=wp.float32, ndim=2)
   qvel: wp.array(dtype=wp.float32, ndim=2)
+  qacc_warmstart: wp.array(dtype=wp.float32, ndim=2)
   qfrc_applied: wp.array(dtype=wp.float32, ndim=2)
   mocap_pos: wp.array(dtype=wp.vec3, ndim=2)
   mocap_quat: wp.array(dtype=wp.quat, ndim=2)
+  qacc: wp.array(dtype=wp.float32, ndim=2)
   xanchor: wp.array(dtype=wp.vec3, ndim=2)
   xaxis: wp.array(dtype=wp.vec3, ndim=2)
   xmat: wp.array(dtype=wp.mat33, ndim=2)
@@ -98,3 +114,13 @@ class Data:
   qfrc_actuator: wp.array(dtype=wp.float32, ndim=2)
   qfrc_smooth: wp.array(dtype=wp.float32, ndim=2)
   qacc_smooth: wp.array(dtype=wp.float32, ndim=2)
+  qfrc_constraint: wp.array(dtype=wp.float32, ndim=2)
+  nefc_active: int  # warp only
+  nefc_maxbatch: int  # warp only
+  efc_J: wp.array(dtype=wp.float32, ndim=2)
+  efc_D: wp.array(dtype=wp.float32, ndim=1)
+  efc_aref: wp.array(dtype=wp.float32, ndim=1)
+  efc_force: wp.array(dtype=wp.float32, ndim=1)
+  efc_worldid: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  world_efcadr: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  world_efcsize: wp.array(dtype=wp.int32, ndim=1)  # warp only

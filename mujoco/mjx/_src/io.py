@@ -101,21 +101,29 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.dof_armature = wp.array(mjm.dof_armature, dtype=wp.float32, ndim=1)
   m.dof_damping = wp.array(mjm.dof_damping, dtype=wp.float32, ndim=1)
   m.opt.gravity = wp.vec3(mjm.opt.gravity)
+  m.opt.tolerance = mjm.opt.tolerance
+  m.opt.ls_tolerance = mjm.opt.ls_tolerance
+  m.opt.cone = mjm.opt.cone
+  m.opt.solver = mjm.opt.solver
+  m.opt.iterations = mjm.opt.iterations
+  m.opt.ls_iterations = mjm.opt.ls_iterations
   m.opt.is_sparse = support.is_sparse(mjm)
+  m.stat.meaninertia = mjm.stat.meaninertia
 
   return m
 
 
-def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
+def make_data(mjm: mujoco.MjModel, nworld: int = 1, nefc_maxbatch: int = 512) -> types.Data:
   d = types.Data()
   d.nworld = nworld
-
   qpos0 = np.tile(mjm.qpos0, (nworld, 1))
   d.qpos = wp.array(qpos0, dtype=wp.float32, ndim=2)
   d.qvel = wp.zeros((nworld, mjm.nv), dtype=wp.float32, ndim=2)
+  d.qacc_warmstart = wp.zeros((nworld, mjm.nv), dtype=wp.float32, ndim=2)
   d.qfrc_applied = wp.zeros((nworld, mjm.nv), dtype=wp.float32, ndim=2)
   d.mocap_pos = wp.zeros((nworld, mjm.nmocap), dtype=wp.vec3)
   d.mocap_quat = wp.zeros((nworld, mjm.nmocap), dtype=wp.quat)
+  d.qacc = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.xanchor = wp.zeros((nworld, mjm.njnt), dtype=wp.vec3)
   d.xaxis = wp.zeros((nworld, mjm.njnt), dtype=wp.vec3)
   d.xmat = wp.zeros((nworld, mjm.nbody), dtype=wp.mat33)
@@ -147,14 +155,27 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   d.qfrc_actuator = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qfrc_smooth = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qacc_smooth = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
+  d.qfrc_constraint = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
+  d.nefc_active = 0
+  d.nefc_maxbatch = nefc_maxbatch
+  d.efc_J = wp.zeros((nefc_maxbatch, mjm.nv), dtype=wp.float32)
+  d.efc_D = wp.zeros((nefc_maxbatch), dtype=wp.float32)
+  d.efc_aref = wp.zeros((nefc_maxbatch), dtype=wp.float32)
+  d.efc_force = wp.zeros((nefc_maxbatch), dtype=wp.float32)
+  d.efc_worldid = wp.zeros((nefc_maxbatch), dtype=wp.int32)
+  d.world_efcadr = wp.zeros((nworld), dtype=wp.int32)
+  d.world_efcsize = wp.zeros((nworld), dtype=wp.int32)
 
   return d
 
 
-def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.Data:
+def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1, nefc_maxbatch: int = 512) -> types.Data:
   d = types.Data()
-  d.nworld = nworld
 
+  if nworld * mjd.nefc > nefc_maxbatch:
+    raise ValueError("nworld * nefc > nefc_maxbatch")
+  
+  d.nworld = nworld
   # TODO(erikfrey): would it be better to tile on the gpu?
   def tile(x):
     return np.tile(x, (nworld,) + (1,) * len(x.shape))
@@ -167,11 +188,15 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
     mujoco.mj_fullM(mjm, qM, mjd.qM)
     qLD = np.linalg.cholesky(qM, upper=True)
 
+  efc_J = mjd.efc_J.reshape((mjd.nefc, mjm.nv))
+
   d.qpos = wp.array(tile(mjd.qpos), dtype=wp.float32, ndim=2)
   d.qvel = wp.array(tile(mjd.qvel), dtype=wp.float32, ndim=2)
+  d.qacc_warmstart = wp.array(tile(mjd.qacc_warmstart), dtype=wp.float32, ndim=2)
   d.qfrc_applied = wp.array(tile(mjd.qfrc_applied), dtype=wp.float32, ndim=2)
   d.mocap_pos = wp.array(tile(mjd.mocap_pos), dtype=wp.vec3, ndim=2)
   d.mocap_quat = wp.array(tile(mjd.mocap_quat), dtype=wp.quat, ndim=2)
+  d.qacc = wp.array(tile(mjd.qacc), dtype=wp.float32, ndim=2)
   d.xanchor = wp.array(tile(mjd.xanchor), dtype=wp.vec3, ndim=2)
   d.xaxis = wp.array(tile(mjd.xaxis), dtype=wp.vec3, ndim=2)
   d.xmat = wp.array(tile(mjd.xmat), dtype=wp.mat33, ndim=2)
@@ -199,5 +224,37 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
   d.qfrc_actuator = wp.array(tile(mjd.qfrc_actuator), dtype=wp.float32, ndim=2)
   d.qfrc_smooth = wp.array(tile(mjd.qfrc_smooth), dtype=wp.float32, ndim=2)
   d.qacc_smooth = wp.array(tile(mjd.qacc_smooth), dtype=wp.float32, ndim=2)
+  d.qfrc_constraint = wp.array(tile(mjd.qfrc_constraint), dtype=wp.float32, ndim=2)
+
+  nefc = mjd.nefc
+  d.nefc_active = nworld * nefc
+  d.nefc_maxbatch = nefc_maxbatch
+  efc_worldid = np.zeros(nefc_maxbatch, dtype=int)
+  world_efcadr = np.zeros(nworld, dtype=int)
+  world_efcsize = np.zeros(nworld, dtype=int)
+
+
+  for i in range(nworld):
+    efc_worldid[i * nefc: (i + 1) * nefc] = i
+    if i > 0:
+      world_efcadr[i] = world_efcadr[i - 1] + nefc
+    else:
+      world_efcadr[i] = 0
+    world_efcsize[i] = nefc
+
+  nefc_fill = nefc_maxbatch - nworld * nefc
+
+  efc_J_fill = np.vstack([np.repeat(efc_J, nworld, axis=0), np.zeros((nefc_fill, mjm.nv))])
+  efc_D_fill = np.concatenate([np.repeat(mjd.efc_D, nworld, axis=0), np.zeros(nefc_fill)])
+  efc_aref_fill = np.concatenate([np.repeat(mjd.efc_aref, nworld, axis=0), np.zeros(nefc_fill)])
+  efc_force_fill = np.concatenate([np.repeat(mjd.efc_force, nworld, axis=0), np.zeros(nefc_fill)])
+
+  d.efc_J = wp.array(efc_J_fill, dtype=wp.float32, ndim=2)
+  d.efc_D = wp.array(efc_D_fill, dtype=wp.float32, ndim=1)
+  d.efc_aref = wp.array(efc_aref_fill, dtype=wp.float32, ndim=1)
+  d.efc_force = wp.array(efc_force_fill, dtype=wp.float32, ndim=1)
+  d.efc_worldid = wp.from_numpy(efc_worldid, dtype=wp.int32)
+  d.world_efcadr = wp.from_numpy(world_efcadr, dtype=wp.int32)
+  d.world_efcsize = wp.from_numpy(world_efcsize, dtype=wp.int32)
 
   return d
