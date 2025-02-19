@@ -1,3 +1,18 @@
+# Copyright 2025 The Physics-Next Project Developers
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 """Tests for forward dynamics functions."""
 
 from absl.testing import absltest
@@ -14,14 +29,13 @@ _TOLERANCE = 5e-5
 
 def _assert_eq(a, b, name):
   tol = _TOLERANCE * 10  # avoid test noise
-  err_msg = f'mismatch: {name}'
+  err_msg = f"mismatch: {name}"
   np.testing.assert_allclose(a, b, err_msg=err_msg, atol=tol, rtol=tol)
 
 
 class ForwardTest(absltest.TestCase):
-
   def _load(self, fname: str, is_sparse: bool = True):
-    path = epath.resource_path('mujoco.mjx') / 'test_data' / fname
+    path = epath.resource_path("mujoco.mjx") / "test_data" / fname
     mjm = mujoco.MjModel.from_xml_path(path.as_posix())
     mjm.opt.jacobian = is_sparse
     mjd = mujoco.MjData(mjm)
@@ -34,28 +48,30 @@ class ForwardTest(absltest.TestCase):
 
   def test_fwd_velocity(self):
     """Tests MJX fwd_velocity."""
-    _, mjd, m, d = self._load('humanoid/humanoid.xml')
-    
+    _, mjd, m, d = self._load("humanoid/humanoid.xml")
+
     d.actuator_velocity.zero_()
     mjx.fwd_velocity(m, d)
 
-    _assert_eq(d.actuator_velocity.numpy()[0], mjd.actuator_velocity, 'actuator_velocity')
-    _assert_eq(d.qfrc_bias.numpy()[0], mjd.qfrc_bias, 'qfrc_bias')
+    _assert_eq(
+      d.actuator_velocity.numpy()[0], mjd.actuator_velocity, "actuator_velocity"
+    )
+    _assert_eq(d.qfrc_bias.numpy()[0], mjd.qfrc_bias, "qfrc_bias")
 
   def test_fwd_acceleration(self):
     """Tests MJX fwd_acceleration."""
-    _, mjd, m, d = self._load('humanoid/humanoid.xml', is_sparse=False)
+    _, mjd, m, d = self._load("humanoid/humanoid.xml", is_sparse=False)
 
     for arr in (d.qfrc_smooth, d.qacc_smooth):
       arr.zero_()
 
-    mjx.factor_m(m, d) # for dense, get tile cholesky factorization
+    mjx.factor_m(m, d)  # for dense, get tile cholesky factorization
     mjx.fwd_acceleration(m, d)
 
-    _assert_eq(d.qfrc_smooth.numpy()[0], mjd.qfrc_smooth, 'qfrc_smooth')
-    _assert_eq(d.qacc_smooth.numpy()[0], mjd.qacc_smooth, 'qacc_smooth')
+    _assert_eq(d.qfrc_smooth.numpy()[0], mjd.qfrc_smooth, "qfrc_smooth")
+    _assert_eq(d.qacc_smooth.numpy()[0], mjd.qacc_smooth, "qacc_smooth")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   wp.init()
   absltest.main()
