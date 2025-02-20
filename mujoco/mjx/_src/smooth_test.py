@@ -141,6 +141,26 @@ class SmoothTest(parameterized.TestCase):
     _assert_eq(d.cvel.numpy()[0], mjd.cvel, "cvel")
     _assert_eq(d.cdof_dot.numpy()[0], mjd.cdof_dot, "cdof_dot")
 
+  def test_transmission(self):
+    """Tests transmission."""
+    mjm, mjd, m, d = test_util.fixture("humanoid/humanoid.xml")
+
+    actuator_moment = np.zeros((mjm.nu, mjm.nv))
+    mujoco.mju_sparse2dense(
+      actuator_moment,
+      mjd.actuator_moment,
+      mjd.moment_rownnz,
+      mjd.moment_rowadr,
+      mjd.moment_colind,
+    )
+
+    d.actuator_length.zero_()
+    d.actuator_moment.zero_()
+
+    mjx.transmission(m, d)
+    _assert_eq(d.actuator_length.numpy()[0], mjd.actuator_length, "actuator_length")
+    _assert_eq(d.actuator_moment.numpy()[0], actuator_moment, "actuator_moment")
+
 
 if __name__ == "__main__":
   wp.init()

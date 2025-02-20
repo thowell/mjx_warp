@@ -218,7 +218,7 @@ def fwd_position(m: Model, d: Data):
   smooth.factor_m(m, d)
   # TODO(team): collision_driver.collision
   # TODO(team): constraint.make_constraint
-  # TODO(team): smooth.transmission
+  smooth.transmission(m, d)
 
 
 def fwd_velocity(m: Model, d: Data):

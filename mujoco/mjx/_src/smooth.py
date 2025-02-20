@@ -589,3 +589,81 @@ def solve_LD(m: Model, d: Data, L: array3df, D: array2df, x: array2df, y: array2
 def solve_m(m: Model, d: Data, x: array2df, y: array2df):
   """Computes backsubstitution: x = qLD * y."""
   solve_LD(m, d, d.qLD, d.qLDiagInv, x, y)
+
+
+def transmission(m: Model, d: Data):
+  """Computes actuator/transmission lengths and moments."""
+
+  if not m.nu:
+    return
+
+  d.actuator_moment.zero_()
+
+  @wp.kernel
+  def _length_moment(m: Model, d: Data):
+    worldid, actid = wp.tid()
+    trntype = m.actuator_trntype[actid]
+
+    if trntype == 0 or trntype == 1:  # joint, jointinparent
+      jntid = m.actuator_trnid[actid, 0]
+      jnt_type = m.jnt_type[jntid]
+      jnt_dofadr = m.jnt_dofadr[jntid]
+      jnt_qposadr = m.jnt_qposadr[jntid]
+
+      if jnt_type == 0:  # free
+        d.actuator_length[worldid, actid] = 0.0
+        d.actuator_moment[worldid, actid, jnt_dofadr + 0] = m.actuator_gear[actid, 0]
+        d.actuator_moment[worldid, actid, jnt_dofadr + 1] = m.actuator_gear[actid, 1]
+        d.actuator_moment[worldid, actid, jnt_dofadr + 2] = m.actuator_gear[actid, 2]
+
+        if trntype == 1:  # jointinparent
+          quat_neg = wp.quat(
+            d.qpos[worldid, jnt_qposadr + 3],
+            -1.0 * d.qpos[worldid, jnt_qposadr + 4],
+            -1.0 * d.qpos[worldid, jnt_qposadr + 5],
+            -1.0 * d.qpos[worldid, jnt_qposadr + 6],
+          )
+          gear_rot = wp.vec3(
+            m.actuator_gear[actid, 3],
+            m.actuator_gear[actid, 4],
+            m.actuator_gear[actid, 5],
+          )
+          gearaxis = math.rot_vec_quat(gear_rot, quat_neg)
+          d.actuator_moment[worldid, actid, jnt_dofadr + 3] = gearaxis[0]
+          d.actuator_moment[worldid, actid, jnt_dofadr + 4] = gearaxis[1]
+          d.actuator_moment[worldid, actid, jnt_dofadr + 5] = gearaxis[2]
+        else:
+          d.actuator_moment[worldid, actid, jnt_dofadr + 3] = m.actuator_gear[actid, 3]
+          d.actuator_moment[worldid, actid, jnt_dofadr + 4] = m.actuator_gear[actid, 4]
+          d.actuator_moment[worldid, actid, jnt_dofadr + 5] = m.actuator_gear[actid, 5]
+      elif jnt_type == 1:  # ball
+        quat = wp.quat(
+          d.qpos[worldid, jnt_qposadr + 0],
+          d.qpos[worldid, jnt_qposadr + 1],
+          d.qpos[worldid, jnt_qposadr + 2],
+          d.qpos[worldid, jnt_qposadr + 3],
+        )
+        axis_angle = math.quat_to_vel(quat)
+
+        gearaxis = wp.vec3(
+          m.actuator_gear[actid, 0],
+          m.actuator_gear[actid, 1],
+          m.actuator_gear[actid, 2],
+        )
+
+        if trntype == 1:  # jointinparent
+          quat_neg = wp.quat(quat[0], -quat[1], -quat[2], -quat[3])
+          gearaxis = math.rot_vec_quat(gearaxis, quat_neg)
+
+        d.actuator_length[worldid, actid] = wp.dot(axis_angle, gearaxis)
+        d.actuator_moment[worldid, actid, jnt_dofadr + 0] = gearaxis[0]
+        d.actuator_moment[worldid, actid, jnt_dofadr + 1] = gearaxis[1]
+        d.actuator_moment[worldid, actid, jnt_dofadr + 2] = gearaxis[2]
+      elif jnt_type == 2 or jnt_type == 3:  # slide, hinge
+        gear = m.actuator_gear[actid, 0]
+        d.actuator_length[worldid, actid] = d.qpos[worldid, jnt_qposadr] * gear
+        d.actuator_moment[worldid, actid, jnt_dofadr] = gear
+
+    # TODO(team): site, tendon
+
+  wp.launch(_length_moment, dim=(d.nworld, m.nu), inputs=[m, d])

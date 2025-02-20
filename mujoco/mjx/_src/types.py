@@ -106,11 +106,14 @@ class Model:
   dof_Madr: wp.array(dtype=wp.int32, ndim=1)
   dof_armature: wp.array(dtype=wp.float32, ndim=1)
   dof_damping: wp.array(dtype=wp.float32, ndim=1)
-  actuator_actlimited: wp.array(dtype=wp.int32, ndim=1)
-  actuator_actrange: wp.array(dtype=wp.float32, ndim=2)
-  actuator_actadr: wp.array(dtype=wp.int32, ndim=1)
+  actuator_trntype: wp.array(dtype=wp.int32, ndim=1)
   actuator_dyntype: wp.array(dtype=wp.int32, ndim=1)
+  actuator_trnid: wp.array(dtype=wp.int32, ndim=2)
+  actuator_actadr: wp.array(dtype=wp.int32, ndim=1)
+  actuator_actlimited: wp.array(dtype=wp.int32, ndim=1)
   actuator_dynprm: wp.array(dtype=wp.float32, ndim=2)
+  actuator_actrange: wp.array(dtype=wp.float32, ndim=2)
+  actuator_gear: wp.array(dtype=wp.float32, ndim=2)
 
 
 @wp.struct
@@ -138,6 +141,7 @@ class Data:
   site_xmat: wp.array(dtype=wp.mat33, ndim=2)
   cinert: wp.array(dtype=vec10, ndim=2)
   cdof: wp.array(dtype=wp.spatial_vector, ndim=2)
+  actuator_length: wp.array(dtype=wp.float32, ndim=2)
   actuator_moment: wp.array(dtype=wp.float32, ndim=3)
   crb: wp.array(dtype=vec10, ndim=2)
   qM: wp.array(dtype=wp.float32, ndim=3)

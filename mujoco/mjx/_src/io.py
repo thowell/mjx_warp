@@ -132,6 +132,9 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.dof_Madr = wp.array(mjm.dof_Madr, dtype=wp.int32, ndim=1)
   m.dof_armature = wp.array(mjm.dof_armature, dtype=wp.float32, ndim=1)
   m.dof_damping = wp.array(mjm.dof_damping, dtype=wp.float32, ndim=1)
+  m.actuator_trntype = wp.array(mjm.actuator_trntype, dtype=wp.int32, ndim=1)
+  m.actuator_trnid = wp.array(mjm.actuator_trnid, dtype=wp.int32, ndim=2)
+  m.actuator_gear = wp.array(mjm.actuator_gear, dtype=wp.float32, ndim=2)
 
   return m
 
@@ -162,6 +165,7 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   d.site_xmat = wp.zeros((nworld, mjm.nsite), dtype=wp.mat33)
   d.cinert = wp.zeros((nworld, mjm.nbody), dtype=types.vec10)
   d.cdof = wp.zeros((nworld, mjm.nv), dtype=wp.spatial_vector)
+  d.actuator_length = wp.zeros((nworld, mjm.nu), dtype=wp.float32)
   d.actuator_moment = wp.zeros((nworld, mjm.nu, mjm.nv), dtype=wp.float32)
   d.crb = wp.zeros((nworld, mjm.nbody), dtype=types.vec10)
   if support.is_sparse(mjm):
@@ -242,6 +246,7 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
   d.site_xmat = wp.array(tile(mjd.site_xmat), dtype=wp.mat33, ndim=2)
   d.cinert = wp.array(tile(mjd.cinert), dtype=types.vec10, ndim=2)
   d.cdof = wp.array(tile(mjd.cdof), dtype=wp.spatial_vector, ndim=2)
+  d.actuator_length = wp.array(tile(mjd.actuator_length), dtype=wp.float32, ndim=2)
   d.actuator_moment = wp.array(tile(actuator_moment), dtype=wp.float32, ndim=3)
   d.crb = wp.array(tile(mjd.crb), dtype=types.vec10, ndim=2)
   d.qM = wp.array(tile(qM), dtype=wp.float32, ndim=3)
