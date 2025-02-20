@@ -52,7 +52,6 @@ def quat_to_axis_angle(q: wp.quat):
   """Converts a quaternion into axis and angle."""
   axis = wp.vec3(q[1], q[2], q[3])
   sin_a_2 = wp.norm_l2(axis)
-  print(sin_a_2)
   axis = wp.normalize(axis)
   angle = 2.0 * wp.atan2(sin_a_2, q[0])
   angle = where(angle > wp.pi, angle - 2.0 * wp.pi, angle)
