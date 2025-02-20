@@ -319,9 +319,9 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
   d.contact.efc_address = wp.array(tile(mjd.contact.efc_address), dtype=wp.int32, ndim=2)
   d.efc_J = wp.array(tile(mjd.efc_J), dtype=wp.float32, ndim=3)
   d.efc_pos = wp.array(tile(mjd.efc_pos), dtype=wp.float32, ndim=2)
-  d.efc_margin = wp.array(tile(mjd.efc_pos), dtype=wp.float32, ndim=2)
-  d.efc_frictionloss = wp.array(tile(mjd.efc_pos), dtype=wp.float32, ndim=2)
-  d.efc_D = wp.array(tile(mjd.efc_pos), dtype=wp.float32, ndim=2)
-  d.efc_aref = wp.array(tile(mjd.efc_pos), dtype=wp.float32, ndim=2)
+  d.efc_margin = wp.array(tile(mjd.efc_margin), dtype=wp.float32, ndim=2)
+  d.efc_frictionloss = wp.array(tile(mjd.efc_frictionloss), dtype=wp.float32, ndim=2)
+  d.efc_D = wp.array(tile(mjd.efc_D), dtype=wp.float32, ndim=2)
+  d.efc_aref = wp.array(tile(mjd.efc_aref), dtype=wp.float32, ndim=2)
 
   return d
