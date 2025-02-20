@@ -20,6 +20,7 @@ import warp as wp
 from . import math
 from . import passive
 from . import smooth
+from . import solver
 
 from .types import array2df
 from .types import Model
@@ -265,13 +266,13 @@ def forward(m: Model, d: Data):
 
   fwd_position(m, d)
   # TODO(team): sensor.sensor_pos
-  # TODO(taylorhowell): fwd_velocity
+  fwd_velocity(m, d)
   # TODO(team): sensor.sensor_vel
   # TODO(team): fwd_actuation
   fwd_acceleration(m, d)
   # TODO(team): sensor.sensor_acc
 
-  # if nefc == 0
-  wp.copy(d.qacc, d.qacc_smooth)
-
-  # TODO(team): solver.solve
+  if d.nefc_active == 0:
+    wp.copy(d.qacc, d.qacc_smooth)
+  else:
+    solver.solve(m, d)
