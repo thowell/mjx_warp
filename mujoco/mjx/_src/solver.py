@@ -7,10 +7,7 @@ from . import types
 
 @wp.struct
 class Context:
-  qacc: wp.array(dtype=wp.float32, ndim=2)
-  qfrc_constraint: wp.array(dtype=wp.float32, ndim=2)
   Jaref: wp.array(dtype=wp.float32, ndim=1)
-  efc_force: wp.array(dtype=wp.float32, ndim=1)
   Ma: wp.array(dtype=wp.float32, ndim=2)
   grad: wp.array(dtype=wp.float32, ndim=2)
   Mgrad: wp.array(dtype=wp.float32, ndim=2)
@@ -38,10 +35,7 @@ class Context:
 
 def _context(m: types.Model, d: types.Data) -> Context:
   ctx = Context()
-  ctx.qacc = wp.empty(shape=(d.nworld, m.nv), dtype=wp.float32)
-  ctx.qfrc_constraint = wp.empty(shape=(d.nworld, m.nv), dtype=wp.float32)
   ctx.Jaref = wp.empty(shape=(d.nefc_maxbatch), dtype=wp.float32)
-  ctx.efc_force = wp.empty(shape=(d.nefc_maxbatch), dtype=wp.float32)
   ctx.Ma = wp.empty(shape=(d.nworld, m.nv), dtype=wp.float32)
   ctx.grad = wp.empty(shape=(d.nworld, m.nv), dtype=wp.float32)
   ctx.Mgrad = wp.empty(shape=(d.nworld, m.nv), dtype=wp.float32)
@@ -87,17 +81,14 @@ def _create_context(ctx: Context, m: types.Model, d: types.Data, grad: bool = Tr
 
   # Ma = qM @ qacc
   support.mul_m(m, d, d.qacc, ctx.Ma)
-  wp.copy(ctx.qacc, d.qacc)
-  wp.copy(ctx.qfrc_constraint, d.qfrc_constraint)
-  wp.copy(ctx.efc_force, d.efc_force)
-  ctx.grad.zero_()
-  ctx.Mgrad.zero_()
-  ctx.search.zero_()
-  ctx.gauss.zero_()
+  # ctx.grad.zero_()
+  # ctx.Mgrad.zero_()
+  # ctx.search.zero_()
+  # ctx.gauss.zero_()
   ctx.cost.fill_(wp.inf)
-  ctx.prev_cost.zero_()
+  # ctx.prev_cost.zero_()
   ctx.solver_niter.zero_()
-  ctx.active.zero_()
+  # ctx.active.zero_()
   ctx.done.zero_()
 
   _update_constraint(m, d, ctx)
@@ -135,11 +126,6 @@ def _lspoint(d: types.Data) -> LSPoint:
 
 
 def _create_lspoint(ls_pnt: LSPoint, m: types.Model, d: types.Data, ctx: Context):
-  ls_pnt.alpha.zero_()
-  ls_pnt.cost.zero_()
-  ls_pnt.deriv_0.zero_()
-  ls_pnt.deriv_1.zero_()
-
   wp.copy(ctx.quad_total, ctx.quad_gauss)
 
   @wp.kernel
@@ -158,13 +144,12 @@ def _create_lspoint(ls_pnt: LSPoint, m: types.Model, d: types.Data, ctx: Context
   @wp.kernel
   def _cost_deriv01(ls_pnt: LSPoint, ctx: Context):
     worldid = wp.tid()
-    alpha = ctx.alpha[worldid]
+    alpha = ls_pnt.alpha[worldid]
     alpha_sq = alpha * alpha
     quad_total0 = ctx.quad_total[worldid, 0]
     quad_total1 = ctx.quad_total[worldid, 1]
     quad_total2 = ctx.quad_total[worldid, 2]
 
-    ls_pnt.alpha[worldid] = alpha
     ls_pnt.cost[worldid] = alpha_sq * quad_total2 + alpha * quad_total1 + quad_total0
     ls_pnt.deriv_0[worldid] = 2.0 * alpha * quad_total2 + quad_total1
     ls_pnt.deriv_1[worldid] = 2.0 * quad_total2 + float(quad_total2 == 0.0)
@@ -203,55 +188,42 @@ def _create_lscontext(m: types.Model, d: types.Data, ctx: Context) -> LSContext:
 
 
 def _update_constraint(m: types.Model, d: types.Data, ctx: Context):
-  @wp.kernel
-  def _active(ctx: Context):
-    efcid = wp.tid()
-    # TODO(team): active and conditionally active constraints
-    ctx.active[efcid] = int(ctx.Jaref[efcid] < 0.0)
-
-  wp.launch(_active, dim=(d.nefc_active), inputs=[ctx])
-
-  # efc_force = -efc_D * Jaref * active
-  @wp.kernel
-  def _efc_force(ctx: Context, d: types.Data):
-    efcid = wp.tid()
-    ctx.efc_force[efcid] = (
-      -1.0 * d.efc_D[efcid] * ctx.Jaref[efcid] * float(ctx.active[efcid])
-    )
-
-  wp.launch(_efc_force, dim=(d.nefc_active), inputs=[ctx, d])
-
   wp.copy(ctx.prev_cost, ctx.cost)
   ctx.cost.zero_()
 
-  # cost = 0.5 * sum(efc_D * Jaref * Jaref * active))
   @wp.kernel
-  def _cost(ctx: Context, d: types.Data):
+  def _efc_kernel(ctx: Context, d: types.Data):
     efcid = wp.tid()
     worldid = d.efc_worldid[efcid]
     Jaref = ctx.Jaref[efcid]
-    wp.atomic_add(
-      ctx.cost,
-      worldid,
-      0.5 * d.efc_D[efcid] * Jaref * Jaref * float(ctx.active[efcid]),
-    )
+    efc_D = d.efc_D[efcid]
 
-  wp.launch(_cost, dim=(d.nefc_active), inputs=[ctx, d])
+    # TODO(team): active and conditionally active constraints
+    active = int(Jaref < 0.0)
+    ctx.active[efcid] = active
+
+    # efc_force = -efc_D * Jaref * active
+    d.efc_force[efcid] = -1.0 * efc_D * Jaref * float(active)
+
+    # cost = 0.5 * sum(efc_D * Jaref * Jaref * active))
+    wp.atomic_add(ctx.cost, worldid, 0.5 * efc_D * Jaref * Jaref * float(active))
+
+  wp.launch(_efc_kernel, dim=(d.nefc_active), inputs=[ctx, d])
 
   # qfrc_constraint = efc_J.T @ efc_force
-  ctx.qfrc_constraint.zero_()
+  d.qfrc_constraint.zero_()
 
   @wp.kernel
-  def _qfrc_constraint(ctx: Context, d: types.Data):
+  def _qfrc_constraint(d: types.Data):
     dofid, efcid = wp.tid()
     worldid = d.efc_worldid[efcid]
     wp.atomic_add(
-      ctx.qfrc_constraint[worldid],
+      d.qfrc_constraint[worldid],
       dofid,
-      d.efc_J[efcid, dofid] * ctx.efc_force[efcid],
+      d.efc_J[efcid, dofid] * d.efc_force[efcid],
     )
 
-  wp.launch(_qfrc_constraint, dim=(m.nv, d.nefc_active), inputs=[ctx, d])
+  wp.launch(_qfrc_constraint, dim=(m.nv, d.nefc_active), inputs=[d])
 
   # gauss = 0.5 * (Ma - qfrc_smooth).T @ (qacc - qacc_smooth)
   ctx.gauss.zero_()
@@ -259,22 +231,15 @@ def _update_constraint(m: types.Model, d: types.Data, ctx: Context):
   @wp.kernel
   def _gauss(ctx: Context, d: types.Data):
     worldid, dofid = wp.tid()
-    wp.atomic_add(
-      ctx.gauss,
-      worldid,
+    gauss_cost = (
       0.5
       * (ctx.Ma[worldid, dofid] - d.qfrc_smooth[worldid, dofid])
-      * (ctx.qacc[worldid, dofid] - d.qacc_smooth[worldid, dofid]),
+      * (d.qacc[worldid, dofid] - d.qacc_smooth[worldid, dofid])
     )
+    wp.atomic_add(ctx.gauss, worldid, gauss_cost)
+    wp.atomic_add(ctx.cost, worldid, gauss_cost)
 
   wp.launch(_gauss, dim=(d.nworld, m.nv), inputs=[ctx, d])
-
-  @wp.kernel
-  def _cost_gauss(ctx: Context):
-    worldid = wp.tid()
-    ctx.cost[worldid] += ctx.gauss[worldid]
-
-  wp.launch(_cost_gauss, dim=(d.nworld), inputs=[ctx])
 
 
 def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
@@ -285,7 +250,7 @@ def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
     ctx.grad[worldid, dofid] = (
       ctx.Ma[worldid, dofid]
       - d.qfrc_smooth[worldid, dofid]
-      - ctx.qfrc_constraint[worldid, dofid]
+      - d.qfrc_constraint[worldid, dofid]
     )
 
   wp.launch(_grad, dim=(d.nworld, m.nv), inputs=[ctx, d])
@@ -298,19 +263,19 @@ def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
     wp.copy(ctx.h, d.qM)
 
     @wp.kernel
-    def _JTDAJ(
-      ctx: Context,
-      d: types.Data,
-      output: wp.array(ndim=3, dtype=wp.float32),
-    ):
-      dofi, dofj = wp.tid()
-      for i in range(d.nefc_active):
-        worldid = d.efc_worldid[i]
-        output[worldid, dofi, dofj] += (
-          d.efc_J[i, dofi] * d.efc_J[i, dofj] * d.efc_D[i] * float(ctx.active[i])
-        )
+    def _JTDAJ(ctx: Context, d: types.Data):
+      dofi, dofj, efcid = wp.tid()
+      worldid = d.efc_worldid[efcid]
+      wp.atomic_add(
+        ctx.h[worldid, dofi],
+        dofj,
+        d.efc_J[efcid, dofi]
+        * d.efc_J[efcid, dofj]
+        * d.efc_D[efcid]
+        * float(ctx.active[efcid]),
+      )
 
-    wp.launch(_JTDAJ, dim=(m.nv, m.nv), inputs=[ctx, d, ctx.h])
+    wp.launch(_JTDAJ, dim=(m.nv, m.nv, d.nefc_active), inputs=[ctx, d])
 
     TILE = m.nv
 
@@ -337,14 +302,16 @@ def _in_bracket(x: float, y: float) -> bool:
 
 
 def _linesearch(m: types.Model, d: types.Data, ctx: Context):
+  NV = m.nv
+
   @wp.kernel
   def _gtol(ctx: Context, m: types.Model):
     worldid = wp.tid()
     sum = float(0.0)
-    for i in range(m.nv):
+    for i in range(NV):
       search = ctx.search[worldid, i]
       sum += search * search
-    smag = wp.math.sqrt(sum) * m.stat.meaninertia * float(wp.max(1, m.nv))
+    smag = wp.math.sqrt(sum) * m.stat.meaninertia * float(wp.max(1, NV))
     ctx.gtol[worldid] = m.opt.tolerance * m.opt.ls_tolerance * smag
 
   wp.launch(_gtol, dim=(d.nworld), inputs=[ctx, m])
@@ -407,15 +374,15 @@ def _linesearch(m: types.Model, d: types.Data, ctx: Context):
   # initialize interval
   ls_ctx = _create_lscontext(m, d, ctx)
 
-  ctx.alpha.zero_()
+  ls_ctx.p0.alpha.zero_()
   _create_lspoint(ls_ctx.p0, m, d, ctx)
 
   @wp.kernel
-  def _lo_alpha(p0: LSPoint, ctx: Context):
+  def _lo_alpha(lo: LSPoint, p0: LSPoint, ctx: Context):
     worldid = wp.tid()
-    ctx.alpha[worldid] = p0.alpha[worldid] - p0.deriv_0[worldid] / p0.deriv_1[worldid]
+    lo.alpha[worldid] = p0.alpha[worldid] - p0.deriv_0[worldid] / p0.deriv_1[worldid]
 
-  wp.launch(_lo_alpha, dim=(d.nworld), inputs=[ls_ctx.p0, ctx])
+  wp.launch(_lo_alpha, dim=(d.nworld), inputs=[ls_ctx.lo, ls_ctx.p0, ctx])
 
   _create_lspoint(ls_ctx.lo, m, d, ctx)
 
@@ -458,44 +425,25 @@ def _linesearch(m: types.Model, d: types.Data, ctx: Context):
   ls_ctx.ls_iter.fill_(0)
 
   for i in range(m.opt.ls_iterations):
-
     @wp.kernel
-    def _done(ls_ctx: LSContext, ctx: Context, m: types.Model, ls_iter: int):
+    def _alpha_lo_next_hi_next_mid(ls_ctx: LSContext):
       worldid = wp.tid()
-      done = ls_iter >= m.opt.ls_iterations
-      done = done or (1 - ls_ctx.swap[worldid])
-      done = done or (
-        (ls_ctx.lo.deriv_0[worldid] < 0.0)
-        and (ls_ctx.lo.deriv_0[worldid] > -ctx.gtol[worldid])
+      ls_ctx.lo_next.alpha[worldid] = (
+        ls_ctx.lo.alpha[worldid]
+        - ls_ctx.lo.deriv_0[worldid] / ls_ctx.lo.deriv_1[worldid]
       )
-      done = done or (
-        (ls_ctx.hi.deriv_0[worldid] > 0.0)
-        and (ls_ctx.hi.deriv_0[worldid] < ctx.gtol[worldid])
+      ls_ctx.hi_next.alpha[worldid] = (
+        ls_ctx.hi.alpha[worldid]
+        - ls_ctx.hi.deriv_0[worldid] / ls_ctx.hi.deriv_1[worldid]
       )
-      ls_ctx.done[worldid] = int(done and ls_iter > 0)
-
-    wp.launch(_done, dim=(d.nworld), inputs=[ls_ctx, ctx, m, i])
-    # TODO(team): return if all done
-
-    @wp.kernel
-    def _alpha_next(ctx: Context, ls_pnt: LSPoint):
-      worldid = wp.tid()
-      ctx.alpha[worldid] = (
-        ls_pnt.alpha[worldid] - ls_pnt.deriv_0[worldid] / ls_pnt.deriv_1[worldid]
+      ls_ctx.mid.alpha[worldid] = 0.5 * (
+        ls_ctx.lo.alpha[worldid] + ls_ctx.hi.alpha[worldid]
       )
 
-    wp.launch(_alpha_next, dim=(d.nworld), inputs=[ctx, ls_ctx.lo])
+    wp.launch(_alpha_lo_next_hi_next_mid, dim=(d.nworld), inputs=[ls_ctx])
+
     _create_lspoint(ls_ctx.lo_next, m, d, ctx)
-
-    wp.launch(_alpha_next, dim=(d.nworld), inputs=[ctx, ls_ctx.hi])
     _create_lspoint(ls_ctx.hi_next, m, d, ctx)
-
-    @wp.kernel
-    def _alpha_mid(ctx: Context, ls_pnt0: LSPoint, ls_pnt1: LSPoint):
-      worldid = wp.tid()
-      ctx.alpha[worldid] = 0.5 * (ls_pnt0.alpha[worldid] + ls_pnt1.alpha[worldid])
-
-    wp.launch(_alpha_mid, dim=(d.nworld), inputs=[ctx, ls_ctx.lo, ls_ctx.hi])
     _create_lspoint(ls_ctx.mid, m, d, ctx)
 
     @wp.kernel
@@ -627,6 +575,25 @@ def _linesearch(m: types.Model, d: types.Data, ctx: Context):
 
     wp.launch(_swap_lo_hi, dim=(d.nworld), inputs=[ls_ctx])
 
+    @wp.kernel
+    def _done(ls_ctx: LSContext, ctx: Context, m: types.Model, ls_iter: int):
+      worldid = wp.tid()
+      done = ls_iter >= m.opt.ls_iterations
+      done = done or (1 - ls_ctx.swap[worldid])
+      done = done or (
+        (ls_ctx.lo.deriv_0[worldid] < 0.0)
+        and (ls_ctx.lo.deriv_0[worldid] > -ctx.gtol[worldid])
+      )
+      done = done or (
+        (ls_ctx.hi.deriv_0[worldid] > 0.0)
+        and (ls_ctx.hi.deriv_0[worldid] < ctx.gtol[worldid])
+      )
+      ls_ctx.done[worldid] = int(done)
+
+    wp.launch(_done, dim=(d.nworld), inputs=[ls_ctx, ctx, m, i])
+    # TODO(team): return if all done
+
+
   @wp.kernel
   def _alpha(ctx: Context, ls_ctx: LSContext):
     worldid = wp.tid()
@@ -647,7 +614,7 @@ def _linesearch(m: types.Model, d: types.Data, ctx: Context):
   def _qacc_ma(ctx: Context, d: types.Data):
     worldid, dofid = wp.tid()
     alpha = ctx.alpha[worldid]
-    ctx.qacc[worldid, dofid] += alpha * ctx.search[worldid, dofid]
+    d.qacc[worldid, dofid] += alpha * ctx.search[worldid, dofid]
     ctx.Ma[worldid, dofid] += alpha * ctx.mv[worldid, dofid]
 
   wp.launch(_qacc_ma, dim=(d.nworld, m.nv), inputs=[ctx, d])
@@ -664,31 +631,13 @@ def _linesearch(m: types.Model, d: types.Data, ctx: Context):
 def solve(m: types.Model, d: types.Data):
   """Finds forces that satisfy constraints."""
 
-  ctx = _context(m, d)
-
   # warmstart
   wp.copy(d.qacc, d.qacc_warmstart)
+  
+  ctx = _context(m, d)
   _create_context(ctx, m, d, grad=True)
 
   for i in range(m.opt.iterations):
-
-    @wp.kernel
-    def _done(ctx: Context, m: types.Model, solver_niter: int):
-      worldid = wp.tid()
-      improvement = _rescale(m, ctx.prev_cost[worldid] - ctx.cost[worldid])
-      sum = float(0.0)
-      for i in range(m.nv):
-        grad = ctx.grad[worldid, i]
-        sum += grad * grad
-      gradient = _rescale(m, wp.math.sqrt(sum))
-      done = solver_niter >= m.opt.iterations
-      done = done or (improvement < m.opt.tolerance)
-      done = done or (gradient < m.opt.tolerance)
-      ctx.done[worldid] = int(done and solver_niter > 0)
-
-    wp.launch(_done, dim=(d.nworld), inputs=[ctx, m, i])
-    # TODO(team): return if all done
-
     _linesearch(m, d, ctx)
     wp.copy(ctx.prev_grad, ctx.grad)
     wp.copy(ctx.prev_Mgrad, ctx.Mgrad)
@@ -739,7 +688,23 @@ def solve(m: types.Model, d: types.Data):
 
       wp.launch(_search_cg, dim=(d.nworld, m.nv), inputs=[ctx])
 
-  wp.copy(d.qacc_warmstart, ctx.qacc)
-  wp.copy(d.qacc, ctx.qacc)
-  wp.copy(d.qfrc_constraint, ctx.qfrc_constraint)
-  wp.copy(d.efc_force, ctx.efc_force)
+    NV = m.nv
+
+    @wp.kernel
+    def _done(ctx: Context, m: types.Model, solver_niter: int):
+      worldid = wp.tid()
+      improvement = _rescale(m, ctx.prev_cost[worldid] - ctx.cost[worldid])
+      sum = float(0.0)
+      for i in range(NV):
+        grad = ctx.grad[worldid, i]
+        sum += grad * grad
+      gradient = _rescale(m, wp.math.sqrt(sum))
+      done = solver_niter >= m.opt.iterations
+      done = done or (improvement < m.opt.tolerance)
+      done = done or (gradient < m.opt.tolerance)
+      ctx.done[worldid] = int(done)
+
+    wp.launch(_done, dim=(d.nworld), inputs=[ctx, m, i])
+    # TODO(team): return if all done
+
+  wp.copy(d.qacc_warmstart, d.qacc)
