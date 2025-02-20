@@ -245,6 +245,7 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
   d.ne = mjd.ne
   d.nf = mjd.nf
   d.nl = mjd.nl
+  d.nefc = mjd.nefc
 
   # TODO(erikfrey): would it be better to tile on the gpu?
   def tile(x):
@@ -317,11 +318,11 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
   d.contact.geom2 = wp.array(tile(mjd.contact.geom2), dtype=wp.int32, ndim=2)
   d.contact.geom = wp.array(tile(mjd.contact.geom), dtype=wp.int32, ndim=3)
   d.contact.efc_address = wp.array(tile(mjd.contact.efc_address), dtype=wp.int32, ndim=2)
-  d.efc_J = wp.array(tile(mjd.efc_J), dtype=wp.float32, ndim=3)
-  d.efc_pos = wp.array(tile(mjd.efc_pos), dtype=wp.float32, ndim=2)
-  d.efc_margin = wp.array(tile(mjd.efc_margin), dtype=wp.float32, ndim=2)
-  d.efc_frictionloss = wp.array(tile(mjd.efc_frictionloss), dtype=wp.float32, ndim=2)
-  d.efc_D = wp.array(tile(mjd.efc_D), dtype=wp.float32, ndim=2)
-  d.efc_aref = wp.array(tile(mjd.efc_aref), dtype=wp.float32, ndim=2)
+  d.efc_J = wp.zeros((nworld, mjd.nefc, mjm.nv), dtype=wp.float32)
+  d.efc_pos = wp.zeros((nworld, mjd.nefc), dtype=wp.float32)
+  d.efc_margin = wp.zeros((nworld, mjd.nefc), dtype=wp.float32)
+  d.efc_frictionloss = wp.zeros((nworld, mjd.nefc), dtype=wp.float32)
+  d.efc_D = wp.zeros((nworld, mjd.nefc), dtype=wp.float32)
+  d.efc_aref = wp.zeros((nworld, mjd.nefc), dtype=wp.float32)
 
   return d

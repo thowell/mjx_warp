@@ -80,9 +80,8 @@ def _update_contact_data(
   r = wp.max(efc.invweight[0] * (1.0 - imp) / imp, types.MINVAL)
   aref = float(0.0)
   for i in range(m.nv):
-    #TODO: temporary change to test without the jacobian computation
     aref += -b * (efc.J[i] * d.qvel[worldid, i])
-    #d.efc_J[worldid, id, i] = efc.J[i]
+    d.efc_J[worldid, id, i] = efc.J[i]
   aref -= k * imp * efc.pos_aref[0]
   d.efc_D[worldid, id] = 1.0 / r
   d.efc_aref[worldid, id] = aref
@@ -90,20 +89,25 @@ def _update_contact_data(
   d.efc_margin[worldid, id]  = efc.margin[0]
   d.efc_frictionloss[worldid, id]  = efc.frictionloss[0]
 
-
 @wp.func
-def _jac(m: types.Model, d: types.Data, point: wp.vec3, bodyid: wp.int32):
-  #fn = lambda carry, b: b if carry is None else b + carry
-  #mask = (jp.arange(m.nbody) == bodyid) * 1
-  #mask = scan.body_tree(m, fn, 'b', 'b', mask, reverse=True)
-  #mask = mask[jp.array(m.dof_bodyid)] > 0
+def _jac(m: types.Model, d: types.Data, worldid: wp.int32, point: wp.vec3, xyz: wp.int32, bodyid: wp.int32, dofid: wp.int32):
+  dof_bodyid = m.dof_bodyid[dofid]
+  in_tree = int(dof_bodyid == 0)
+  parentid = bodyid
+  while parentid != 0:
+    if (parentid == dof_bodyid):
+      in_tree = 1
+      break
+    parentid = m.body_parentid[parentid]
 
-  #offset = point - d.subtree_com[jp.array(m.body_rootid)[body_id]]
-  #jacp = jax.vmap(lambda a, b=offset: a[3:] + jp.cross(a[:3], b))(d.cdof)
-  #jacp = jax.vmap(jp.multiply)(jacp, mask)
-  #jacr = jax.vmap(jp.multiply)(d.cdof[:, :3], mask)
+  offset = point - wp.vec3(d.subtree_com[worldid, m.body_rootid[bodyid]])
+ 
+  temp_jac = wp.vec3(0.0)
+  temp_jac = wp.spatial_bottom(d.cdof[worldid, dofid]) + wp.cross(wp.spatial_top(d.cdof[worldid, dofid]), offset)
+  jacp = temp_jac[xyz] * float(in_tree)
+  jacr = d.cdof[worldid, dofid][xyz] * float(in_tree)
 
-  return wp.vec3(0.0), wp.vec3(0.0)
+  return jacp, jacr
 
 
 @wp.kernel
@@ -152,11 +156,10 @@ def _efc_equality_connect(m: types.Model, d: types.Data, i_c: wp.array(dtype=wp.
     equality_connect[id].pos_imp[0] = math.norm_l2(pos)
 
     # compute Jacobian difference (opposite of contact: 0 - 1)
-    jacp1, _ = _jac(m, d, pos1, body1id)
-    jacp2, _ = _jac(m, d, pos2, body2id)
-    # TODO: Update jacobian
-    #for i in range(m.nv):
-      #equality_connect[id].J[i] = jacp1[i] - jacp2[i]
+    for i in range(m.nv):
+      jacp1, _ = _jac(m, d, worldid, pos1, xyz_id, body1id, i)
+      jacp2, _ = _jac(m, d, worldid, pos2, xyz_id, body2id, i)
+      equality_connect[id].J[i] = jacp1 - jacp2
 
     equality_connect[id].invweight[0] = m.body_invweight0[body1id, 0] + m.body_invweight0[body2id, 0]
 
@@ -166,7 +169,8 @@ def _efc_equality_weld(m: types.Model, d: types.Data, i_c: wp.array(dtype=wp.int
 
   worldid, id = wp.tid()
   c_id = id // 6
-  xyz_id = id % 6
+  spatial_id = id % 6
+  xyz_id = id % 3
   n_id = eq_id[c_id]
 
   active = d.eq_active[worldid, n_id]
@@ -204,12 +208,6 @@ def _efc_equality_weld(m: types.Model, d: types.Data, i_c: wp.array(dtype=wp.int
       pos1 = d.site_xpos[worldid, obj1id]
       pos2 = d.site_xpos[worldid, obj2id]
 
-    # compute Jacobian difference (opposite of contact: 0 - 1)
-    jacp1, jacr1 = _jac(m, d, pos1, body1id)
-    jacp2, jacr2 = _jac(m, d, pos2, body2id)
-    jacdifp = jacp1 - jacp2
-    jacdifr = (jacr1 - jacr2) * torquescale
-
     # compute orientation error: neg(q1) * q0 * relpose (axis components only)
     quat = math.mul_quat(d.xquat[worldid, body1id], relpose)
     quat1 = math.quat_inv(d.xquat[worldid, body2id])
@@ -227,16 +225,33 @@ def _efc_equality_weld(m: types.Model, d: types.Data, i_c: wp.array(dtype=wp.int
       pos_imp += cpos * cpos + (crot[i] * torquescale) ** 2.0
     equality_weld[id].pos_imp[0] = wp.sqrt(pos_imp)
 
-    # TODO update jacobian
-    # correct rotation Jacobian: 0.5 * neg(q1) * (jac0-jac1) * q0 * relpose
-    #jacdifr = 0.5 * math.mul_quat(math.quat_mul_axis(quat1, jacdifr), quat)[1:]
-    #j = jp.concatenate((jacdifp.T, jacdifr.T))
+    # compute Jacobian difference (opposite of contact: 0 - 1)
+    for i in range(m.nv):
+      if spatial_id < 3:
+        jacp1, _ = _jac(m, d, worldid, pos1, xyz_id, body1id, i)
+        jacp2, _ = _jac(m, d, worldid, pos2, xyz_id, body2id, i)
+        jacdifp = jacp1 - jacp2
+        equality_weld[id].J[i] = jacdifp
+      else:
+        jacdifr = wp.vec3(0.0)
+        for xyz in range(3):
+          _, jacr1 = _jac(m, d, worldid, pos1, xyz, body1id, i)
+          _, jacr2 = _jac(m, d, worldid, pos2, xyz, body2id, i)
+          jacdifr[xyz] = (jacr1 - jacr2) * torquescale
+        # correct rotation Jacobian: 0.5 * neg(q1) * (jac0-jac1) * q0 * relpose
+        temp_quat = wp.quat(
+          -quat1[1] * jacdifr[0] - quat1[2] * jacdifr[1] - quat1[3] * jacdifr[2],
+          quat1[0] * jacdifr[0] + quat1[2] * jacdifr[2] - quat1[3] * jacdifr[1],
+          quat1[0] * jacdifr[1] + quat1[3] * jacdifr[0] - quat1[1] * jacdifr[2],
+          quat1[0] * jacdifr[2] + quat1[1] * jacdifr[1] - quat1[2] * jacdifr[0],
+        )
+        equality_weld[id].J[i] = 0.5 * math.mul_quat(temp_quat, quat)[1 + xyz_id]
 
-    if xyz_id < 3:
+    if spatial_id < 3:
       equality_weld[id].pos_aref[0] = pos1[xyz_id] - pos2[xyz_id]
       equality_weld[id].invweight[0] = m.body_invweight0[body1id, 0] + m.body_invweight0[body2id, 0]
     else:
-      equality_weld[id].pos_aref[0] = crot[xyz_id- 3 ] * torquescale
+      equality_weld[id].pos_aref[0] = crot[xyz_id] * torquescale
       equality_weld[id].invweight[0] = m.body_invweight0[body1id, 1] + m.body_invweight0[body2id, 1]
 
 
@@ -269,9 +284,11 @@ def _efc_equality_joint(m: types.Model, d: types.Data, i_c: wp.array(dtype=wp.in
     equality_joint[id].pos_aref[0] = pos
     equality_joint[id].pos_imp[0] = pos
 
-    # TODO update jacobian
-    #deriv = wp.dot(data[1:5], dif_power[:4] * wp.array([1, 2, 3, 4])) * (obj2id > -1)
-    # = wp.zeros((m.nv)).at[dofadr2].set(-deriv).at[dofadr1].set(1.0)
+    deriv = float(0.0)
+    for i in range(4):
+      deriv += data[i + 1] * wp.pow(dif, float(i)) * float(i + 1) * float(obj2id > -1)
+    equality_joint[id].J[dofadr2] = -deriv
+    equality_joint[id].J[dofadr1] = 1.0
 
     invweight = m.dof_invweight0[dofadr1]
     invweight += m.dof_invweight0[dofadr2] * float(obj2id > -1)
@@ -324,8 +341,8 @@ def _efc_limit_ball(m: types.Model, d: types.Data, i_c: wp.array(dtype=wp.int32)
     limit_ball[id].margin[0] = m.jnt_margin[n_id]
     limit_ball[id].invweight[0] = m.dof_invweight0[m.jnt_dofadr[n_id]]
     limit_ball[id].pos_imp[0] = pos
-    # TODO update jacobian
-    #j = wp.zeros(m.nv).at[jp.arange(3) + dofadr].set(-axis)
+    for i in range(3):
+      limit_ball[id].J[m.jnt_dofadr[n_id] + i] = -axis[i]
     limit_ball[id].pos_aref[0] = pos
 
 
@@ -349,8 +366,7 @@ def _efc_limit_slide_hinge(m: types.Model, d: types.Data, i_c: wp.array(dtype=wp
       limit_slide_hinge[id].solimp[i] = m.jnt_solimp[n_id, i]
     limit_slide_hinge[id].margin[0] = m.jnt_margin[n_id]
     limit_slide_hinge[id].invweight[0] = m.dof_invweight0[m.jnt_dofadr[n_id]]
-    # TODO update jacobian
-    #j = wp.zeros(m.nv).at[dofadr].set((dist_min < dist_max) * 2 - 1)
+    limit_slide_hinge[id].J[m.jnt_dofadr[n_id]] = float(dist_min < dist_max) * 2.0 - 1.0
     limit_slide_hinge[id].pos_aref[0] = pos
 
 
@@ -376,26 +392,26 @@ def _efc_contact_frictionless(m: types.Model, d: types.Data, i_c: wp.array(dtype
     contact_frictionless[id].margin[0] = d.contact.includemargin[worldid, n_id]
     contact_frictionless[id].invweight[0] = m.body_invweight0[body1, 0] + m.body_invweight0[body2, 0]
     contact_frictionless[id].pos_imp[0] = pos
-    # TODO update jacobian
-    #jac1p, _ = _jac(m, d, d.contact.pos[worldid, n_id], body1)
-    #jac2p, _ = _jac(m, d, d.contact.pos[worldid, n_id], body2)
-    #j = (d.contact.frame[worldid, n_id] @ (jac2p - jac1p).T)[0]
+    for i in range(m.nv):
+      for xyz in range(3):
+        jacp1, _ = _jac(m, d, worldid, d.contact.pos[worldid, n_id], xyz, body1, i)
+        jacp2, _ = _jac(m, d, worldid, d.contact.pos[worldid, n_id], xyz, body2, i)
+        contact_frictionless[id].J[i] += d.contact.frame[worldid, n_id, xyz] * (jacp2 - jacp1)
     contact_frictionless[id].pos_aref[0] = pos
 
 
 @wp.kernel
-def _efc_contact_pyramidal(m: types.Model, d: types.Data, i_c: wp.array(dtype=wp.int32), con_id: wp.array(dtype=wp.int32), nrow: wp.int32, contact_pyramidal: wp.array(dtype=_Efc)):
+def _efc_contact_pyramidal(m: types.Model, d: types.Data, i_c: wp.array(dtype=wp.int32), con_id: wp.array(dtype=wp.int32), con_dim_id: wp.array(dtype=wp.int32), nrow: wp.int32, contact_pyramidal: wp.array(dtype=_Efc)):
 
   id = wp.tid()
   n_id = con_id[id]
   worldid = contact_pyramidal[nrow + id].worldid
+  con_dim = con_dim_id[id]
 
   pos = d.contact.dist[worldid, n_id] - d.contact.includemargin[worldid, n_id]
 
   body1 = m.geom_bodyid[d.contact.geom[worldid, n_id, 0]]
   body2 = m.geom_bodyid[d.contact.geom[worldid, n_id, 1]]
-  jac1p, jac1r = _jac(m, d, d.contact.pos[worldid, n_id], body1)
-  jac2p, jac2r = _jac(m, d, d.contact.pos[worldid, n_id], body2)
 
   # pyramidal has common invweight across all edges
   invweight = m.body_invweight0[body1, 0] + m.body_invweight0[body2, 0]
@@ -412,15 +428,6 @@ def _efc_contact_pyramidal(m: types.Model, d: types.Data, i_c: wp.array(dtype=wp
       contact_pyramidal[id].solimp[i] = d.contact.solimp[worldid, n_id, i]
     contact_pyramidal[id].margin[0] = d.contact.includemargin[worldid, n_id]
     contact_pyramidal[id].invweight[0] = invweight * 2.0 * d.contact.friction[worldid, n_id, 0] * d.contact.friction[worldid, n_id, 0] / m.opt.impratio
-    # TODO update jacobian
-    # a pair of opposing pyramid edges per friction dimension
-    # repeat friction directions with positive and negative sign
-    #fri = jp.repeat(c.friction[: condim - 1], 2, axis=0).at[1::2].mul(-1)
-    #diff = c.frame @ (jac2p - jac1p).T
-    #if condim > 3:
-    #  diff = jp.concatenate((diff, (c.frame @ (jac2r - jac1r).T)), axis=0)
-    # repeat condims of jacdiff to match +/- friction directions
-    #j = diff[0] + jp.repeat(diff[1:condim], 2, axis=0) * fri[:, None]
     contact_pyramidal[id].pos_aref[0] = pos
 
 
@@ -437,8 +444,6 @@ def _efc_contact_elliptic(m: types.Model, d: types.Data, i_c: wp.array(dtype=wp.
   active = pos < 0
   obj1id = m.geom_bodyid[d.contact.geom[worldid, n_id, 0]]
   obj2id = m.geom_bodyid[d.contact.geom[worldid, n_id, 1]]
-  jac1p, jac1r = _jac(m, d, d.contact.pos[worldid, n_id], obj1id)
-  jac2p, jac2r = _jac(m, d, d.contact.pos[worldid, n_id], obj2id)
   invweight = m.body_invweight0[obj1id, 0] + m.body_invweight0[obj2id, 0]
 
   if active:
@@ -466,10 +471,8 @@ def _efc_contact_elliptic(m: types.Model, d: types.Data, i_c: wp.array(dtype=wp.
           contact_elliptic[id].solref[i] = d.contact.solreffriction[worldid, n_id, i]
       else:
         contact_elliptic[id].solref[i] = d.contact.solref[worldid, n_id, i]
-    # TODO update jacobian
-    #j = d.contact.frame @ (jac2p - jac1p).T
-    #if d.contact.dim[worldid, n_id] > 3:
-    #  j = jp.concatenate((j, (d.contact.frame @ (jac2r - jac1r).T)[: d.contact.dim[worldid, n_id] - 3]))
+      # TODO: implement jacobian calculation
+
     if con_dim == 0:
       contact_elliptic[id].pos_aref[0] = pos
 
@@ -601,7 +604,7 @@ def make_constraint(m: types.Model, d: types.Data):
       if m.opt.cone == types.ConeType.ELLIPTIC:
         wp.launch(_efc_contact_elliptic, dim=con_id.size, inputs=[m, d, i_c, con_id, com_dim_id, nrow, efcs])
       else:
-        wp.launch(_efc_contact_pyramidal, dim=con_id.size, inputs=[m, d, i_c, con_id, nrow, efcs])
+        wp.launch(_efc_contact_pyramidal, dim=con_id.size, inputs=[m, d, i_c, con_id, com_dim_id, nrow, efcs])
       nrow += con_id.size
 
   i_c_np = int(i_c.numpy()[0])
