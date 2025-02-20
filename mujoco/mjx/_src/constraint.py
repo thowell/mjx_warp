@@ -455,7 +455,7 @@ def _efc_contact_elliptic(m: types.Model, d: types.Data, i_c: wp.array(dtype=wp.
       invweight_factor = invweight / m.opt.impratio
       contact_elliptic[id].invweight[0] = invweight_factor * (
         d.contact.friction[worldid, n_id, 0] * d.contact.friction[worldid, n_id, 0] /
-        d.contact.friction[worldid, n_id, con_dim] * d.contact.friction[worldid, n_id, con_dim]
+        (d.contact.friction[worldid, n_id, con_dim - 1] * d.contact.friction[worldid, n_id, con_dim - 1])
       )
       use_solreffriction = False
       for i in range(types.NREF):
