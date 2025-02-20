@@ -228,10 +228,16 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1, nefc_maxb
   if support.is_sparse(mjm):
     qM = np.expand_dims(mjd.qM, axis=0)
     qLD = np.expand_dims(mjd.qLD, axis=0)
+    # TODO(taylorhowell): sparse efc_J
+    efc_J = np.zeros((mjd.nefc, mjm.nv))
+    mujoco.mju_sparse2dense(
+      efc_J, mjd.efc_J, mjd.efc_J_rownnz, mjd.efc_J_rowadr, mjd.efc_J_colind
+    )
   else:
     qM = np.zeros((mjm.nv, mjm.nv))
     mujoco.mj_fullM(mjm, qM, mjd.qM)
     qLD = np.linalg.cholesky(qM)
+    efc_J = mjd.efc_J.reshape((mjd.nefc, mjm.nv))
 
   # TODO(taylorhowell): sparse actuator_moment
   actuator_moment = np.zeros((mjm.nu, mjm.nv))
@@ -242,8 +248,6 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1, nefc_maxb
     mjd.moment_rowadr,
     mjd.moment_colind,
   )
-
-  efc_J = mjd.efc_J.reshape((mjd.nefc, mjm.nv))
 
   d.qpos = wp.array(tile(mjd.qpos), dtype=wp.float32, ndim=2)
   d.qvel = wp.array(tile(mjd.qvel), dtype=wp.float32, ndim=2)
