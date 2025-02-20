@@ -41,9 +41,9 @@ class ConstraintTest(parameterized.TestCase):
     np.random.seed(42)
 
   @parameterized.parameters(
-      #{'cone': mujoco.mjtCone.mjCONE_PYRAMIDAL, 'rand_eq_active': False, 'fname': 'humanoid/humanoid.xml'},
+      {'cone': mujoco.mjtCone.mjCONE_PYRAMIDAL, 'rand_eq_active': False, 'fname': 'humanoid/humanoid.xml'},
       #{'cone': mujoco.mjtCone.mjCONE_ELLIPTIC, 'rand_eq_active': False, 'fname': 'humanoid/humanoid.xml'},
-      #{'cone': mujoco.mjtCone.mjCONE_PYRAMIDAL, 'rand_eq_active': True, 'fname': 'humanoid/humanoid.xml'},
+      {'cone': mujoco.mjtCone.mjCONE_PYRAMIDAL, 'rand_eq_active': True, 'fname': 'humanoid/humanoid.xml'},
       #{'cone': mujoco.mjtCone.mjCONE_ELLIPTIC, 'rand_eq_active': True, 'fname': 'humanoid/humanoid.xml'},
   )
   def test_constraints(self, cone, rand_eq_active, fname: str):

@@ -33,7 +33,7 @@ class _Efc:
 
 
 @wp.kernel
-def _update_data(
+def _update_contact_data(
   m: types.Model,
   d: types.Data,
   efcs: wp.array(dtype=_Efc),
@@ -107,7 +107,7 @@ def _jac(m: types.Model, d: types.Data, point: wp.vec3, bodyid: wp.int32):
 
 
 @wp.kernel
-def _efc_equality_connect(m: types.Model, d: types.Data, eq_id: wp.array(dtype=wp.int32), equality_connect: wp.array(dtype=_Efc)):
+def _efc_equality_connect(m: types.Model, d: types.Data, i_c: wp.array(dtype=wp.int32), eq_id: wp.array(dtype=wp.int32), equality_connect: wp.array(dtype=_Efc)):
 
   worldid, id = wp.tid()
   c_id = id // 3
@@ -116,6 +116,7 @@ def _efc_equality_connect(m: types.Model, d: types.Data, eq_id: wp.array(dtype=w
 
   active = d.eq_active[worldid, n_id]
   if active:
+    id = wp.atomic_add(i_c, 0, 1)
     equality_connect[id].worldid = worldid
     is_site = int(m.eq_objtype[n_id] == int(types.ObjType.SITE.value))
     obj1id = m.eq_obj1id[n_id]
@@ -161,7 +162,7 @@ def _efc_equality_connect(m: types.Model, d: types.Data, eq_id: wp.array(dtype=w
 
 
 @wp.kernel
-def _efc_equality_weld(m: types.Model, d: types.Data, eq_id: wp.array(dtype=wp.int32), nrow: wp.int32, equality_weld: wp.array(dtype=_Efc)):
+def _efc_equality_weld(m: types.Model, d: types.Data, i_c: wp.array(dtype=wp.int32), eq_id: wp.array(dtype=wp.int32), equality_weld: wp.array(dtype=_Efc)):
 
   worldid, id = wp.tid()
   c_id = id // 6
@@ -170,6 +171,7 @@ def _efc_equality_weld(m: types.Model, d: types.Data, eq_id: wp.array(dtype=wp.i
 
   active = d.eq_active[worldid, n_id]
   if active:
+    id = wp.atomic_add(i_c, 0, 1)
     equality_weld[id].worldid = worldid
     is_site = int(m.eq_objtype[n_id] == int(types.ObjType.SITE.value))
     obj1id = m.eq_obj1id[n_id]
@@ -178,9 +180,9 @@ def _efc_equality_weld(m: types.Model, d: types.Data, eq_id: wp.array(dtype=wp.i
     body2id = m.eq_obj2id[n_id]
     data = m.eq_data[n_id]
     for i in range(types.NREF):
-      equality_weld[nrow + id].solref[i] = m.eq_solref[n_id, i]
+      equality_weld[id].solref[i] = m.eq_solref[n_id, i]
     for i in range(types.NIMP):
-      equality_weld[nrow + id].solimp[i] = m.eq_solimp[n_id, i]
+      equality_weld[id].solimp[i] = m.eq_solimp[n_id, i]
 
     if is_site:
       body1id = m.site_bodyid[obj1id]
@@ -223,7 +225,7 @@ def _efc_equality_weld(m: types.Model, d: types.Data, eq_id: wp.array(dtype=wp.i
     for i in range(3):
       cpos = pos1[i] - pos2[i]
       pos_imp += cpos * cpos + (crot[i] * torquescale) ** 2.0
-    equality_weld[nrow + id].pos_imp[0] = wp.sqrt(pos_imp)
+    equality_weld[id].pos_imp[0] = wp.sqrt(pos_imp)
 
     # TODO update jacobian
     # correct rotation Jacobian: 0.5 * neg(q1) * (jac0-jac1) * q0 * relpose
@@ -231,21 +233,22 @@ def _efc_equality_weld(m: types.Model, d: types.Data, eq_id: wp.array(dtype=wp.i
     #j = jp.concatenate((jacdifp.T, jacdifr.T))
 
     if xyz_id < 3:
-      equality_weld[nrow + id].pos_aref[0] = pos1[xyz_id] - pos2[xyz_id]
-      equality_weld[nrow + id].invweight[0] = m.body_invweight0[body1id, 0] + m.body_invweight0[body2id, 0]
+      equality_weld[id].pos_aref[0] = pos1[xyz_id] - pos2[xyz_id]
+      equality_weld[id].invweight[0] = m.body_invweight0[body1id, 0] + m.body_invweight0[body2id, 0]
     else:
-      equality_weld[nrow + id].pos_aref[0] = crot[xyz_id- 3 ] * torquescale
-      equality_weld[nrow + id].invweight[0] = m.body_invweight0[body1id, 1] + m.body_invweight0[body2id, 1]
+      equality_weld[id].pos_aref[0] = crot[xyz_id- 3 ] * torquescale
+      equality_weld[id].invweight[0] = m.body_invweight0[body1id, 1] + m.body_invweight0[body2id, 1]
 
 
 @wp.kernel
-def _efc_equality_joint(m: types.Model, d: types.Data, eq_id: wp.array(dtype=wp.int32), nrow: wp.int32, equality_joint: wp.array(dtype=_Efc)):
+def _efc_equality_joint(m: types.Model, d: types.Data, i_c: wp.array(dtype=wp.int32), eq_id: wp.array(dtype=wp.int32), equality_joint: wp.array(dtype=_Efc)):
 
   worldid, id = wp.tid()
   n_id = eq_id[id]
 
   active = d.eq_active[worldid, n_id]
   if active:
+    id = wp.atomic_add(i_c, 0, 1)
     equality_joint[id].worldid = worldid
     obj1id = wp.int32(m.eq_obj1id[n_id])
     obj2id = wp.int32(m.eq_obj2id[n_id])
@@ -253,9 +256,9 @@ def _efc_equality_joint(m: types.Model, d: types.Data, eq_id: wp.array(dtype=wp.
     qposadr1, qposadr2 = m.jnt_qposadr[obj1id], m.jnt_qposadr[obj2id]
     data = m.eq_data[n_id]
     for i in range(types.NREF):
-      equality_joint[nrow + id].solref[i] = m.eq_solref[n_id, i]
+      equality_joint[id].solref[i] = m.eq_solref[n_id, i]
     for i in range(types.NIMP):
-      equality_joint[nrow + id].solimp[i] = m.eq_solimp[n_id, i]
+      equality_joint[id].solimp[i] = m.eq_solimp[n_id, i]
 
     pos1, pos2 = d.qpos[worldid, qposadr1], d.qpos[worldid, qposadr2]
     ref1, ref2 = m.qpos0[qposadr1], m.qpos0[qposadr2]
@@ -263,8 +266,8 @@ def _efc_equality_joint(m: types.Model, d: types.Data, eq_id: wp.array(dtype=wp.
     pos = pos1 - ref1
     for i in range(5):
       pos -= data[i] * wp.pow(dif, float(i))
-    equality_joint[nrow + id].pos_aref[0] = pos
-    equality_joint[nrow + id].pos_imp[0] = pos
+    equality_joint[id].pos_aref[0] = pos
+    equality_joint[id].pos_imp[0] = pos
 
     # TODO update jacobian
     #deriv = wp.dot(data[1:5], dif_power[:4] * wp.array([1, 2, 3, 4])) * (obj2id > -1)
@@ -272,38 +275,31 @@ def _efc_equality_joint(m: types.Model, d: types.Data, eq_id: wp.array(dtype=wp.
 
     invweight = m.dof_invweight0[dofadr1]
     invweight += m.dof_invweight0[dofadr2] * float(obj2id > -1)
-    equality_joint[nrow + id].invweight[0] = invweight
+    equality_joint[id].invweight[0] = invweight
 
 
 @wp.kernel
-def _efc_dof_friction(m: types.Model, dof_id: wp.array(dtype=wp.int32), nrow: wp.int32, dof_friction: wp.array(dtype=_Efc)):
+def _efc_dof_friction(m: types.Model, i_c: wp.array(dtype=wp.int32), dof_id: wp.array(dtype=wp.int32), dof_friction: wp.array(dtype=_Efc)):
 
   worldid, id = wp.tid()
   n_id = dof_id[id]
+  id = wp.atomic_add(i_c, 0, 1)
 
   dof_friction[id].worldid = worldid
-  dof_friction[nrow + id].frictionloss[0] = m.dof_frictionloss[n_id]
-  dof_friction[nrow + id].invweight[0] = m.dof_invweight0[n_id]
+  dof_friction[id].frictionloss[0] = m.dof_frictionloss[n_id]
+  dof_friction[id].invweight[0] = m.dof_invweight0[n_id]
   for i in range(types.NREF):
-    dof_friction[nrow + id].solref[i] = m.dof_solref[n_id, i]
+    dof_friction[id].solref[i] = m.dof_solref[n_id, i]
   for i in range(types.NIMP):
-    dof_friction[nrow + id].solimp[i] = m.dof_solimp[n_id, i]
-  dof_friction[nrow + id].J[n_id] = 1.0
+    dof_friction[id].solimp[i] = m.dof_solimp[n_id, i]
+  dof_friction[id].J[n_id] = 1.0
 
 
 @wp.kernel
-def _efc_limit_ball(m: types.Model, d: types.Data, jnt_id: wp.array(dtype=wp.int32), nrow: wp.int32, limit_ball: wp.array(dtype=_Efc)):
+def _efc_limit_ball(m: types.Model, d: types.Data, i_c: wp.array(dtype=wp.int32), jnt_id: wp.array(dtype=wp.int32), limit_ball: wp.array(dtype=_Efc)):
 
   worldid, id = wp.tid()
   n_id = jnt_id[id]
-
-  limit_ball[id].worldid = worldid
-  for i in range(types.NREF):
-    limit_ball[nrow + id].solref[i] = m.jnt_solref[n_id, i]
-  for i in range(types.NIMP):
-    limit_ball[nrow + id].solimp[i] = m.jnt_solimp[n_id, i]
-  limit_ball[nrow + id].margin[0] = m.jnt_margin[n_id]
-  limit_ball[nrow + id].invweight[0] = m.dof_invweight0[m.jnt_dofadr[n_id]]
 
   jntquat = wp.quat(
     d.qpos[worldid, m.jnt_qposadr[n_id]],
@@ -316,61 +312,70 @@ def _efc_limit_ball(m: types.Model, d: types.Data, jnt_id: wp.array(dtype=wp.int
   angle = wp.norm_l2(axis * angle)
   axis = wp.normalize(axis * angle)
   pos = wp.max(m.jnt_range[n_id, 0], m.jnt_range[n_id, 1]) - angle - m.jnt_margin[n_id]
-  limit_ball[nrow + id].pos_imp[0] = pos
+
   active = pos < 0
   if active:
+    id = wp.atomic_add(i_c, 0, 1)
+    limit_ball[id].worldid = worldid
+    for i in range(types.NREF):
+      limit_ball[id].solref[i] = m.jnt_solref[n_id, i]
+    for i in range(types.NIMP):
+      limit_ball[id].solimp[i] = m.jnt_solimp[n_id, i]
+    limit_ball[id].margin[0] = m.jnt_margin[n_id]
+    limit_ball[id].invweight[0] = m.dof_invweight0[m.jnt_dofadr[n_id]]
+    limit_ball[id].pos_imp[0] = pos
     # TODO update jacobian
     #j = wp.zeros(m.nv).at[jp.arange(3) + dofadr].set(-axis)
-    limit_ball[nrow + id].pos_aref[0] = pos
+    limit_ball[id].pos_aref[0] = pos
 
 
 @wp.kernel
-def _efc_limit_slide_hinge(m: types.Model, d: types.Data, jnt_id: wp.array(dtype=wp.int32), nrow: wp.int32, limit_slide_hinge: wp.array(dtype=_Efc)):
+def _efc_limit_slide_hinge(m: types.Model, d: types.Data, i_c: wp.array(dtype=wp.int32), jnt_id: wp.array(dtype=wp.int32), limit_slide_hinge: wp.array(dtype=_Efc)):
 
   worldid, id = wp.tid()
   n_id = jnt_id[id]
 
-  limit_slide_hinge[id].worldid = worldid
-  for i in range(types.NREF):
-    limit_slide_hinge[nrow + id].solref[i] = m.jnt_solref[n_id, i]
-  for i in range(types.NIMP):
-    limit_slide_hinge[nrow + id].solimp[i] = m.jnt_solimp[n_id, i]
-  limit_slide_hinge[nrow + id].margin[0] = m.jnt_margin[n_id]
-  limit_slide_hinge[nrow + id].invweight[0] = m.dof_invweight0[m.jnt_dofadr[n_id]]
-
   qpos = d.qpos[worldid, m.jnt_qposadr[n_id]]
   dist_min, dist_max = qpos - m.jnt_range[n_id][0], m.jnt_range[n_id][1] - qpos
   pos = wp.min(dist_min, dist_max) - m.jnt_margin[n_id]
-  limit_slide_hinge[nrow + id].pos_imp[0] = pos
   active = pos < 0
   if active:
+    id = wp.atomic_add(i_c, 0, 1)
+    limit_slide_hinge[id].worldid = worldid
+    limit_slide_hinge[id].pos_imp[0] = pos
+    for i in range(types.NREF):
+      limit_slide_hinge[id].solref[i] = m.jnt_solref[n_id, i]
+    for i in range(types.NIMP):
+      limit_slide_hinge[id].solimp[i] = m.jnt_solimp[n_id, i]
+    limit_slide_hinge[id].margin[0] = m.jnt_margin[n_id]
+    limit_slide_hinge[id].invweight[0] = m.dof_invweight0[m.jnt_dofadr[n_id]]
     # TODO update jacobian
     #j = wp.zeros(m.nv).at[dofadr].set((dist_min < dist_max) * 2 - 1)
-    limit_slide_hinge[nrow + id].pos_aref[0] = pos
+    limit_slide_hinge[id].pos_aref[0] = pos
 
 
 @wp.kernel
-def _efc_contact_frictionless(m: types.Model, d: types.Data, con_id: wp.array(dtype=wp.int32), nrow: wp.int32, contact_frictionless: wp.array(dtype=_Efc)):
+def _efc_contact_frictionless(m: types.Model, d: types.Data, i_c: wp.array(dtype=wp.int32), con_id: wp.array(dtype=wp.int32), nrow: wp.int32, contact_frictionless: wp.array(dtype=_Efc)):
 
   id = wp.tid()
   n_id = con_id[id]
-  worldid = contact_frictionless[id].worldid
-
-  contact_frictionless[id].worldid = worldid
-  for i in range(types.NREF):
-    contact_frictionless[nrow + id].solref[i] = d.contact.solref[worldid, n_id, i]
-  for i in range(types.NIMP):
-    contact_frictionless[nrow + id].solimp[i] = d.contact.solimp[worldid, n_id, i]
-  contact_frictionless[nrow + id].margin[0] = d.contact.includemargin[worldid, n_id]
+  worldid = contact_frictionless[nrow + id].worldid
 
   body1 = m.geom_bodyid[d.contact.geom[worldid, n_id, 0]]
   body2 = m.geom_bodyid[d.contact.geom[worldid, n_id, 1]]
-  contact_frictionless[nrow + id].invweight[0] = m.body_invweight0[body1, 0] + m.body_invweight0[body2, 0]
-
   pos = d.contact.dist[worldid, n_id] - d.contact.includemargin[worldid, n_id]
-  contact_frictionless[nrow + id].pos_imp[0] = pos
+
   active = pos < 0
   if active:
+    id = wp.atomic_add(i_c, 0, 1)
+    contact_frictionless[id].worldid = worldid
+    for i in range(types.NREF):
+      contact_frictionless[id].solref[i] = d.contact.solref[worldid, n_id, i]
+    for i in range(types.NIMP):
+      contact_frictionless[id].solimp[i] = d.contact.solimp[worldid, n_id, i]
+    contact_frictionless[id].margin[0] = d.contact.includemargin[worldid, n_id]
+    contact_frictionless[id].invweight[0] = m.body_invweight0[body1, 0] + m.body_invweight0[body2, 0]
+    contact_frictionless[id].pos_imp[0] = pos
     # TODO update jacobian
     #jac1p, _ = _jac(m, d, d.contact.pos[worldid, n_id], body1)
     #jac2p, _ = _jac(m, d, d.contact.pos[worldid, n_id], body2)
@@ -379,21 +384,13 @@ def _efc_contact_frictionless(m: types.Model, d: types.Data, con_id: wp.array(dt
 
 
 @wp.kernel
-def _efc_contact_pyramidal(m: types.Model, d: types.Data, con_id: wp.array(dtype=wp.int32), nrow: wp.int32, contact_pyramidal: wp.array(dtype=_Efc)):
+def _efc_contact_pyramidal(m: types.Model, d: types.Data, i_c: wp.array(dtype=wp.int32), con_id: wp.array(dtype=wp.int32), nrow: wp.int32, contact_pyramidal: wp.array(dtype=_Efc)):
 
   id = wp.tid()
   n_id = con_id[id]
-  worldid = contact_pyramidal[id].worldid
-
-  contact_pyramidal[id].worldid = worldid
-  for i in range(types.NREF):
-    contact_pyramidal[nrow + id].solref[i] = d.contact.solref[worldid, n_id, i]
-  for i in range(types.NIMP):
-    contact_pyramidal[nrow + id].solimp[i] = d.contact.solimp[worldid, n_id, i]
-  contact_pyramidal[nrow + id].margin[0] = d.contact.includemargin[worldid, n_id]
+  worldid = contact_pyramidal[nrow + id].worldid
 
   pos = d.contact.dist[worldid, n_id] - d.contact.includemargin[worldid, n_id]
-  contact_pyramidal[nrow + id].pos_imp[0] = pos
 
   body1 = m.geom_bodyid[d.contact.geom[worldid, n_id, 0]]
   body2 = m.geom_bodyid[d.contact.geom[worldid, n_id, 1]]
@@ -403,10 +400,18 @@ def _efc_contact_pyramidal(m: types.Model, d: types.Data, con_id: wp.array(dtype
   # pyramidal has common invweight across all edges
   invweight = m.body_invweight0[body1, 0] + m.body_invweight0[body2, 0]
   invweight = invweight + d.contact.friction[worldid, n_id, 0] * d.contact.friction[worldid, n_id, 0] * invweight
-  contact_pyramidal[nrow + id].invweight[0] = invweight * 2.0 * d.contact.friction[worldid, n_id, 0] * d.contact.friction[worldid, n_id, 0] / m.opt.impratio
 
   active = pos < 0
   if active:
+    id = wp.atomic_add(i_c, 0, 1)
+    contact_pyramidal[id].worldid = worldid
+    contact_pyramidal[id].pos_imp[0] = pos
+    for i in range(types.NREF):
+      contact_pyramidal[id].solref[i] = d.contact.solref[worldid, n_id, i]
+    for i in range(types.NIMP):
+      contact_pyramidal[id].solimp[i] = d.contact.solimp[worldid, n_id, i]
+    contact_pyramidal[id].margin[0] = d.contact.includemargin[worldid, n_id]
+    contact_pyramidal[id].invweight[0] = invweight * 2.0 * d.contact.friction[worldid, n_id, 0] * d.contact.friction[worldid, n_id, 0] / m.opt.impratio
     # TODO update jacobian
     # a pair of opposing pyramid edges per friction dimension
     # repeat friction directions with positive and negative sign
@@ -416,24 +421,18 @@ def _efc_contact_pyramidal(m: types.Model, d: types.Data, con_id: wp.array(dtype
     #  diff = jp.concatenate((diff, (c.frame @ (jac2r - jac1r).T)), axis=0)
     # repeat condims of jacdiff to match +/- friction directions
     #j = diff[0] + jp.repeat(diff[1:condim], 2, axis=0) * fri[:, None]
-    contact_pyramidal[nrow + id].pos_aref[0] = pos
+    contact_pyramidal[id].pos_aref[0] = pos
 
 
 @wp.kernel
-def _efc_contact_elliptic(m: types.Model, d: types.Data, con_id: wp.array(dtype=wp.int32), con_dim_id: wp.array(dtype=wp.int32), nrow: wp.int32, contact_elliptic: wp.array(dtype=_Efc)):
+def _efc_contact_elliptic(m: types.Model, d: types.Data, i_c: wp.array(dtype=wp.int32), con_id: wp.array(dtype=wp.int32), con_dim_id: wp.array(dtype=wp.int32), nrow: wp.int32, contact_elliptic: wp.array(dtype=_Efc)):
 
   id = wp.tid()
   n_id = con_id[id]
-  worldid = contact_elliptic[id].worldid
+  worldid = contact_elliptic[nrow + id].worldid
   con_dim = con_dim_id[id]
 
-
-  for i in range(types.NIMP):
-    contact_elliptic[nrow + id].solimp[i] = d.contact.solimp[worldid, n_id, i]
-  contact_elliptic[nrow + id].margin[0] = d.contact.includemargin[worldid, n_id]
-
   pos = d.contact.dist[worldid, n_id] - d.contact.includemargin[worldid, n_id]
-  contact_elliptic[nrow + id].pos_imp[0] = pos
 
   active = pos < 0
   obj1id = m.geom_bodyid[d.contact.geom[worldid, n_id, 0]]
@@ -442,33 +441,37 @@ def _efc_contact_elliptic(m: types.Model, d: types.Data, con_id: wp.array(dtype=
   jac2p, jac2r = _jac(m, d, d.contact.pos[worldid, n_id], obj2id)
   invweight = m.body_invweight0[obj1id, 0] + m.body_invweight0[obj2id, 0]
 
-  if con_dim == 0:
-    contact_elliptic[nrow + id].invweight[0] = invweight
-    for i in range(types.NREF):
-      contact_elliptic[nrow + id].solref[i] = d.contact.solref[worldid, n_id, i]
-  else:
-    invweight_factor = invweight / m.opt.impratio
-    contact_elliptic[nrow + id].invweight[0] = invweight_factor * (
-      d.contact.friction[worldid, n_id, 0] * d.contact.friction[worldid, n_id, 0] /
-      d.contact.friction[worldid, n_id, con_dim] * d.contact.friction[worldid, n_id, con_dim]
-    )
-    use_solreffriction = False
-    for i in range(types.NREF):
-      if (d.contact.solreffriction[worldid, n_id, i] != 0.0):
-        use_solreffriction = True
-    if use_solreffriction:
-      for i in range(types.NREF):
-        contact_elliptic[nrow + id].solref[i] = d.contact.solreffriction[worldid, n_id, i]
-    else:
-      contact_elliptic[nrow + id].solref[i] = d.contact.solref[worldid, n_id, i]
-
   if active:
+    id = wp.atomic_add(i_c, 0, 1)
+    for i in range(types.NIMP):
+      contact_elliptic[id].solimp[i] = d.contact.solimp[worldid, n_id, i]
+    contact_elliptic[id].margin[0] = d.contact.includemargin[worldid, n_id]
+    contact_elliptic[id].pos_imp[0] = pos
+    if con_dim == 0:
+      contact_elliptic[id].invweight[0] = invweight
+      for i in range(types.NREF):
+        contact_elliptic[id].solref[i] = d.contact.solref[worldid, n_id, i]
+    else:
+      invweight_factor = invweight / m.opt.impratio
+      contact_elliptic[id].invweight[0] = invweight_factor * (
+        d.contact.friction[worldid, n_id, 0] * d.contact.friction[worldid, n_id, 0] /
+        d.contact.friction[worldid, n_id, con_dim] * d.contact.friction[worldid, n_id, con_dim]
+      )
+      use_solreffriction = False
+      for i in range(types.NREF):
+        if (d.contact.solreffriction[worldid, n_id, i] != 0.0):
+          use_solreffriction = True
+      if use_solreffriction:
+        for i in range(types.NREF):
+          contact_elliptic[id].solref[i] = d.contact.solreffriction[worldid, n_id, i]
+      else:
+        contact_elliptic[id].solref[i] = d.contact.solref[worldid, n_id, i]
     # TODO update jacobian
     #j = d.contact.frame @ (jac2p - jac1p).T
     #if d.contact.dim[worldid, n_id] > 3:
     #  j = jp.concatenate((j, (d.contact.frame @ (jac2r - jac1r).T)[: d.contact.dim[worldid, n_id] - 3]))
     if con_dim == 0:
-      contact_elliptic[nrow + id].pos_aref[0] = pos
+      contact_elliptic[id].pos_aref[0] = pos
 
 
 def make_constraint(m: types.Model, d: types.Data):
@@ -565,39 +568,40 @@ def make_constraint(m: types.Model, d: types.Data):
       temp_efcs.append(row)
     efcs = wp.array(temp_efcs, ndim=2, dtype=_Efc)
 
+    i_c = wp.zeros(1, dtype=int)
     if not (m.opt.disableflags & types.DisableBit.EQUALITY) and eq_connect_id.size != 0:
-      wp.launch(_efc_equality_connect, dim=(d.nworld, 3 * eq_connect_id.size), inputs=[m, d, eq_connect_id], outputs=[efcs])
+      wp.launch(_efc_equality_connect, dim=(d.nworld, 3 * eq_connect_id.size), inputs=[m, d, i_c, eq_connect_id], outputs=[efcs])
       nrow += 3 * eq_connect_id.size * d.nworld
 
     if not (m.opt.disableflags & types.DisableBit.EQUALITY) and eq_weld_id.size != 0:
-      wp.launch(_efc_equality_weld, dim=(d.nworld, 6 * eq_weld_id.size), inputs=[m, d, eq_weld_id, nrow], outputs=[efcs])
+      wp.launch(_efc_equality_weld, dim=(d.nworld, 6 * eq_weld_id.size), inputs=[m, d, i_c, eq_weld_id], outputs=[efcs])
       nrow += 6 * eq_weld_id.size * d.nworld
 
     if not (m.opt.disableflags & types.DisableBit.EQUALITY) and eq_joint_id.size != 0:
-      wp.launch(_efc_equality_joint, dim=(d.nworld, eq_joint_id.size), inputs=[m, d, eq_joint_id, nrow], outputs=[efcs])
+      wp.launch(_efc_equality_joint, dim=(d.nworld, eq_joint_id.size), inputs=[m, d, i_c, eq_joint_id], outputs=[efcs])
       nrow += eq_joint_id.size * d.nworld
 
     if not (m.opt.disableflags & types.DisableBit.FRICTIONLOSS) and (dof_friction_id.size != 0):
-      wp.launch(_efc_dof_friction, dim=(d.nworld, dof_friction_id.size), inputs=[m, dof_friction_id, nrow, efcs])
+      wp.launch(_efc_dof_friction, dim=(d.nworld, dof_friction_id.size), inputs=[m, i_c, dof_friction_id, efcs])
       nrow += dof_friction_id.size * d.nworld
 
     if not (m.opt.disableflags & types.DisableBit.LIMIT) and (jnt_ball_id.size != 0):
-      wp.launch(_efc_limit_ball, dim=(d.nworld, jnt_ball_id.size), inputs=[m, d, jnt_ball_id, nrow, efcs])
+      wp.launch(_efc_limit_ball, dim=(d.nworld, jnt_ball_id.size), inputs=[m, d, i_c, jnt_ball_id, efcs])
       nrow += jnt_ball_id.size * d.nworld
 
     if not (m.opt.disableflags & types.DisableBit.LIMIT) and (jnt_slide_hinge_id.size != 0):
-      wp.launch(_efc_limit_slide_hinge, dim=(d.nworld, jnt_slide_hinge_id.size), inputs=[m, d, jnt_slide_hinge_id, nrow, efcs])
+      wp.launch(_efc_limit_slide_hinge, dim=(d.nworld, jnt_slide_hinge_id.size), inputs=[m, d, i_c, jnt_slide_hinge_id, efcs])
       nrow += jnt_slide_hinge_id.size * d.nworld
 
     if (con_frictionless_id.size != 0):
-      wp.launch(_efc_contact_frictionless, dim=con_frictionless_id.size, inputs=[m, d, con_frictionless_id, nrow, efcs])
+      wp.launch(_efc_contact_frictionless, dim=con_frictionless_id.size, inputs=[m, d, i_c, con_frictionless_id, nrow, efcs])
       nrow += con_frictionless_id.size
 
     if (con_id.size != 0):
       if m.opt.cone == types.ConeType.ELLIPTIC:
-        wp.launch(_efc_contact_elliptic, dim=con_id.size, inputs=[m, d, con_id, com_dim_id, nrow, efcs])
+        wp.launch(_efc_contact_elliptic, dim=con_id.size, inputs=[m, d, i_c, con_id, com_dim_id, nrow, efcs])
       else:
-        wp.launch(_efc_contact_pyramidal, dim=con_id.size, inputs=[m, d, con_id, nrow, efcs])
+        wp.launch(_efc_contact_pyramidal, dim=con_id.size, inputs=[m, d, i_c, con_id, nrow, efcs])
       nrow += con_id.size
 
   if nrow == 0:
@@ -610,7 +614,7 @@ def make_constraint(m: types.Model, d: types.Data):
     return d
 
   refsafe = (not m.opt.disableflags & types.DisableBit.REFSAFE)
-  wp.launch(_update_data, dim=len(efcs), inputs=[m, d, efcs, refsafe])
+  wp.launch(_update_contact_data, dim=len(efcs), inputs=[m, d, efcs, refsafe])
 
   return d
 

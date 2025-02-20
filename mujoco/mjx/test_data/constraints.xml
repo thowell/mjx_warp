@@ -31,7 +31,7 @@
 
     <body name="anchor1" pos="-3 0 0"/>
     <body name="beam1" pos="-3 0 0">
-      <joint name="joint1" type="ball" solreflimit="0.03 0.9" solimplimit="0.89 0.9 0.01 2.1"/>
+      <joint name="joint1" type="ball" range="0 45" solreflimit="0.03 0.9" solimplimit="0.89 0.9 0.01 2.1"/>
       <geom class="box"/>
     </body>
 
@@ -42,7 +42,7 @@
     </body>
 
     <body name="beam3" pos="1 0 0">
-      <joint name="joint3" axis="1 0 0" type="hinge" frictionloss="0.1"/>
+      <joint name="joint3" axis="1 0 0" type="hinge" range="-20 20" frictionloss="0.1"/>
       <geom class="box"/>
     </body>
 
@@ -52,7 +52,7 @@
     </body>
 
     <body name="beam5" pos="-2 0 0" euler="45 45 0">
-      <joint name="joint5" type="ball" solreflimit="-100 -1"/> <!-- test negative solref -->
+      <joint name="joint5" type="ball" range="0 45" solreflimit="-100 -1"/> <!-- test negative solref -->
       <geom class="box" contype="0" conaffinity="0"/>
     </body>
 
