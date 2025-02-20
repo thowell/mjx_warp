@@ -267,7 +267,7 @@ def forward(m: Model, d: Data):
 
   fwd_position(m, d)
   # TODO(team): sensor.sensor_pos
-  # TODO(taylorhowell): fwd_velocity
+  fwd_velocity(m, d)
   # TODO(team): sensor.sensor_vel
   # TODO(team): fwd_actuation
   fwd_acceleration(m, d)
