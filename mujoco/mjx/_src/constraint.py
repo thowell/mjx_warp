@@ -380,7 +380,7 @@ def _efc_contact_frictionless(m: types.Model, d: types.Data, i_c: wp.array(dtype
     #jac1p, _ = _jac(m, d, d.contact.pos[worldid, n_id], body1)
     #jac2p, _ = _jac(m, d, d.contact.pos[worldid, n_id], body2)
     #j = (d.contact.frame[worldid, n_id] @ (jac2p - jac1p).T)[0]
-    contact_frictionless[nrow + id].pos_aref[0] = pos
+    contact_frictionless[id].pos_aref[0] = pos
 
 
 @wp.kernel
@@ -604,7 +604,8 @@ def make_constraint(m: types.Model, d: types.Data):
         wp.launch(_efc_contact_pyramidal, dim=con_id.size, inputs=[m, d, i_c, con_id, nrow, efcs])
       nrow += con_id.size
 
-  if i_c.numpy()[0] == 0:
+  i_c_np = int(i_c.numpy()[0])
+  if i_c_np == 0:
     d.efc_J = wp.empty((0, m.nv))
     d.efc_D = wp.empty(0)
     d.efc_aref = wp.empty(0)
@@ -614,7 +615,7 @@ def make_constraint(m: types.Model, d: types.Data):
     return d
 
   refsafe = (not m.opt.disableflags & types.DisableBit.REFSAFE)
-  wp.launch(_update_contact_data, dim=len(efcs), inputs=[m, d, efcs, refsafe])
+  wp.launch(_update_contact_data, dim=i_c_np, inputs=[m, d, efcs, refsafe])
 
   return d
 
