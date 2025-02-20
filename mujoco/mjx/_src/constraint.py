@@ -478,6 +478,7 @@ def make_constraint(m: types.Model, d: types.Data):
   """Creates constraint jacobians and other supporting data."""
 
   nrow = 0
+  i_c = wp.zeros(1, dtype=int)
   if not( m.opt.disableflags & types.DisableBit.CONSTRAINT):
     eq_type = m.eq_type.numpy()
     dof_hasfrictionloss = m.dof_hasfrictionloss.numpy()
@@ -568,7 +569,6 @@ def make_constraint(m: types.Model, d: types.Data):
       temp_efcs.append(row)
     efcs = wp.array(temp_efcs, ndim=2, dtype=_Efc)
 
-    i_c = wp.zeros(1, dtype=int)
     if not (m.opt.disableflags & types.DisableBit.EQUALITY) and eq_connect_id.size != 0:
       wp.launch(_efc_equality_connect, dim=(d.nworld, 3 * eq_connect_id.size), inputs=[m, d, i_c, eq_connect_id], outputs=[efcs])
       nrow += 3 * eq_connect_id.size * d.nworld
@@ -604,7 +604,7 @@ def make_constraint(m: types.Model, d: types.Data):
         wp.launch(_efc_contact_pyramidal, dim=con_id.size, inputs=[m, d, i_c, con_id, nrow, efcs])
       nrow += con_id.size
 
-  if nrow == 0:
+  if i_c.numpy()[0] == 0:
     d.efc_J = wp.empty((0, m.nv))
     d.efc_D = wp.empty(0)
     d.efc_aref = wp.empty(0)
