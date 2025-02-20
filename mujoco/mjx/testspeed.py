@@ -21,9 +21,10 @@ from typing import Sequence
 from absl import app
 from absl import flags
 from etils import epath
+import warp as wp
+
 import mujoco
 from mujoco import mjx
-import warp as wp
 
 _FUNCTION = flags.DEFINE_enum(
   "function",

@@ -22,6 +22,9 @@ from mujoco import mjx
 import numpy as np
 import warp as wp
 
+import mujoco
+from mujoco import mjx
+
 from . import test_util
 
 # tolerance for difference between MuJoCo and mjWarp smooth calculations - mostly
