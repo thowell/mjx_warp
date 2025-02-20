@@ -226,6 +226,7 @@ def fwd_velocity(m: Model, d: Data):
 
   # TODO(team): tile operations?
   d.actuator_velocity.zero_()
+
   @wp.kernel
   def _actuator_velocity(d: Data):
     worldid, actid, dofid = wp.tid()
