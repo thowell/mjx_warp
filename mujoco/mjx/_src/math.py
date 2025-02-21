@@ -45,13 +45,14 @@ def axis_angle_to_quat(axis: wp.vec3, angle: wp.float32) -> wp.quat:
 
 
 @wp.func
-def quat_to_axis_angle(quat: wp.quat) -> Tuple[wp.vec3, wp.float32]:
+def quat_to_axis_angle(quat: wp.quat):
   axis = wp.vec3(quat[1], quat[2], quat[3])
   norm = wp.length(axis)
   if norm > 0.0:
     axis /= norm
-  angle = 2 * wp.arctan2(norm, quat[0])
-  angle = wp.where(angle > wp.pi, angle - 2.0 * wp.pi, angle)
+  angle = 2.0 * wp.atan2(norm, quat[0])
+  if angle > wp.pi:
+    angle = angle - 2.0 * wp.pi
   return axis, angle
 
 

@@ -555,19 +555,13 @@ def transmission(m: Model, d: Data):
   def compute_transmission(
     m: Model,
     d: Data,
-    # trntype,
-    # trnid,
-    # gear,
-    # jnt_typ,
-    # m_j,
-    # qpos,
     # outputs
     length: array2df,
     moment: array3df,
   ):
     worldid, actid = wp.tid()
     qpos = d.qpos[worldid]
-    jntid = m.dof_jntid[actid]
+    jntid = m.actuator_trnid[actid, 0]
     jnt_typ = m.jnt_type[jntid]
     qadr = m.jnt_qposadr[jntid]
     vadr = m.jnt_dofadr[jntid]
@@ -583,30 +577,30 @@ def transmission(m: Model, d: Data):
             wp.quat(qpos[qadr + 3], qpos[qadr + 4], qpos[qadr + 5], qpos[qadr + 6])
           )
           gearaxis = math.rot_vec_quat(wp.spatial_bottom(gear), quat_neg)
-          # moment = moment.at[3:].set(gearaxis)
-          moment[worldid, actid, vadr + 0] = moment[0]
-          moment[worldid, actid, vadr + 1] = moment[1]
-          moment[worldid, actid, vadr + 2] = moment[2]
+          moment[worldid, actid, vadr + 0] = gear[0]
+          moment[worldid, actid, vadr + 1] = gear[1]
+          moment[worldid, actid, vadr + 2] = gear[2]
           moment[worldid, actid, vadr + 3] = gearaxis[0]
           moment[worldid, actid, vadr + 4] = gearaxis[1]
           moment[worldid, actid, vadr + 5] = gearaxis[2]
-          # moment = wp.spatial_vector(wp.spatial_top(moment), gearaxis)
         else:
           for i in range(6):
             moment[worldid, actid, vadr + i] = gear[i]
       elif jnt_typ == wp.static(JointType.BALL.value):
-        axis, angle = math.quat_to_axis_angle(qpos)
+        q = wp.quat(qpos[qadr + 0], qpos[qadr + 1], qpos[qadr + 2], qpos[qadr + 3])
+        # axis, angle = math.quat_to_axis_angle(q)
+        axis_angle = math.quat_to_vel(q)
         gearaxis = wp.spatial_top(gear)  # [:3]
         if trntype == wp.static(TrnType.JOINTINPARENT.value):
-          quat_neg = math.quat_inv(qpos)
+          quat_neg = math.quat_inv(q)
           gearaxis = math.rot_vec_quat(gearaxis, quat_neg)
-        length[worldid, actid] = wp.dot(axis * angle, gearaxis)
+        length[worldid, actid] = wp.dot(axis_angle, gearaxis)
         for i in range(3):
           moment[worldid, actid, vadr + i] = gearaxis[i]
       elif jnt_typ == wp.static(JointType.SLIDE.value) or jnt_typ == wp.static(
         JointType.HINGE.value
       ):
-        length[worldid, actid] = qpos * gear[0]
+        length[worldid, actid] = qpos[qadr] * gear[0]
         moment[worldid, actid, vadr] = gear[0]
       else:
         wp.printf("unrecognized joint type")
