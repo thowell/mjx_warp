@@ -111,8 +111,8 @@ class Model:
   actuator_trnid: wp.array(dtype=wp.vec2i, ndim=1)
   actuator_actadr: wp.array(dtype=wp.int32, ndim=1)
   actuator_actlimited: wp.array(dtype=wp.int32, ndim=1)
-  actuator_dynprm: wp.array(dtype=wp.float32, ndim=2)
-  actuator_actrange: wp.array(dtype=wp.float32, ndim=2)
+  actuator_dynprm: wp.array(dtype=vec10, ndim=1)
+  actuator_actrange: wp.array(dtype=wp.vec2f, ndim=1)
   actuator_gear: wp.array(dtype=wp.float32, ndim=2)
 
 
