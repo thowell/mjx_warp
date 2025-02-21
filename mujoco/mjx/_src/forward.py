@@ -279,9 +279,11 @@ def fwd_actuation(m: Model, d: Data):
 
     s = float(0.0)
     for uid in range(m.nu):
+      # TODO consider using Tile API or transpose moment for better access pattern
       s += moment[worldid, uid, vid] * force[worldid, uid]
-    if m.jnt_actfrclimited[vid]:
-      r = m.jnt_actfrcrange[vid]
+    jntid = m.dof_jntid[vid]
+    if m.jnt_actfrclimited[jntid]:
+      r = m.jnt_actfrcrange[jntid]
       s = wp.clamp(s, r[0], r[1])
     qfrc[worldid, vid] = s
 
