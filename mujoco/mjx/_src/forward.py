@@ -49,8 +49,8 @@ def _advance(
 
     # get the high/low range for each actuator state
     limited = m.actuator_actlimited[actid]
-    range_low = wp.select(limited, -wp.inf, m.actuator_actrange[actid, 0])
-    range_high = wp.select(limited, wp.inf, m.actuator_actrange[actid, 1])
+    range_low = wp.select(limited, -wp.inf, m.actuator_actrange[actid][0])
+    range_high = wp.select(limited, wp.inf, m.actuator_actrange[actid][1])
 
     # get the actual actuation - skip if -1 (means stateless actuator)
     act_adr = m.actuator_actadr[actid]
@@ -65,7 +65,7 @@ def _advance(
 
     # check dynType
     dyn_type = m.actuator_dyntype[actid]
-    dyn_prm = m.actuator_dynprm[actid, 0]
+    dyn_prm = m.actuator_dynprm[actid][0]
 
     # advance the actuation
     if dyn_type == 3:  # wp.static(WarpDynType.FILTEREXACT):
