@@ -120,10 +120,10 @@ class Model:
   dof_armature: wp.array(dtype=wp.float32, ndim=1)
   dof_damping: wp.array(dtype=wp.float32, ndim=1)
   actuator_actlimited: wp.array(dtype=wp.int32, ndim=1)
-  actuator_actrange: wp.array(dtype=wp.float32, ndim=2)
+  actuator_actrange: wp.array(dtype=wp.vec2f, ndim=1)
   actuator_actadr: wp.array(dtype=wp.int32, ndim=1)
   actuator_dyntype: wp.array(dtype=wp.int32, ndim=1)
-  actuator_dynprm: wp.array(dtype=wp.float32, ndim=2)
+  actuator_dynprm: wp.array(dtype=vec10f, ndim=1)
 
 
 @wp.struct
