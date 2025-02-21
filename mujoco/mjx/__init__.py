@@ -17,6 +17,7 @@
 
 from ._src.forward import euler
 from ._src.forward import forward
+from ._src.forward import fwd_actuation
 from ._src.forward import fwd_acceleration
 from ._src.forward import fwd_position
 from ._src.forward import fwd_velocity
@@ -31,6 +32,7 @@ from ._src.smooth import factor_m
 from ._src.smooth import kinematics
 from ._src.smooth import rne
 from ._src.smooth import solve_m
+from ._src.smooth import transmission
 from ._src.support import is_sparse
 from ._src.test_util import benchmark
 from ._src.types import *
