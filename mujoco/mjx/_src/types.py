@@ -13,7 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 import warp as wp
-from enum import Enum, IntFlag
 
 import mujoco
 from mujoco import mjx
