@@ -108,7 +108,7 @@ class Model:
   dof_damping: wp.array(dtype=wp.float32, ndim=1)
   actuator_trntype: wp.array(dtype=wp.int32, ndim=1)
   actuator_dyntype: wp.array(dtype=wp.int32, ndim=1)
-  actuator_trnid: wp.array(dtype=wp.int32, ndim=2)
+  actuator_trnid: wp.array(dtype=wp.vec2i, ndim=1)
   actuator_actadr: wp.array(dtype=wp.int32, ndim=1)
   actuator_actlimited: wp.array(dtype=wp.int32, ndim=1)
   actuator_dynprm: wp.array(dtype=wp.float32, ndim=2)

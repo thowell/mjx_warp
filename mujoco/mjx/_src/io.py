@@ -133,7 +133,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.dof_armature = wp.array(mjm.dof_armature, dtype=wp.float32, ndim=1)
   m.dof_damping = wp.array(mjm.dof_damping, dtype=wp.float32, ndim=1)
   m.actuator_trntype = wp.array(mjm.actuator_trntype, dtype=wp.int32, ndim=1)
-  m.actuator_trnid = wp.array(mjm.actuator_trnid, dtype=wp.int32, ndim=2)
+  m.actuator_trnid = wp.array(mjm.actuator_trnid, dtype=wp.vec2i, ndim=1)
   m.actuator_gear = wp.array(mjm.actuator_gear, dtype=wp.float32, ndim=2)
 
   return m

@@ -143,7 +143,7 @@ class SmoothTest(parameterized.TestCase):
 
   def test_transmission(self):
     """Tests transmission."""
-    mjm, mjd, m, d = test_util.fixture("humanoid/humanoid.xml")
+    mjm, mjd, m, d = test_util.fixture("pendula.xml")
 
     actuator_moment = np.zeros((mjm.nu, mjm.nv))
     mujoco.mju_sparse2dense(

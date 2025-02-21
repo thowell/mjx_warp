@@ -605,7 +605,7 @@ def transmission(m: Model, d: Data):
     trntype = m.actuator_trntype[actid]
 
     if trntype == 0 or trntype == 1:  # joint, jointinparent
-      jntid = m.actuator_trnid[actid, 0]
+      jntid = m.actuator_trnid[actid][0]
       jnt_type = m.jnt_type[jntid]
       jnt_dofadr = m.jnt_dofadr[jntid]
       jnt_qposadr = m.jnt_qposadr[jntid]
