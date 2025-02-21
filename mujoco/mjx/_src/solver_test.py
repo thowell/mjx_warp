@@ -87,7 +87,7 @@ class SolverTest(parameterized.TestCase):
       mjd.qacc_warmstart = qacc_warmstart
 
       m = io.put_model(mjm)
-      d = io.put_data(mjm, mjd)
+      d = io.put_data(mjm, mjd, nefc_maxbatch=mjd.nefc)
       d.qacc.zero_()
       d.qfrc_constraint.zero_()
       d.efc_force.zero_()
