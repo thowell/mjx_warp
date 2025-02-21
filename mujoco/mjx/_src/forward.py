@@ -49,8 +49,8 @@ def _advance(
 
     # get the high/low range for each actuator state
     limited = m.actuator_actlimited[actid]
-    range_low = wp.select(limited, -wp.inf, m.actuator_actrange[actid, 0])
-    range_high = wp.select(limited, wp.inf, m.actuator_actrange[actid, 1])
+    range_low = wp.select(limited, -wp.inf, m.actuator_actrange[actid][0])
+    range_high = wp.select(limited, wp.inf, m.actuator_actrange[actid][1])
 
     # get the actual actuation - skip if -1 (means stateless actuator)
     act_adr = m.actuator_actadr[actid]
@@ -65,7 +65,7 @@ def _advance(
 
     # check dynType
     dyn_type = m.actuator_dyntype[actid]
-    dyn_prm = m.actuator_dynprm[actid, 0]
+    dyn_prm = m.actuator_dynprm[actid][0]
 
     # advance the actuation
     if dyn_type == 3:  # wp.static(WarpDynType.FILTEREXACT):
@@ -225,6 +225,8 @@ def fwd_velocity(m: Model, d: Data):
   """Velocity-dependent computations."""
 
   # TODO(team): tile operations?
+  d.actuator_velocity.zero_()
+
   @wp.kernel
   def _actuator_velocity(d: Data):
     worldid, actid, dofid = wp.tid()
@@ -270,8 +272,8 @@ def fwd_actuation(m: Model, d: Data):
     force: array2df,
   ):
     worldid, dofid = wp.tid()
-    gain = m.actuator_gainprm[dofid]
-    bias = m.actuator_biasprm[dofid]
+    gain = m.actuator_gainprm[dofid, 0]
+    bias = m.actuator_biasprm[dofid, 0]
     # TODO support gain types other than FIXED
     f = gain * ctrl[worldid, dofid] + bias
     if m.actuator_forcelimited[dofid]:
@@ -333,7 +335,7 @@ def forward(m: Model, d: Data):
 
   fwd_position(m, d)
   # TODO(team): sensor.sensor_pos
-  # TODO(taylorhowell): fwd_velocity
+  fwd_velocity(m, d)
   # TODO(team): sensor.sensor_vel
   fwd_actuation(m, d)
   fwd_acceleration(m, d)

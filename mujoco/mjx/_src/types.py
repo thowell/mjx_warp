@@ -157,12 +157,14 @@ class Model:
   actuator_ctrlrange: wp.array(dtype=wp.vec2, ndim=1)
   actuator_forcelimited: wp.array(dtype=wp.bool, ndim=1)
   actuator_forcerange: wp.array(dtype=wp.vec2, ndim=1)
-  actuator_gainprm: wp.array(dtype=wp.float32, ndim=1)  # assume just 1 parameter
-  actuator_biasprm: wp.array(dtype=wp.float32, ndim=1)  # assume just 1 parameter
+  actuator_gainprm: wp.array(dtype=wp.float32, ndim=2)
+  actuator_biasprm: wp.array(dtype=wp.float32, ndim=2)
   actuator_gear: wp.array(dtype=wp.spatial_vector, ndim=1)
-  actuator_actlimited: wp.array(dtype=wp.int32, ndim=1)
+  actuator_actlimited: wp.array(dtype=wp.bool, ndim=1)
   actuator_actrange: wp.array(dtype=wp.vec2, ndim=1)
   actuator_actadr: wp.array(dtype=wp.int32, ndim=1)
+  actuator_dyntype: wp.array(dtype=wp.int32, ndim=1)
+  actuator_dynprm: wp.array(dtype=vec10f, ndim=1)
 
 
 @wp.struct
