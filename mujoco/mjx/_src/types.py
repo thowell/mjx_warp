@@ -75,7 +75,6 @@ class vec10f(wp.types.vector(length=10, dtype=wp.float32)):
 
 
 vec10 = vec10f
-
 array2df = wp.array2d(dtype=wp.float32)
 array3df = wp.array3d(dtype=wp.float32)
 
@@ -83,7 +82,7 @@ array3df = wp.array3d(dtype=wp.float32)
 @wp.struct
 class Option:
   gravity: wp.vec3
-  is_sparse: bool # warp only
+  is_sparse: bool  # warp only
   cone: int
   disableflags: int
   impratio: wp.float32
