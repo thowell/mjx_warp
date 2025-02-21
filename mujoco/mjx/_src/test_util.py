@@ -64,7 +64,7 @@ def benchmark(
 
   m.opt.iterations = iterations
   m.opt.ls_iterations = ls_iterations
-  
+
   mx = io.put_model(m)
   dx = io.make_data(m, nworld=batch_size, nefc_maxbatch=nefc_active)
   dx.nefc_active = nefc_active

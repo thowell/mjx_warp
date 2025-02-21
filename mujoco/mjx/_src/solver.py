@@ -425,6 +425,7 @@ def _linesearch(m: types.Model, d: types.Data, ctx: Context):
   ls_ctx.ls_iter.fill_(0)
 
   for i in range(m.opt.ls_iterations):
+
     @wp.kernel
     def _alpha_lo_next_hi_next_mid(ls_ctx: LSContext):
       worldid = wp.tid()
@@ -593,7 +594,6 @@ def _linesearch(m: types.Model, d: types.Data, ctx: Context):
     wp.launch(_done, dim=(d.nworld), inputs=[ls_ctx, ctx, m, i])
     # TODO(team): return if all done
 
-
   @wp.kernel
   def _alpha(ctx: Context, ls_ctx: LSContext):
     worldid = wp.tid()
@@ -633,7 +633,7 @@ def solve(m: types.Model, d: types.Data):
 
   # warmstart
   wp.copy(d.qacc, d.qacc_warmstart)
-  
+
   ctx = _context(m, d)
   _create_context(ctx, m, d, grad=True)
 

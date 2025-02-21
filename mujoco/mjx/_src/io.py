@@ -148,7 +148,9 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   return m
 
 
-def make_data(mjm: mujoco.MjModel, nworld: int = 1, nefc_maxbatch: int = 512) -> types.Data:
+def make_data(
+  mjm: mujoco.MjModel, nworld: int = 1, nefc_maxbatch: int = 512
+) -> types.Data:
   d = types.Data()
   d.nworld = nworld
   d.time = 0.0
@@ -218,14 +220,16 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1, nefc_maxbatch: int = 512) ->
   return d
 
 
-def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1, nefc_maxbatch: int = 512) -> types.Data:
+def put_data(
+  mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1, nefc_maxbatch: int = 512
+) -> types.Data:
   d = types.Data()
   d.nworld = nworld
   d.time = mjd.time
 
   if nworld * mjd.nefc > nefc_maxbatch:
     raise ValueError("nworld * nefc > nefc_maxbatch")
-  
+
   # TODO(erikfrey): would it be better to tile on the gpu?
   def tile(x):
     return np.tile(x, (nworld,) + (1,) * len(x.shape))
@@ -298,7 +302,7 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1, nefc_maxb
   world_efcsize = np.zeros(nworld, dtype=int)
 
   for i in range(nworld):
-    efc_worldid[i * nefc: (i + 1) * nefc] = i
+    efc_worldid[i * nefc : (i + 1) * nefc] = i
     if i > 0:
       world_efcadr[i] = world_efcadr[i - 1] + nefc
     else:
@@ -307,10 +311,18 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1, nefc_maxb
 
   nefc_fill = nefc_maxbatch - nworld * nefc
 
-  efc_J_fill = np.vstack([np.repeat(efc_J, nworld, axis=0), np.zeros((nefc_fill, mjm.nv))])
-  efc_D_fill = np.concatenate([np.repeat(mjd.efc_D, nworld, axis=0), np.zeros(nefc_fill)])
-  efc_aref_fill = np.concatenate([np.repeat(mjd.efc_aref, nworld, axis=0), np.zeros(nefc_fill)])
-  efc_force_fill = np.concatenate([np.repeat(mjd.efc_force, nworld, axis=0), np.zeros(nefc_fill)])
+  efc_J_fill = np.vstack(
+    [np.repeat(efc_J, nworld, axis=0), np.zeros((nefc_fill, mjm.nv))]
+  )
+  efc_D_fill = np.concatenate(
+    [np.repeat(mjd.efc_D, nworld, axis=0), np.zeros(nefc_fill)]
+  )
+  efc_aref_fill = np.concatenate(
+    [np.repeat(mjd.efc_aref, nworld, axis=0), np.zeros(nefc_fill)]
+  )
+  efc_force_fill = np.concatenate(
+    [np.repeat(mjd.efc_force, nworld, axis=0), np.zeros(nefc_fill)]
+  )
 
   d.efc_J = wp.array(efc_J_fill, dtype=wp.float32, ndim=2)
   d.efc_D = wp.array(efc_D_fill, dtype=wp.float32, ndim=1)

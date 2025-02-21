@@ -46,7 +46,6 @@ array2df = wp.array2d(dtype=wp.float32)
 array3df = wp.array3d(dtype=wp.float32)
 
 
-
 @wp.struct
 class Option:
   timestep: float
@@ -58,7 +57,7 @@ class Option:
   iterations: int
   ls_iterations: int
   disableflags: int
-  is_sparse: bool # warp only
+  is_sparse: bool  # warp only
 
 
 @wp.struct
