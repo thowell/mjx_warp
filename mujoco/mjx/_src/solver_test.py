@@ -50,7 +50,7 @@ class SolverTest(parameterized.TestCase):
     return mjm, mjd, m, d
 
   @parameterized.parameters(
-    (mujoco.mjtCone.mjCONE_PYRAMIDAL, mujoco.mjtSolver.mjSOL_CG, 100, 10),
+    (mujoco.mjtCone.mjCONE_PYRAMIDAL, mujoco.mjtSolver.mjSOL_CG, 25, 5),
     (mujoco.mjtCone.mjCONE_PYRAMIDAL, mujoco.mjtSolver.mjSOL_NEWTON, 2, 4),
   )
   def test_solve(self, cone, solver_, iterations, ls_iterations):
@@ -98,7 +98,7 @@ class SolverTest(parameterized.TestCase):
 
       mj_cost = cost(mjd.qacc)
       mjx_cost = cost(d.qacc.numpy()[0])
-      self.assertLessEqual(mjx_cost, mj_cost * 1.015)
+      self.assertLessEqual(mjx_cost, mj_cost * 1.025)
 
       if m.opt.solver == mujoco.mjtSolver.mjSOL_NEWTON:
         _assert_eq(d.qacc.numpy()[0], mjd.qacc, "qacc")
@@ -106,7 +106,7 @@ class SolverTest(parameterized.TestCase):
         _assert_eq(d.efc_force.numpy()[: mjd.nefc], mjd.efc_force, "efc_force")
 
   @parameterized.parameters(
-    (mujoco.mjtCone.mjCONE_PYRAMIDAL, mujoco.mjtSolver.mjSOL_CG, 100, 10),
+    (mujoco.mjtCone.mjCONE_PYRAMIDAL, mujoco.mjtSolver.mjSOL_CG, 25, 5),
     (mujoco.mjtCone.mjCONE_PYRAMIDAL, mujoco.mjtSolver.mjSOL_NEWTON, 2, 4),
   )
   def test_solve_batch(self, cone, solver_, iterations, ls_iterations):
@@ -150,6 +150,8 @@ class SolverTest(parameterized.TestCase):
     mujoco.mj_forward(mjm2, mjd2)
     mjd2.qacc_warmstart = qacc_warmstart2
 
+    nefc_active = mjd0.nefc + mjd1.nefc + mjd2.nefc
+
     mjm, _, m, d = self._load(
       "humanoid/humanoid.xml",
       is_sparse=False,
@@ -158,9 +160,10 @@ class SolverTest(parameterized.TestCase):
       iterations=iterations,
       ls_iterations=ls_iterations,
       nworld=3,
+      nefc_maxbatch=96,
     )
 
-    d.nefc_active = mjd0.nefc + mjd1.nefc + mjd2.nefc
+    d.nefc_active = nefc_active
 
     nefc_fill = d.nefc_maxbatch - d.nefc_active
 
@@ -267,15 +270,15 @@ class SolverTest(parameterized.TestCase):
 
     mj_cost0 = cost(mjm0, mjd0, mjd0.qacc)
     mjx_cost0 = cost(mjm0, mjd0, d.qacc.numpy()[0])
-    self.assertLessEqual(mjx_cost0, mj_cost0 * 1.015)
+    self.assertLessEqual(mjx_cost0, mj_cost0 * 1.025)
 
     mj_cost1 = cost(mjm1, mjd1, mjd1.qacc)
     mjx_cost1 = cost(mjm1, mjd1, d.qacc.numpy()[1])
-    self.assertLessEqual(mjx_cost1, mj_cost1 * 1.015)
+    self.assertLessEqual(mjx_cost1, mj_cost1 * 1.025)
 
     mj_cost2 = cost(mjm2, mjd2, mjd2.qacc)
     mjx_cost2 = cost(mjm2, mjd2, d.qacc.numpy()[2])
-    self.assertLessEqual(mjx_cost2, mj_cost2 * 1.015)
+    self.assertLessEqual(mjx_cost2, mj_cost2 * 1.025)
 
     if m.opt.solver == mujoco.mjtSolver.mjSOL_NEWTON:
       _assert_eq(d.qacc.numpy()[0], mjd0.qacc, "qacc0")

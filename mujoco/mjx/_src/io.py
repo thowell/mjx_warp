@@ -235,9 +235,6 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1, nefc_maxb
     qLD = np.expand_dims(mjd.qLD, axis=0)
     # TODO(taylorhowell): sparse efc_J
     efc_J = np.zeros((mjd.nefc, mjm.nv))
-    mujoco.mju_sparse2dense(
-      efc_J, mjd.efc_J, mjd.efc_J_rownnz, mjd.efc_J_rowadr, mjd.efc_J_colind
-    )
   else:
     qM = np.zeros((mjm.nv, mjm.nv))
     mujoco.mj_fullM(mjm, qM, mjd.qM)
