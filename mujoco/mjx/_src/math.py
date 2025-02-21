@@ -45,18 +45,6 @@ def axis_angle_to_quat(axis: wp.vec3, angle: wp.float32) -> wp.quat:
 
 
 @wp.func
-def quat_to_axis_angle(quat: wp.quat):
-  axis = wp.vec3(quat[1], quat[2], quat[3])
-  norm = wp.length(axis)
-  if norm > 0.0:
-    axis /= norm
-  angle = 2.0 * wp.atan2(norm, quat[0])
-  if angle > wp.pi:
-    angle = angle - 2.0 * wp.pi
-  return axis, angle
-
-
-@wp.func
 def quat_to_mat(quat: wp.quat) -> wp.mat33:
   """Converts a quaternion into a 9-dimensional rotation matrix."""
   vec = wp.vec4(quat[0], quat[1], quat[2], quat[3])

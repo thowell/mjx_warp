@@ -475,7 +475,6 @@ def transmission(m: Model, d: Data):
             moment[worldid, actid, vadr + i] = gear[i]
       elif jnt_typ == wp.static(JointType.BALL.value):
         q = wp.quat(qpos[qadr + 0], qpos[qadr + 1], qpos[qadr + 2], qpos[qadr + 3])
-        # axis, angle = math.quat_to_axis_angle(q)
         axis_angle = math.quat_to_vel(q)
         gearaxis = wp.spatial_top(gear)  # [:3]
         if trntype == wp.static(TrnType.JOINTINPARENT.value):
