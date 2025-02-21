@@ -44,21 +44,6 @@ class ConstraintTest(parameterized.TestCase):
       "rand_eq_active": False,
       "fname": "humanoid/humanoid.xml",
     },
-    {
-      "cone": mujoco.mjtCone.mjCONE_ELLIPTIC,
-      "rand_eq_active": False,
-      "fname": "humanoid/humanoid.xml",
-    },
-    {
-      "cone": mujoco.mjtCone.mjCONE_PYRAMIDAL,
-      "rand_eq_active": True,
-      "fname": "humanoid/humanoid.xml",
-    },
-    {
-      "cone": mujoco.mjtCone.mjCONE_ELLIPTIC,
-      "rand_eq_active": True,
-      "fname": "humanoid/humanoid.xml",
-    },
   )
   def test_constraints(self, cone, rand_eq_active, fname: str):
     """Test constraints."""
@@ -77,13 +62,20 @@ class ConstraintTest(parameterized.TestCase):
       dx = mjx.put_data(m, d)
       dx = mjx.make_constraint(mx, dx)
 
-      dx_J = dx.efc_J.numpy()[0]
-      _assert_eq(d.efc_J, np.reshape(dx_J, shape=(d.nefc * m.nv)), "efc_J")
-      _assert_eq(d.efc_D, dx.efc_D.numpy()[0], "efc_D")
-      _assert_eq(d.efc_aref, dx.efc_aref.numpy()[0], "efc_aref")
-      _assert_eq(d.efc_pos, dx.efc_pos.numpy()[0], "efc_pos")
-      _assert_eq(d.efc_margin, dx.efc_margin.numpy()[0], "efc_margin")
-      _assert_eq(d.efc_frictionloss, dx.efc_frictionloss.numpy()[0], "efc_frictionloss")
+      _assert_eq(d.efc_J, np.reshape(dx.efc_J.numpy(), shape=(d.nefc * m.nv)), "efc_J")
+      _assert_eq(d.efc_D, np.reshape(dx.efc_D.numpy(), shape=(d.nefc)), "efc_D")
+      _assert_eq(
+        d.efc_aref, np.reshape(dx.efc_aref.numpy(), shape=(d.nefc)), "efc_aref"
+      )
+      _assert_eq(d.efc_pos, np.reshape(dx.efc_pos.numpy(), shape=(d.nefc)), "efc_pos")
+      _assert_eq(
+        d.efc_margin, np.reshape(dx.efc_margin.numpy(), shape=(d.nefc)), "efc_margin"
+      )
+      _assert_eq(
+        d.efc_frictionloss,
+        np.reshape(dx.efc_frictionloss.numpy(), shape=(d.nefc)),
+        "efc_frictionloss",
+      )
 
 
 if __name__ == "__main__":

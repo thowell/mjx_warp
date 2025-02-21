@@ -168,11 +168,6 @@ class Model:
   eq_data: wp.array(dtype=wp.float32, ndim=2)
   opt: Option
   # warp only
-  efc_eq_connect_id: wp.array(dtype=wp.int32, ndim=1)
-  efc_eq_weld_id: wp.array(dtype=wp.int32, ndim=1)
-  efc_eq_joint_id: wp.array(dtype=wp.int32, ndim=1)
-  efc_dof_friction_id: wp.array(dtype=wp.int32, ndim=1)
-  efc_jnt_ball_id: wp.array(dtype=wp.int32, ndim=1)
   efc_jnt_slide_hinge_id: wp.array(dtype=wp.int32, ndim=1)
 
 
