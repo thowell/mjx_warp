@@ -4,8 +4,9 @@ from . import math
 
 from .types import Model
 from .types import Data
-from .types import array2df
+from .types import array2df, array3df
 from .types import vec10
+from .types import JointType, TrnType
 
 
 def kinematics(m: Model, d: Data):
@@ -311,11 +312,15 @@ def _factor_m_dense(m: Model, d: Data):
     def cholesky(m: Model, d: Data, leveladr: int):
       worldid, nodeid = wp.tid()
       dofid = m.qLD_tile[leveladr + nodeid]
-      qM_tile = wp.tile_load(d.qM[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid))
+      qM_tile = wp.tile_load(
+        d.qM[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid)
+      )
       qLD_tile = wp.tile_cholesky(qM_tile)
       wp.tile_store(d.qLD[worldid], qLD_tile, offset=(dofid, dofid))
 
-    wp.launch_tiled(cholesky, dim=(d.nworld, size), inputs=[m, d, adr], block_dim=block_dim)
+    wp.launch_tiled(
+      cholesky, dim=(d.nworld, size), inputs=[m, d, adr], block_dim=block_dim
+    )
 
   qLD_tileadr, qLD_tilesize = m.qLD_tileadr.numpy(), m.qLD_tilesize.numpy()
 
@@ -412,48 +417,76 @@ def fwd_actuation(m: Model, d: Data):
   if not m.nu:
     return
 
-  ctrl = d.ctrl
-
   @wp.kernel
-  def clamp_ctrl(m: Model, ctrl: wp.array(dtype=wp.float32, ndim=2)):
+  def clamp_dofs(
+    limited: wp.array(dtype=wp.bool), ranges: wp.array(dtype=wp.vec2), values: array2df
+  ):
     worldid, dofid = wp.tid()
-    if m.actuator_ctrllimited[dofid]:
-      ctrl[worldid, dofid] = wp.clamp(ctrl[worldid, dofid], m.actuator_ctrlrange[dofid, 0], m.actuator_ctrlrange[dofid, 1])
+    if limited[dofid]:
+      r = ranges[dofid]
+      values[worldid, dofid] = wp.clamp(values[worldid, dofid], r[0], r[1])
 
-  wp.launch(clamp_ctrl, dim=[d.nworld, m.nu], inputs=[m, ctrl])
+  # clamp ctrl
+  wp.launch(
+    clamp_dofs,
+    dim=[d.nworld, m.nu],
+    inputs=[m.actuator_ctrllimited, m.actuator_ctrlrange, d.ctrl],
+  )
 
   # TODO support stateful actuators
 
   @wp.kernel
   def get_force(
     m: Model,
-    ctrl: wp.array(dtype=wp.float32, ndim=2),
+    ctrl: array2df,
     # outputs
-    force: wp.array(dtype=wp.float32, ndim=2),
+    force: array2df,
   ):
     worldid, dofid = wp.tid()
-    gain = m.actuator_gainprm[dofid, 0]
-    bias = m.actuator_biasprm[dofid, 0]
+    gain = m.actuator_gainprm[dofid]
+    bias = m.actuator_biasprm[dofid]
     # TODO support gain types other than FIXED
     f = gain * ctrl[worldid, dofid] + bias
     if m.actuator_forcelimited[dofid]:
-      f = wp.clamp(f, m.actuator_forcerange[dofid, 0], m.actuator_forcerange[dofid, 1])
+      r = m.actuator_forcerange[dofid]
+      f = wp.clamp(f, r[0], r[1])
     force[worldid, dofid] = f
 
-  wp.launch(get_force, dim=[d.nworld, m.nu], inputs=[m, ctrl], outputs=[d.actuator_force])
+  wp.launch(
+    get_force, dim=[d.nworld, m.nu], inputs=[m, d.ctrl], outputs=[d.actuator_force]
+  )
 
-  qfrc_actuator = d.actuator_moment.T @ d.actuator_force
+  @wp.kernel
+  def moment_mul_force(m: Model, moment: array3df, force: array2df, qfrc: array2df):
+    # qfrc = moment.T x force
+    worldid, col = wp.tid()
+
+    M = moment.shape[1]
+
+    s = float(0.0)
+    for row in range(M):
+      s += moment[worldid, row, col] * force[worldid, row]
+    if m.jnt_actfrclimited[col]:
+      r = m.jnt_actfrcrange[col]
+      s = wp.clamp(s, r[0], r[1])
+    qfrc[worldid, col] = s
+
+  # qfrc_actuator = d.actuator_moment.T @ d.actuator_force
+  wp.launch(
+    moment_mul_force,
+    dim=(d.nworld, m.nv),
+    inputs=[d.actuator_moment, d.actuator_force],
+    outputs=[d.qfrc_actuator],
+  )
 
   # TODO actuator-level gravity compensation, skip if added as passive force
 
   # clamp qfrc_actuator
-  actfrcrange = jp.where(
-    m.jnt_actfrclimited[:, None],
-    m.jnt_actfrcrange,
-    jp.array([-jp.inf, jp.inf]),
-  )
-  actfrcrange = actfrcrange[m.dof_jntid]
-  d.qfrc_actuator = jp.clip(qfrc_actuator, actfrcrange[:, 0], actfrcrange[:, 1])
+  # wp.launch(
+  #   clamp_dofs,
+  #   dim=[d.nworld, m.nv],
+  #   inputs=[m.jnt_actfrclimited, m.jnt_actfrcrange, d.qfrc_actuator],
+  # )
 
   return d
 
@@ -462,129 +495,145 @@ def transmission(m: Model, d: Data):
   """Computes actuator/transmission lengths and moments."""
   if not m.nu:
     return d
-  
-  
-  def _site_dof_mask(m: Model) -> np.ndarray:
-    """Creates a dof mask for site transmissions."""
-    # TODO: write this as Warp kernel
-    mask = np.ones((m.nu, m.nv))
-    for i in np.nonzero(m.actuator_trnid[:, 1] != -1)[0]:
-      id_, refid = m.actuator_trnid[i]
-      # initialize last dof address for each body
-      b0 = m.body_weldid[m.site_bodyid[id_]]
-      b1 = m.body_weldid[m.site_bodyid[refid]]
-      dofadr0 = m.body_dofadr[b0] + m.body_dofnum[b0] - 1
-      dofadr1 = m.body_dofadr[b1] + m.body_dofnum[b1] - 1
 
-      # find common ancestral dof, if any
-      while dofadr0 != dofadr1:
-        if dofadr0 < dofadr1:
-          dofadr1 = m.dof_parentid[dofadr1]
-        else:
-          dofadr0 = m.dof_parentid[dofadr0]
-        if dofadr0 == -1 or dofadr1 == -1:
-          break
+  # @wp.kernel
+  # def _site_dof_mask(
+  #   m: Model,
+  #   # outputs
+  #   mask: array2df,
+  # ):
+  #   """Creates a dof mask for site transmissions."""
+  #   # TODO: write this as Warp kernel
+  #   i = wp.tid()
+  #   if m.actuator_trnid[:, 1] == -1:
+  #     return
 
-      # if common ancestral dof was found, clear the columns of its parental chain
-      da = dofadr0 if dofadr0 == dofadr1 else -1
-      while da >= 0:
-        mask[i, da] = 0.0
-        da = m.dof_parentid[da]
+  #   id_, refid = m.actuator_trnid[i]
+  #   # initialize last dof address for each body
+  #   b0 = m.body_weldid[m.site_bodyid[id_]]
+  #   b1 = m.body_weldid[m.site_bodyid[refid]]
+  #   dofadr0 = int(m.body_dofadr[b0] + m.body_dofnum[b0] - 1)
+  #   dofadr1 = int(m.body_dofadr[b1] + m.body_dofnum[b1] - 1)
 
-    return mask
+  #   # find common ancestral dof, if any
+  #   while dofadr0 != dofadr1:
+  #     if dofadr0 < dofadr1:
+  #       dofadr1 = m.dof_parentid[dofadr1]
+  #     else:
+  #       dofadr0 = m.dof_parentid[dofadr0]
+  #     if dofadr0 == -1 or dofadr1 == -1:
+  #       break
+
+  #   # if common ancestral dof was found, clear the columns of its parental chain
+  #   da = int(wp.where(dofadr0 == dofadr1, dofadr0, -1))
+  #   while da >= 0:
+  #     mask[i, da] = 0.0
+  #     da = m.dof_parentid[da]
 
   @wp.kernel
   def compute_transmission(
-    trntype,
-    trnid,
-    gear,
-    jnt_typ,
-    m_j,
-    qpos,
-    has_refsite,
-    site_dof_mask,
-    site_xpos,
-    site_xmat,
-    site_quat,
+    m: Model,
+    d: Data,
+    # trntype,
+    # trnid,
+    # gear,
+    # jnt_typ,
+    # m_j,
+    # qpos,
+    # outputs
+    length: array2df,
+    moment: array3df,
   ):
-    if trntype in (TrnType.JOINT, TrnType.JOINTINPARENT):
-      if jnt_typ == JointType.FREE:
-        length = jp.zeros(1)
-        moment = gear
-        if trntype == TrnType.JOINTINPARENT:
-          quat_neg = math.quat_inv(qpos[3:])
-          gearaxis = math.rotate(gear[3:], quat_neg)
-          moment = moment.at[3:].set(gearaxis)
-        m_j = m_j + jp.arange(6)
-      elif jnt_typ == JointType.BALL:
+    worldid, actid = wp.tid()
+    qpos = d.qpos[worldid]
+    jntid = m.dof_jntid[actid]
+    jnt_typ = m.jnt_type[jntid]
+    qadr = m.jnt_qposadr[jntid]
+    vadr = m.jnt_dofadr[jntid]
+    trntype = m.actuator_trntype[actid]
+    gear = m.actuator_gear[actid]
+    if trntype == wp.static(TrnType.JOINT.value) or trntype == wp.static(
+      TrnType.JOINTINPARENT.value
+    ):
+      if jnt_typ == wp.static(JointType.FREE.value):
+        length[worldid, actid] = 0.0
+        if trntype == wp.static(TrnType.JOINTINPARENT.value):
+          quat_neg = math.quat_inv(
+            wp.quat(qpos[qadr + 3], qpos[qadr + 4], qpos[qadr + 5], qpos[qadr + 6])
+          )
+          gearaxis = math.rot_vec_quat(wp.spatial_bottom(gear), quat_neg)
+          # moment = moment.at[3:].set(gearaxis)
+          moment[worldid, actid, vadr + 0] = moment[0]
+          moment[worldid, actid, vadr + 1] = moment[1]
+          moment[worldid, actid, vadr + 2] = moment[2]
+          moment[worldid, actid, vadr + 3] = gearaxis[0]
+          moment[worldid, actid, vadr + 4] = gearaxis[1]
+          moment[worldid, actid, vadr + 5] = gearaxis[2]
+          # moment = wp.spatial_vector(wp.spatial_top(moment), gearaxis)
+        else:
+          for i in range(6):
+            moment[worldid, actid, vadr + i] = gear[i]
+      elif jnt_typ == wp.static(JointType.BALL.value):
         axis, angle = math.quat_to_axis_angle(qpos)
-        gearaxis = gear[:3]
-        if trntype == TrnType.JOINTINPARENT:
+        gearaxis = wp.spatial_top(gear)  # [:3]
+        if trntype == wp.static(TrnType.JOINTINPARENT.value):
           quat_neg = math.quat_inv(qpos)
-          gearaxis = math.rotate(gear[:3], quat_neg)
-        length = jp.dot(axis * angle, gearaxis)[None]
-        moment = gearaxis
-        m_j = m_j + jp.arange(3)
-      elif jnt_typ in (JointType.SLIDE, JointType.HINGE):
-        length = qpos * gear[0]
-        moment = gear[:1]
-        m_j = m_j[None]
+          gearaxis = math.rot_vec_quat(gearaxis, quat_neg)
+        length[worldid, actid] = wp.dot(axis * angle, gearaxis)
+        for i in range(3):
+          moment[worldid, actid, vadr + i] = gearaxis[i]
+      elif jnt_typ == wp.static(JointType.SLIDE.value) or jnt_typ == wp.static(
+        JointType.HINGE.value
+      ):
+        length[worldid, actid] = qpos * gear[0]
+        moment[worldid, actid, vadr] = gear[0]
       else:
-        raise RuntimeError(f"unrecognized joint type: {JointType(jnt_typ)}")
-
-      moment = jp.zeros((m.nv,)).at[m_j].set(moment)
-    elif trntype == TrnType.SITE:
-      length = jp.zeros(1)
-      id_, refid = jp.array(m.site_bodyid)[trnid]
-      jacp, jacr = support.jac(m, d, site_xpos[0], id_)
-      frame_xmat = site_xmat[0]
-      if has_refsite:
-        vecp = site_xmat[1].T @ (site_xpos[0] - site_xpos[1])
-        vecr = math.quat_sub(site_quat[0], site_quat[1])
-        length += jp.dot(jp.concatenate([vecp, vecr]), gear)
-        jacrefp, jacrefr = support.jac(m, d, site_xpos[1], refid)
-        jacp, jacr = jacp - jacrefp, jacr - jacrefr
-        frame_xmat = site_xmat[1]
-
-      jac = jp.concatenate((jacp, jacr), axis=1) * site_dof_mask[:, None]
-      wrench = jp.concatenate((frame_xmat @ gear[:3], frame_xmat @ gear[3:]))
-      moment = jac @ wrench
-    elif trntype == TrnType.TENDON:
-      length = d.ten_length[trnid[0]] * gear[:1]
-      moment = d.ten_J[trnid[0]] * gear[0]
+        wp.printf("unrecognized joint type")
     else:
-      raise RuntimeError(f"unrecognized trntype: {TrnType(trntype)}")
-
-    return length, moment
+      # TODO handle site, tendon transmission types
+      wp.printf("unhandled transmission type %d\n", trntype)
 
   # pre-compute values for site transmissions
-  has_refsite = m.actuator_trnid[:, 1] != -1
-  site_dof_mask = _site_dof_mask(m)
-  site_quat = jax.vmap(math.quat_mul)(m.site_quat, d.xquat[m.site_bodyid])
+  # has_refsite = m.actuator_trnid[:, 1] != -1
 
-  length, moment = scan.flat(
-    m,
-    fn,
-    "uuujjquusss",
-    "uu",
-    m.actuator_trntype,
-    jp.array(m.actuator_trnid),
-    m.actuator_gear,
-    m.jnt_type,
-    jp.array(m.jnt_dofadr),
-    d.qpos,
-    has_refsite,
-    jp.array(site_dof_mask),
-    d.site_xpos,
-    d.site_xmat,
-    site_quat,
-    group_by="u",
+  # site_dof_mask = wp.ones((m.nu, m.nv), dtype=wp.float32)
+  # wp.launch(_site_dof_mask, dim=m.nu, inputs=[m], outputs=[site_dof_mask])
+
+  # def compute_site_quats(m: Model):
+  #   i = wp.tid()
+  #   site_quat[i] = math.mul_quat(m.site_quat[i], d.xquat[m.site_bodyid[i]])
+
+  # wp.launch(compute_site_quats, dim=m.nsite, inputs=[m])
+
+  # length, moment = scan.flat(
+  #   m,
+  #   fn,
+  #   "uuujjquusss",
+  #   "uu",
+  #   m.actuator_trntype,
+  #   jp.array(m.actuator_trnid),
+  #   m.actuator_gear,
+  #   m.jnt_type,
+  #   jp.array(m.jnt_dofadr),
+  #   d.qpos,
+  #   has_refsite,
+  #   jp.array(site_dof_mask),
+  #   d.site_xpos,
+  #   d.site_xmat,
+  #   site_quat,
+  #   group_by="u",
+  # )
+  # length = length.reshape((m.nu,))
+  # moment = moment.reshape((m.nu, m.nv))
+
+  # d = d.replace(actuator_length=length, actuator_moment=moment)
+
+  wp.launch(
+    compute_transmission,
+    dim=[d.nworld, m.nu],
+    inputs=[m, d],
+    outputs=[d.actuator_length, d.actuator_moment],
   )
-  length = length.reshape((m.nu,))
-  moment = moment.reshape((m.nu, m.nv))
-
-  d = d.replace(actuator_length=length, actuator_moment=moment)
-  return d
 
 
 def com_vel(m: Model, d: Data):
@@ -711,11 +760,15 @@ def _solve_m_dense(m: Model, d: Data, x: array2df, y: array2df):
       worldid, nodeid = wp.tid()
       dofid = m.qLD_tile[leveladr + nodeid]
       y_slice = wp.tile_load(y[worldid], shape=(tilesize,), offset=(dofid,))
-      qLD_tile = wp.tile_load(d.qLD[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid))
+      qLD_tile = wp.tile_load(
+        d.qLD[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid)
+      )
       x_slice = wp.tile_cholesky_solve(qLD_tile, y_slice)
       wp.tile_store(x[worldid], x_slice, offset=(dofid,))
 
-    wp.launch_tiled(cho_solve, dim=(d.nworld, size), inputs=[m, d, x, y, adr], block_dim=block_dim)
+    wp.launch_tiled(
+      cho_solve, dim=(d.nworld, size), inputs=[m, d, x, y, adr], block_dim=block_dim
+    )
 
   qLD_tileadr, qLD_tilesize = m.qLD_tileadr.numpy(), m.qLD_tilesize.numpy()
 

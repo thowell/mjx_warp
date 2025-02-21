@@ -14,6 +14,8 @@
 # ==============================================================================
 
 import warp as wp
+import enum
+import mujoco
 
 
 class vec10f(wp.types.vector(length=10, dtype=wp.float32)):
@@ -21,13 +23,53 @@ class vec10f(wp.types.vector(length=10, dtype=wp.float32)):
 
 
 vec10 = vec10f
-array2df = wp.array2d(dtype=wp.float32, ndim=2)
+array2df = wp.array2d(dtype=wp.float32)
+array3df = wp.array3d(dtype=wp.float32)
 
 
 @wp.struct
 class Option:
   gravity: wp.vec3
   is_sparse: bool  # warp only
+
+
+class TrnType(enum.IntEnum):
+  """Type of actuator transmission.
+
+  Members:
+    JOINT: force on joint
+    JOINTINPARENT: force on joint, expressed in parent frame
+    TENDON: force on tendon
+    SITE: force on site
+  """
+
+  JOINT = mujoco.mjtTrn.mjTRN_JOINT
+  JOINTINPARENT = mujoco.mjtTrn.mjTRN_JOINTINPARENT
+  SITE = mujoco.mjtTrn.mjTRN_SITE
+  TENDON = mujoco.mjtTrn.mjTRN_TENDON
+  # unsupported: SLIDERCRANK, BODY
+
+
+class JointType(enum.IntEnum):
+  """Type of degree of freedom.
+
+  Members:
+    FREE:  global position and orientation (quat)       (7,)
+    BALL:  orientation (quat) relative to parent        (4,)
+    SLIDE: sliding distance along body-fixed axis       (1,)
+    HINGE: rotation angle (rad) around body-fixed axis  (1,)
+  """
+
+  FREE = mujoco.mjtJoint.mjJNT_FREE
+  BALL = mujoco.mjtJoint.mjJNT_BALL
+  SLIDE = mujoco.mjtJoint.mjJNT_SLIDE
+  HINGE = mujoco.mjtJoint.mjJNT_HINGE
+
+  def dof_width(self) -> int:
+    return {0: 6, 1: 3, 2: 1, 3: 1}[self.value]
+
+  def qpos_width(self) -> int:
+    return {0: 7, 1: 4, 2: 1, 3: 1}[self.value]
 
 
 @wp.struct
@@ -57,6 +99,7 @@ class Model:
   body_jntnum: wp.array(dtype=wp.int32, ndim=1)
   body_parentid: wp.array(dtype=wp.int32, ndim=1)
   body_mocapid: wp.array(dtype=wp.int32, ndim=1)
+  body_weldid: wp.array(dtype=wp.int32, ndim=1)
   body_pos: wp.array(dtype=wp.vec3, ndim=1)
   body_quat: wp.array(dtype=wp.quat, ndim=1)
   body_ipos: wp.array(dtype=wp.vec3, ndim=1)
@@ -71,16 +114,28 @@ class Model:
   jnt_axis: wp.array(dtype=wp.vec3, ndim=1)
   jnt_pos: wp.array(dtype=wp.vec3, ndim=1)
   jnt_stiffness: wp.array(dtype=wp.float32, ndim=1)
+  jnt_actfrclimited: wp.array(dtype=wp.bool, ndim=1)
+  jnt_actfrcrange: wp.array(dtype=wp.vec2, ndim=1)
   geom_pos: wp.array(dtype=wp.vec3, ndim=1)
   geom_quat: wp.array(dtype=wp.quat, ndim=1)
   site_pos: wp.array(dtype=wp.vec3, ndim=1)
   site_quat: wp.array(dtype=wp.quat, ndim=1)
+  site_bodyid: wp.array(dtype=wp.int32, ndim=1)
   dof_bodyid: wp.array(dtype=wp.int32, ndim=1)
   dof_jntid: wp.array(dtype=wp.int32, ndim=1)
   dof_parentid: wp.array(dtype=wp.int32, ndim=1)
   dof_Madr: wp.array(dtype=wp.int32, ndim=1)
   dof_armature: wp.array(dtype=wp.float32, ndim=1)
   dof_damping: wp.array(dtype=wp.float32, ndim=1)
+  actuator_trntype: wp.array(dtype=wp.int32, ndim=1)
+  actuator_trnid: wp.array(dtype=wp.int32, ndim=2)
+  actuator_ctrllimited: wp.array(dtype=wp.bool, ndim=1)
+  actuator_ctrlrange: wp.array(dtype=wp.vec2, ndim=1)
+  actuator_forcelimited: wp.array(dtype=wp.bool, ndim=1)
+  actuator_forcerange: wp.array(dtype=wp.vec2, ndim=1)
+  actuator_gainprm: wp.array(dtype=wp.float32, ndim=1)  # assume just 1 parameter
+  actuator_biasprm: wp.array(dtype=wp.float32, ndim=1)  # assume just 1 parameter
+  actuator_gear: wp.array(dtype=wp.spatial_vector, ndim=1)
 
 
 @wp.struct
@@ -122,3 +177,6 @@ class Data:
   qfrc_actuator: wp.array(dtype=wp.float32, ndim=2)
   qfrc_smooth: wp.array(dtype=wp.float32, ndim=2)
   qacc_smooth: wp.array(dtype=wp.float32, ndim=2)
+  actuator_force: wp.array(dtype=wp.float32, ndim=2)
+  actuator_length: wp.array(dtype=wp.float32, ndim=2)
+  actuator_moment: wp.array(dtype=wp.float32, ndim=2)

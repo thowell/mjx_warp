@@ -14,6 +14,7 @@
 # ==============================================================================
 
 import warp as wp
+from typing import Tuple
 
 from . import types
 
@@ -44,6 +45,17 @@ def axis_angle_to_quat(axis: wp.vec3, angle: wp.float32) -> wp.quat:
 
 
 @wp.func
+def quat_to_axis_angle(quat: wp.quat) -> Tuple[wp.vec3, wp.float32]:
+  axis = wp.vec3(quat[1], quat[2], quat[3])
+  norm = wp.length(axis)
+  if norm > 0.0:
+    axis /= norm
+  angle = 2 * wp.arctan2(norm, quat[0])
+  angle = wp.where(angle > wp.pi, angle - 2.0 * wp.pi, angle)
+  return axis, angle
+
+
+@wp.func
 def quat_to_mat(quat: wp.quat) -> wp.mat33:
   """Converts a quaternion into a 9-dimensional rotation matrix."""
   vec = wp.vec4(quat[0], quat[1], quat[2], quat[3])
@@ -60,6 +72,11 @@ def quat_to_mat(quat: wp.quat) -> wp.mat33:
     2.0 * (q[2, 3] + q[0, 1]),
     q[0, 0] - q[1, 1] - q[2, 2] + q[3, 3],
   )
+
+
+@wp.func
+def quat_inv(quat: wp.quat) -> wp.quat:
+  return wp.quat(quat[0], -quat[1], -quat[2], -quat[3])
 
 
 @wp.func
