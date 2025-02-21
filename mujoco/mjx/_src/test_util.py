@@ -80,27 +80,6 @@ def benchmark(
 
   return jit_duration, run_duration, batch_size * nstep
 
-def efc_order(m: mujoco.MjModel, d: mujoco.MjData, dx: types.Data) -> np.ndarray:
-  """Returns a sort order such that dx.efc_*[order][:d.nefc] == d.efc_*."""
-  # reorder efc rows to skip inactive constraints and match contact order
-  efl = dx.ne + dx.nf + dx.nl
-  order = np.arange(efl)
-  order[(dx.efc_J[:efl] == 0).all(axis=1)] = 2**16  # move empty rows to end
-  for i in range(dx.ncon):
-    num_rows = dx.contact.dim[i]
-    if dx.contact.dim[i] > 1 and m.opt.cone == mujoco.mjtCone.mjCONE_PYRAMIDAL:
-      num_rows = (dx.contact.dim[i] - 1) * 2
-    if dx.contact.dist[i] > 0:  # move empty contacts to end
-      order = np.append(order, np.repeat(2**16, num_rows))
-      continue
-    contact_match = (d.contact.geom == dx.contact.geom[i]).all(axis=-1)
-    contact_match &= (d.contact.pos == dx.contact.pos[i]).all(axis=-1)
-    assert contact_match.any(), f'contact {i} not found'
-    contact_id = np.nonzero(contact_match)[0][0]
-    order = np.append(order, np.repeat(efl + contact_id, num_rows))
-
-  return np.argsort(order, kind='stable')
-
 def load_test_file(name: str) -> mujoco.MjModel:
   """Loads a mujoco.MjModel based on the file name."""
   path = epath.resource_path('mujoco.mjx') / 'test_data' / name
