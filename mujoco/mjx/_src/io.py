@@ -90,13 +90,6 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
     qLD_tileadr = np.cumsum(tile_off)[:-1]
     qLD_tilesize = np.array(sorted(tiles.keys()))
 
-  dof_hasfrictionloss = np.zeros(mjm.nv, dtype=int)
-  for k in range(mjm.nv):
-    if (mjm.dof_frictionloss[k] > 0.0):
-      dof_hasfrictionloss[k] = 1
-    else:
-      dof_hasfrictionloss[k] = 0
-
   m.qLD_update_tree = wp.array(qLD_update_tree, dtype=wp.vec3i, ndim=1)
   m.qLD_update_treeadr = wp.array(
     qLD_update_treeadr, dtype=wp.int32, ndim=1, device="cpu"
@@ -143,7 +136,6 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.dof_solref = wp.array(mjm.dof_solref, dtype=wp.float32, ndim=2)
   m.dof_solimp = wp.array(mjm.dof_solimp, dtype=wp.float32, ndim=2)
   m.dof_frictionloss = wp.array(mjm.dof_frictionloss, dtype=wp.float32, ndim=1)
-  m.dof_hasfrictionloss = wp.array(dof_hasfrictionloss, dtype=wp.int32, ndim=1)
   m.dof_armature = wp.array(mjm.dof_armature, dtype=wp.float32, ndim=1)
   m.dof_damping = wp.array(mjm.dof_damping, dtype=wp.float32, ndim=1)
   m.dof_invweight0 = wp.array(mjm.dof_invweight0, dtype=wp.float32, ndim=1)

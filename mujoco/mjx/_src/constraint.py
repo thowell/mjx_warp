@@ -506,7 +506,7 @@ def make_constraint(m: types.Model, d: types.Data):
   i_c = wp.zeros(1, dtype=int)
   if not( m.opt.disableflags & types.DisableBit.CONSTRAINT):
     eq_type = m.eq_type.numpy()
-    dof_hasfrictionloss = m.dof_hasfrictionloss.numpy()
+    dof_frictionloss = m.dof_frictionloss.numpy()
     jnt_type = m.jnt_type.numpy()
     jnt_limited = m.jnt_limited.numpy()
     con_dim = d.contact.dim.numpy()
@@ -530,7 +530,7 @@ def make_constraint(m: types.Model, d: types.Data):
       if (eq_type[i] == types.EqType.JOINT):
         temp_eq_joint_id += (i,)
     for i in range(m.nv):
-      if (dof_hasfrictionloss[i]):
+      if (dof_frictionloss[i] > 0):
         temp_dof_friction_id += (i,)
     for i in range(m.njnt):
       if ((jnt_type[i] == types.JointType.BALL) and jnt_limited[i]):
