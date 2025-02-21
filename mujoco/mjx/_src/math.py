@@ -14,7 +14,6 @@
 # ==============================================================================
 
 import warp as wp
-from typing import Tuple
 
 from . import types
 
