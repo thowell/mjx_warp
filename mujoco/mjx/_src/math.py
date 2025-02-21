@@ -22,6 +22,7 @@ from . import types
 def quat_inv(q: wp.quat) -> wp.quat:
   return wp.quat(q[0], -q[1], -q[2], -q[3])
 
+
 @wp.func
 def mul_quat(u: wp.quat, v: wp.quat) -> wp.quat:
   return wp.quat(
@@ -54,9 +55,10 @@ def quat_to_axis_angle(q: wp.quat):
   sin_a_2 = wp.norm_l2(axis)
   axis = wp.normalize(axis)
   angle = 2.0 * wp.atan2(sin_a_2, q[0])
-  angle = where(angle > wp.pi, angle - 2.0 * wp.pi, angle)
+  angle = wp.select(angle > wp.pi, angle, angle - 2.0 * wp.pi)
 
   return axis, angle
+
 
 @wp.func
 def quat_to_mat(quat: wp.quat) -> wp.mat33:
@@ -76,12 +78,6 @@ def quat_to_mat(quat: wp.quat) -> wp.mat33:
     q[0, 0] - q[1, 1] - q[2, 2] + q[3, 3],
   )
 
-@wp.func
-def where(condition: bool, returnOnTrue: float, returnOnFalse: float) -> float:
-    if condition:
-        return returnOnTrue
-    else:
-        return returnOnFalse
 
 @wp.func
 def inert_vec(i: types.vec10, v: wp.spatial_vector) -> wp.spatial_vector:

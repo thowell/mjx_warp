@@ -64,16 +64,16 @@ def _update_contact_data(
   k = 1.0 / (dmax * dmax * timeconst * timeconst * dampratio * dampratio)
   b = 2.0 / (dmax * timeconst)
   # TODO(robotics-simulation): check various solparam settings in model gen test
-  k = math.where(efcs.solref[id, 0] <= 0, -efcs.solref[id, 0] / (dmax * dmax), k)
-  b = math.where(efcs.solref[id, 1] <= 0, -efcs.solref[id, 1] / dmax, b)
+  k = wp.select(efcs.solref[id, 0] <= 0, k, -efcs.solref[id, 0] / (dmax * dmax))
+  b = wp.select(efcs.solref[id, 1] <= 0, b, -efcs.solref[id, 1] / dmax)
 
   imp_x = wp.abs(efcs.pos_imp[id, 0]) / width
   imp_a = (1.0 / wp.pow(mid, power - 1.0)) * wp.pow(imp_x, power)
   imp_b = 1.0 - (1.0 / wp.pow(1.0 - mid, power - 1.0)) * wp.pow(1.0 - imp_x, power)
-  imp_y = math.where(imp_x < mid, imp_a, imp_b)
+  imp_y = wp.select(imp_x < mid, imp_b, imp_a)
   imp = dmin + imp_y * (dmax - dmin)
   imp = wp.clamp(imp, dmin, dmax)
-  imp = math.where(imp_x > 1.0, dmax, imp)
+  imp = wp.select(imp_x > 1.0, imp, dmax)
 
   # Update constraints
   r = wp.max(efcs.invweight[id, 0] * (1.0 - imp) / imp, types.MINVAL)
