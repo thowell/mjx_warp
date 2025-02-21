@@ -85,6 +85,7 @@ class ConstraintTest(parameterized.TestCase):
       _assert_eq(d.efc_pos, dx.efc_pos.numpy()[0], "efc_pos")
       _assert_eq(d.efc_margin, dx.efc_margin.numpy()[0], "efc_margin")
       _assert_eq(d.efc_frictionloss, dx.efc_frictionloss.numpy()[0], "efc_frictionloss")
+    _assert_eq(0, 1, "dd")
 
 
 if __name__ == "__main__":

@@ -158,8 +158,86 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.opt.disableflags = mjm.opt.disableflags
   m.opt.timestep = wp.float32(mjm.opt.timestep)
   m.opt.impratio = wp.float32(mjm.opt.impratio)
+  # Pre-build the permanent constraint rows
+  neq_connect = int(sum(mjm.eq_type == types.MJ_EQ_CONNECT))
+  neq_weld = int(sum(mjm.eq_type == types.MJ_EQ_WELD))
+  neq_joint = int(sum(mjm.eq_type == types.MJ_EQ_JOINT))
+  nf_dof = int(sum(mjm.dof_frictionloss > 0))
+  nl_ball = int(sum((mjm.jnt_type == types.MJ_JNT_BALL) * mjm.jnt_limited))
+  nl_slide_hinge = int(
+    sum(
+      ((mjm.jnt_type == types.MJ_JNT_SLIDE) + (mjm.jnt_type == types.MJ_JNT_HINGE))
+      * mjm.jnt_limited
+    )
+  )
+  i_c = wp.zeros(6, dtype=int)
+  m.efc_eq_connect_id = wp.empty(shape=(neq_connect), dtype=wp.int32)
+  m.efc_eq_weld_id = wp.empty(shape=(neq_weld), dtype=wp.int32)
+  m.efc_eq_joint_id = wp.empty(shape=(neq_joint), dtype=wp.int32)
+  m.efc_dof_friction_id = wp.empty(shape=(nf_dof), dtype=wp.int32)
+  m.efc_jnt_ball_id = wp.empty(shape=(nl_ball), dtype=wp.int32)
+  m.efc_jnt_slide_hinge_id = wp.empty(shape=(nl_slide_hinge), dtype=wp.int32)
+  wp.launch(
+    _prebuild_efc_eq,
+    dim=(mjm.eq_type.size),
+    inputs=[m, i_c],
+  )
+  wp.launch(
+    _prebuild_efc_dof_friction,
+    dim=(mjm.nv),
+    inputs=[m, i_c],
+  )
+  wp.launch(
+    _prebuild_efc_jnt_limit,
+    dim=(mjm.njnt),
+    inputs=[m, i_c],
+  )
 
   return m
+
+
+@wp.kernel
+def _prebuild_efc_eq(
+  m: types.Model,
+  i_c: wp.array(dtype=wp.int32),
+):
+  id = wp.tid()
+  if m.eq_type[id] == types.MJ_EQ_CONNECT:
+    irow = wp.atomic_add(i_c, 0, 1)
+    m.efc_eq_connect_id[irow] = id
+  elif m.eq_type[id] == types.MJ_EQ_WELD:
+    irow = wp.atomic_add(i_c, 1, 1)
+    m.efc_eq_weld_id[irow] = id
+  elif m.eq_type[id] == types.MJ_EQ_JOINT:
+    irow = wp.atomic_add(i_c, 2, 1)
+    m.efc_eq_joint_id[irow] = id
+
+
+@wp.kernel
+def _prebuild_efc_dof_friction(
+  m: types.Model,
+  i_c: wp.array(dtype=wp.int32),
+):
+  id = wp.tid()
+  if m.dof_frictionloss[id] > 0:
+    irow = wp.atomic_add(i_c, 3, 1)
+    m.efc_dof_friction_id[irow] = id
+
+
+@wp.kernel
+def _prebuild_efc_jnt_limit(
+  m: types.Model,
+  i_c: wp.array(dtype=wp.int32),
+):
+  id = wp.tid()
+  if (m.jnt_type[id] == types.MJ_JNT_BALL) and m.jnt_limited[id]:
+    irow = wp.atomic_add(i_c, 4, 1)
+    m.efc_jnt_ball_id[irow] = id
+  elif (
+    m.jnt_type[id] == types.MJ_JNT_SLIDE or m.jnt_type[id] == types.MJ_JNT_HINGE
+  ) and m.jnt_limited[id]:
+    irow = wp.atomic_add(i_c, 5, 1)
+    m.efc_jnt_slide_hinge_id[irow] = id
 
 
 def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
