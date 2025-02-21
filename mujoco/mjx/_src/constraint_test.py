@@ -17,7 +17,6 @@
 
 from absl.testing import absltest
 from absl.testing import parameterized
-from etils import epath
 from . import test_util
 import mujoco
 from mujoco import mjx
