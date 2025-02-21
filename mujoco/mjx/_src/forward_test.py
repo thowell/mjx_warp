@@ -20,6 +20,8 @@ from etils import epath
 import numpy as np
 import warp as wp
 
+wp.config.verify_cuda = True
+
 import mujoco
 from mujoco import mjx
 
@@ -58,6 +60,19 @@ class ForwardTest(absltest.TestCase):
       d.actuator_velocity.numpy()[0], mjd.actuator_velocity, "actuator_velocity"
     )
     _assert_eq(d.qfrc_bias.numpy()[0], mjd.qfrc_bias, "qfrc_bias")
+
+  def test_fwd_actuation(self):
+    """Tests MJX fwd_actuation."""
+    _, mjd, m, d = self._load("humanoid/humanoid.xml", is_sparse=False)
+
+    for arr in (d.ctrl, d.actuator_force, d.qfrc_actuator):
+      arr.zero_()
+
+    mjx.fwd_actuation(m, d)
+
+    _assert_eq(d.ctrl.numpy()[0], mjd.ctrl, "ctrl")
+    _assert_eq(d.actuator_force.numpy()[0], mjd.actuator_force, "actuator_force")
+    _assert_eq(d.qfrc_actuator.numpy()[0], mjd.qfrc_actuator, "qfrc_actuator")
 
   def test_fwd_acceleration(self):
     """Tests MJX fwd_acceleration."""

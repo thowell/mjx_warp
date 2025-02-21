@@ -200,7 +200,7 @@ class Data:
   actuator_velocity: wp.array(dtype=wp.float32, ndim=2)
   actuator_force: wp.array(dtype=wp.float32, ndim=2)
   actuator_length: wp.array(dtype=wp.float32, ndim=2)
-  actuator_moment: wp.array(dtype=wp.float32, ndim=2)
+  actuator_moment: wp.array(dtype=wp.float32, ndim=3)
   cvel: wp.array(dtype=wp.spatial_vector, ndim=2)
   cdof_dot: wp.array(dtype=wp.spatial_vector, ndim=2)
   qfrc_bias: wp.array(dtype=wp.float32, ndim=2)

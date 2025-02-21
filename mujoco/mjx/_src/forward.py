@@ -21,7 +21,7 @@ from . import math
 from . import passive
 from . import smooth
 
-from .types import array2df
+from .types import array2df, array3df
 from .types import Model
 from .types import Data
 from .types import MJ_MINVAL
@@ -239,6 +239,74 @@ def fwd_velocity(m: Model, d: Data):
   smooth.rne(m, d)
 
 
+def fwd_actuation(m: Model, d: Data):
+  """Actuation-dependent computations."""
+  if not m.nu:
+    return
+
+  @wp.kernel
+  def _clamp_ctrl(
+    limited: wp.array(dtype=wp.bool), ranges: wp.array(dtype=wp.vec2), values: array2df
+  ):
+    worldid, dofid = wp.tid()
+    if limited[dofid]:
+      r = ranges[dofid]
+      values[worldid, dofid] = wp.clamp(values[worldid, dofid], r[0], r[1])
+
+  # clamp ctrl
+  wp.launch(
+    _clamp_ctrl,
+    dim=[d.nworld, m.nu],
+    inputs=[m.actuator_ctrllimited, m.actuator_ctrlrange, d.ctrl],
+  )
+
+  # TODO support stateful actuators
+
+  @wp.kernel
+  def _force(
+    m: Model,
+    ctrl: array2df,
+    # outputs
+    force: array2df,
+  ):
+    worldid, dofid = wp.tid()
+    gain = m.actuator_gainprm[dofid]
+    bias = m.actuator_biasprm[dofid]
+    # TODO support gain types other than FIXED
+    f = gain * ctrl[worldid, dofid] + bias
+    if m.actuator_forcelimited[dofid]:
+      r = m.actuator_forcerange[dofid]
+      f = wp.clamp(f, r[0], r[1])
+    force[worldid, dofid] = f
+
+  wp.launch(
+    _force, dim=[d.nworld, m.nu], inputs=[m, d.ctrl], outputs=[d.actuator_force]
+  )
+
+  @wp.kernel
+  def _qfrc(m: Model, moment: array3df, force: array2df, qfrc: array2df):
+    worldid, vid = wp.tid()
+
+    s = float(0.0)
+    for uid in range(m.nu):
+      s += moment[worldid, uid, vid] * force[worldid, uid]
+    if m.jnt_actfrclimited[vid]:
+      r = m.jnt_actfrcrange[vid]
+      s = wp.clamp(s, r[0], r[1])
+    qfrc[worldid, vid] = s
+
+  wp.launch(
+    _qfrc,
+    dim=(d.nworld, m.nv),
+    inputs=[m, d.actuator_moment, d.actuator_force],
+    outputs=[d.qfrc_actuator],
+  )
+
+  # TODO actuator-level gravity compensation, skip if added as passive force
+
+  return d
+
+
 def fwd_acceleration(m: Model, d: Data):
   """Add up all non-constraint forces, compute qacc_smooth."""
 
@@ -267,7 +335,7 @@ def forward(m: Model, d: Data):
   # TODO(team): sensor.sensor_pos
   # TODO(taylorhowell): fwd_velocity
   # TODO(team): sensor.sensor_vel
-  # TODO(team): fwd_actuation
+  fwd_actuation(m, d)
   fwd_acceleration(m, d)
   # TODO(team): sensor.sensor_acc
 
