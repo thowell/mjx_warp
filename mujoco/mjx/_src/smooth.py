@@ -611,10 +611,13 @@ def transmission(m: Model, d: Data):
       jnt_qposadr = m.jnt_qposadr[jntid]
 
       if jnt_type == 0:  # free
+        gear_top = wp.spatial_top(m.actuator_gear[actid])
+        gear_bottom = wp.spatial_bottom(m.actuator_gear[actid])
+
         d.actuator_length[worldid, actid] = 0.0
-        d.actuator_moment[worldid, actid, jnt_dofadr + 0] = m.actuator_gear[actid, 0]
-        d.actuator_moment[worldid, actid, jnt_dofadr + 1] = m.actuator_gear[actid, 1]
-        d.actuator_moment[worldid, actid, jnt_dofadr + 2] = m.actuator_gear[actid, 2]
+        d.actuator_moment[worldid, actid, jnt_dofadr + 0] = gear_top[0]
+        d.actuator_moment[worldid, actid, jnt_dofadr + 1] = gear_top[1]
+        d.actuator_moment[worldid, actid, jnt_dofadr + 2] = gear_top[2]
 
         if trntype == 1:  # jointinparent
           quat_neg = wp.quat(
@@ -623,19 +626,14 @@ def transmission(m: Model, d: Data):
             -1.0 * d.qpos[worldid, jnt_qposadr + 5],
             -1.0 * d.qpos[worldid, jnt_qposadr + 6],
           )
-          gear_rot = wp.vec3(
-            m.actuator_gear[actid, 3],
-            m.actuator_gear[actid, 4],
-            m.actuator_gear[actid, 5],
-          )
-          gearaxis = math.rot_vec_quat(gear_rot, quat_neg)
+          gearaxis = math.rot_vec_quat(gear_bottom, quat_neg)
           d.actuator_moment[worldid, actid, jnt_dofadr + 3] = gearaxis[0]
           d.actuator_moment[worldid, actid, jnt_dofadr + 4] = gearaxis[1]
           d.actuator_moment[worldid, actid, jnt_dofadr + 5] = gearaxis[2]
         else:
-          d.actuator_moment[worldid, actid, jnt_dofadr + 3] = m.actuator_gear[actid, 3]
-          d.actuator_moment[worldid, actid, jnt_dofadr + 4] = m.actuator_gear[actid, 4]
-          d.actuator_moment[worldid, actid, jnt_dofadr + 5] = m.actuator_gear[actid, 5]
+          d.actuator_moment[worldid, actid, jnt_dofadr + 3] = gear_bottom[0]
+          d.actuator_moment[worldid, actid, jnt_dofadr + 4] = gear_bottom[1]
+          d.actuator_moment[worldid, actid, jnt_dofadr + 5] = gear_bottom[2]
       elif jnt_type == 1:  # ball
         quat = wp.quat(
           d.qpos[worldid, jnt_qposadr + 0],
@@ -645,11 +643,7 @@ def transmission(m: Model, d: Data):
         )
         axis_angle = math.quat_to_vel(quat)
 
-        gearaxis = wp.vec3(
-          m.actuator_gear[actid, 0],
-          m.actuator_gear[actid, 1],
-          m.actuator_gear[actid, 2],
-        )
+        gearaxis = wp.spatial_top(m.actuator_gear[actid])
 
         if trntype == 1:  # jointinparent
           quat_neg = wp.quat(quat[0], -quat[1], -quat[2], -quat[3])
@@ -660,7 +654,7 @@ def transmission(m: Model, d: Data):
         d.actuator_moment[worldid, actid, jnt_dofadr + 1] = gearaxis[1]
         d.actuator_moment[worldid, actid, jnt_dofadr + 2] = gearaxis[2]
       elif jnt_type == 2 or jnt_type == 3:  # slide, hinge
-        gear = m.actuator_gear[actid, 0]
+        gear = m.actuator_gear[actid][0]
         d.actuator_length[worldid, actid] = d.qpos[worldid, jnt_qposadr] * gear
         d.actuator_moment[worldid, actid, jnt_dofadr] = gear
 

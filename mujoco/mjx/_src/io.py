@@ -139,7 +139,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.actuator_actlimited = wp.array(mjm.actuator_actlimited, dtype=wp.int32, ndim=1)
   m.actuator_dynprm = wp.array(mjm.actuator_dynprm, dtype=types.vec10f, ndim=1)
   m.actuator_actrange = wp.array(mjm.actuator_actrange, dtype=wp.vec2f, ndim=1)
-  m.actuator_gear = wp.array(mjm.actuator_gear, dtype=wp.float32, ndim=2)
+  m.actuator_gear = wp.array(mjm.actuator_gear, dtype=wp.spatial_vector, ndim=1)
 
   return m
 
