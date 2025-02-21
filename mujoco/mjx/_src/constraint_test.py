@@ -63,24 +63,13 @@ class ConstraintTest(parameterized.TestCase):
       dx = mjx.put_data(m, d)
       dx = mjx.make_constraint(mx, dx)
 
+      dx_J = dx.efc_J.numpy()[0]
+      _assert_eq(d.efc_J, np.reshape(dx_J, shape=(d.nefc * m.nv)), 'efc_J')
       _assert_eq(d.efc_D, dx.efc_D.numpy()[0], 'efc_D')
-      _assert_eq(d.efc_J, dx.efc_J.numpy()[0], 'efc_J')
-      #_assert_eq(d.efc_aref, dx.efc_aref.numpy()[0], 'efc_aref')
-      #_assert_eq(d.efc_pos, dx.efc_pos.numpy()[0], 'efc_pos')
-      #order = test_util.efc_order(m, d, dx)
-      #d_efc_j = d.efc_J.reshape((-1, m.nv))
-      #_assert_eq(d_efc_j, dx.efc_J[order][: d.nefc], 'efc_J')
-      #_assert_eq(0, dx.efc_J[order][d.nefc :], 'efc_J')
-      #_assert_eq(d.efc_aref, dx.efc_aref[order][: d.nefc], 'efc_aref')
-      #_assert_eq(0, dx.efc_aref[order][d.nefc :], 'efc_aref')
-      #_assert_eq(d.efc_D, dx.efc_D[order][: d.nefc], 'efc_D')
-      #_assert_eq(d.efc_pos, dx.efc_pos[order][: d.nefc], 'efc_pos')
-      #_assert_eq(dx.efc_pos[order][d.nefc :], 0, 'efc_pos')
-      #_assert_eq(
-      #    d.efc_frictionloss,
-      #    dx.efc_frictionloss[order][: d.nefc],
-      #    'efc_frictionloss',
-      #)
+      _assert_eq(d.efc_aref, dx.efc_aref.numpy()[0], 'efc_aref')
+      _assert_eq(d.efc_pos, dx.efc_pos.numpy()[0], 'efc_pos')
+      _assert_eq(d.efc_margin, dx.efc_margin.numpy()[0], 'efc_margin')
+      _assert_eq(d.efc_frictionloss, dx.efc_frictionloss.numpy()[0], 'efc_frictionloss')
 
 if __name__ == '__main__':
   absltest.main()
