@@ -63,12 +63,19 @@ class ForwardTest(absltest.TestCase):
 
   def test_fwd_actuation(self):
     """Tests MJX fwd_actuation."""
-    _, mjd, m, d = self._load("humanoid/humanoid.xml", is_sparse=False)
+    mjm, mjd, m, d = self._load("humanoid/humanoid.xml", is_sparse=False)
 
-    for arr in (d.ctrl, d.actuator_force, d.qfrc_actuator):
+    d.ctrl.fill_(100.0)
+    mjd.ctrl[:] = 100.0
+    mujoco.mj_fwdActuation(mjm, mjd)
+
+    for arr in (d.actuator_force, d.qfrc_actuator):
       arr.zero_()
 
     mjx.fwd_actuation(m, d)
+
+    print(d.ctrl.numpy())
+    print(d.qfrc_actuator.numpy())
 
     _assert_eq(d.ctrl.numpy()[0], mjd.ctrl, "ctrl")
     _assert_eq(d.actuator_force.numpy()[0], mjd.actuator_force, "actuator_force")

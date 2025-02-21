@@ -246,22 +246,6 @@ def fwd_actuation(m: Model, d: Data):
   if not m.nu:
     return
 
-  @wp.kernel
-  def _clamp_ctrl(
-    limited: wp.array(dtype=wp.bool), ranges: wp.array(dtype=wp.vec2), values: array2df
-  ):
-    worldid, dofid = wp.tid()
-    if limited[dofid]:
-      r = ranges[dofid]
-      values[worldid, dofid] = wp.clamp(values[worldid, dofid], r[0], r[1])
-
-  # clamp ctrl
-  wp.launch(
-    _clamp_ctrl,
-    dim=[d.nworld, m.nu],
-    inputs=[m.actuator_ctrllimited, m.actuator_ctrlrange, d.ctrl],
-  )
-
   # TODO support stateful actuators
 
   @wp.kernel
@@ -275,7 +259,11 @@ def fwd_actuation(m: Model, d: Data):
     gain = m.actuator_gainprm[dofid, 0]
     bias = m.actuator_biasprm[dofid, 0]
     # TODO support gain types other than FIXED
-    f = gain * ctrl[worldid, dofid] + bias
+    c = ctrl[worldid, dofid]
+    if m.actuator_ctrllimited[dofid]:
+      r = m.actuator_ctrlrange[dofid]
+      c = wp.clamp(c, r[0], r[1])
+    f = gain * c + bias
     if m.actuator_forcelimited[dofid]:
       r = m.actuator_forcerange[dofid]
       f = wp.clamp(f, r[0], r[1])
