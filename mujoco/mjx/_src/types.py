@@ -177,15 +177,13 @@ class Model:
 class Contact:
   dist: wp.array(dtype=wp.float32, ndim=2)
   pos: wp.array(dtype=wp.vec3f, ndim=2)
-  frame: wp.array(dtype=wp.float32, ndim=3)
+  frame: wp.array(dtype=wp.mat33f, ndim=2)
   includemargin: wp.array(dtype=wp.float32, ndim=2)
   friction: wp.array(dtype=wp.float32, ndim=3)
   solref: wp.array(dtype=wp.float32, ndim=3)
   solreffriction: wp.array(dtype=wp.float32, ndim=3)
   solimp: wp.array(dtype=wp.float32, ndim=3)
   dim: wp.array(dtype=wp.int32, ndim=2)
-  geom1: wp.array(dtype=wp.int32, ndim=2)
-  geom2: wp.array(dtype=wp.int32, ndim=2)
   geom: wp.array(dtype=wp.int32, ndim=3)
   efc_address: wp.array(dtype=wp.int32, ndim=2)
 

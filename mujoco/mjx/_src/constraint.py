@@ -395,7 +395,7 @@ def _efc_contact_frictionless(m: types.Model, d: types.Data, i_c: wp.array(dtype
       for xyz in range(3):
         jacp1, _ = _jac(m, d, worldid, d.contact.pos[worldid, n_id], xyz, body1, i)
         jacp2, _ = _jac(m, d, worldid, d.contact.pos[worldid, n_id], xyz, body2, i)
-        contact_frictionless.J[irow, i] += d.contact.frame[worldid, n_id, xyz] * (jacp2 - jacp1)
+        contact_frictionless.J[irow, i] += d.contact.frame[worldid, n_id][0, xyz] * (jacp2 - jacp1)
     contact_frictionless.pos_aref[irow, 0] = pos
 
 
@@ -433,11 +433,11 @@ def _efc_contact_pyramidal(m: types.Model, d: types.Data, i_c: wp.array(dtype=wp
       for xyz in range(3):
         jac1p, jac1r = _jac(m, d, worldid, d.contact.pos[worldid, n_id], xyz, body1, i)
         jac2p, jac2r = _jac(m, d, worldid, d.contact.pos[worldid, n_id], xyz, body2, i)
-        diff_0 += d.contact.frame[worldid, n_id, xyz] * (jac2p - jac1p)
+        diff_0 += d.contact.frame[worldid, n_id][0, xyz] * (jac2p - jac1p)
         if con_dim < 3:
-          diff_i += d.contact.frame[worldid, n_id, con_dim * 3 + xyz] * (jac2p - jac1p)
+          diff_i += d.contact.frame[worldid, n_id][con_dim, xyz] * (jac2p - jac1p)
         else:
-          diff_i += d.contact.frame[worldid, n_id, (con_dim - 3) * 3 + xyz] * (jac2r - jac1r)
+          diff_i += d.contact.frame[worldid, n_id][con_dim - 3, xyz] * (jac2r - jac1r)
       if id % 2 == 0:
         contact_pyramidal.J[irow, i] = diff_0 + diff_i * d.contact.friction[worldid, n_id, con_dim - 1]
       else:
@@ -491,9 +491,9 @@ def _efc_contact_elliptic(m: types.Model, d: types.Data, i_c: wp.array(dtype=wp.
         jac1p, jac1r = _jac(m, d, worldid, d.contact.pos[worldid, n_id], xyz, obj1id, i)
         jac2p, jac2r = _jac(m, d, worldid, d.contact.pos[worldid, n_id], xyz, obj2id, i)
         if con_dim < 3:
-          contact_elliptic.J[irow, i] += d.contact.frame[worldid, n_id, con_dim * 3 + xyz] * (jac2p - jac1p)
+          contact_elliptic.J[irow, i] += d.contact.frame[worldid, n_id][con_dim, xyz] * (jac2p - jac1p)
         else:
-          contact_elliptic.J[irow, i] += d.contact.frame[worldid, n_id, (con_dim - 3) * 3 + xyz] * (jac2r - jac1r)
+          contact_elliptic.J[irow, i] += d.contact.frame[worldid, n_id][con_dim - 3, xyz] * (jac2r - jac1r)
 
     if con_dim == 0:
       contact_elliptic.pos_aref[irow, 0] = pos
