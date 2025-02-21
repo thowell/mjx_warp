@@ -19,11 +19,10 @@ import mujoco
 from mujoco import mjx
 
 MJ_MINVAL = mujoco.mjMINVAL
-MINIMP = 0.0001  # minimum constraint impedance
-MAXIMP = 0.9999  # maximum constraint impedance
-MJ_MINVAL = 1E-15
-NREF = 2
-NIMP = 5
+MJ_MINIMP = mujoco.mjMINIMP  # minimum constraint impedance
+MJ_MAXIMP = mujoco.mjMAXIMP  # maximum constraint impedance
+MJ_NREF = mujoco.mjNREF
+MJ_NIMP = mujoco.mjNIMP
 
 
 # disable flags - TODO(team): make this bullet-proof.
@@ -44,68 +43,39 @@ MJ_DSBL_MIDPHASE = mujoco.mjtDisableBit.mjDSBL_MIDPHASE.value
 MJ_DSBL_EULERDAMP = mujoco.mjtDisableBit.mjDSBL_EULERDAMP.value
 
 
+# joint types
+MJ_JNT_FREE = mujoco.mjtJoint.mjJNT_FREE.value
+MJ_JNT_BALL = mujoco.mjtJoint.mjJNT_BALL.value
+MJ_JNT_SLIDE = mujoco.mjtJoint.mjJNT_SLIDE.value
+MJ_JNT_HINGE = mujoco.mjtJoint.mjJNT_HINGE.value
+
+
+# cone types
+MJ_CONE_PYRAMIDAL = mujoco.mjtCone.mjCONE_PYRAMIDAL.value
+MJ_CONE_ELLIPTIC = mujoco.mjtCone.mjCONE_ELLIPTIC.value
+
+
+# equality cosntraint type
+MJ_EQ_CONNECT = mujoco.mjtEq.mjEQ_CONNECT.value
+MJ_EQ_WELD = mujoco.mjtEq.mjEQ_WELD.value
+MJ_EQ_JOINT = mujoco.mjtEq.mjEQ_JOINT.value
+MJ_EQ_TENDON = mujoco.mjtEq.mjEQ_TENDON.value
+
+
+# object types
+MJ_OBJ_UNKNOWN = mujoco.mjtObj.mjOBJ_UNKNOWN.value
+MJ_OBJ_BODY = mujoco.mjtObj.mjOBJ_BODY.value
+MJ_OBJ_XBODY = mujoco.mjtObj.mjOBJ_XBODY.value
+MJ_OBJ_GEOM = mujoco.mjtObj.mjOBJ_GEOM.value
+MJ_OBJ_SITE = mujoco.mjtObj.mjOBJ_SITE.value
+MJ_OBJ_CAMERA = mujoco.mjtObj.mjOBJ_CAMERA.value
+
+
 class vec10f(wp.types.vector(length=10, dtype=wp.float32)):
   pass
 
 
 vec10 = vec10f
-
-class DisableBit(IntFlag):
-  CONSTRAINT = 1
-  EQUALITY = 2
-  FRICTIONLOSS = 4
-  LIMIT = 8
-  CONTACT = 16
-  PASSIVE = 32
-  GRAVITY = 64
-  CLAMPCTRL = 128
-  WARMSTART = 256
-  FILTERPARENT = 512
-  ACTUATION = 1024
-  REFSAFE = 2048
-  SENSOR = 4096
-  # unsupported: MIDPHASE
-  EULERDAMP = 16384
-
-
-class JointType(IntFlag):
-  FREE = 0
-  BALL = 1
-  SLIDE = 2
-  HINGE = 3
-
-
-class ConeType(IntFlag):
-  PYRAMIDAL = 0
-  ELLIPTIC = 1
-
-
-class EqType(IntFlag):
-  CONNECT = 0
-  WELD = 1
-  JOINT = 2
-  TENDON = 3
-  # unsupported: DISTANCE
-
-
-class ConstraintType(IntFlag):
-  EQUALITY = 0
-  FRICTION_DOF = 1
-  FRICTION_TENDON = 2
-  LIMIT_JOINT = 3
-  LIMIT_TENDON = 4
-  CONTACT_FRICTIONLESS = 5
-  CONTACT_PYRAMIDAL = 6
-  CONTACT_ELLIPTIC = 7
-
-@wp.struct
-class ObjType(Enum):
-  UNKNOWN = 0
-  BODY = 1
-  XBODY = 2
-  GEOM = 5
-  SITE = 6
-  CAMERA = 7
 
 array2df = wp.array2d(dtype=wp.float32)
 array3df = wp.array3d(dtype=wp.float32)
@@ -115,7 +85,7 @@ array3df = wp.array3d(dtype=wp.float32)
 class Option:
   gravity: wp.vec3
   is_sparse: bool # warp only
-  cone: wp.int32
+  cone: int
   disableflags: int
   impratio: wp.float32
   timestep: float

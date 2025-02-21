@@ -154,7 +154,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.eq_data = wp.array(mjm.eq_data, dtype=wp.float32, ndim=2)
   m.opt.gravity = wp.vec3(mjm.opt.gravity)
   m.opt.is_sparse = support.is_sparse(mjm)
-  m.opt.cone = types.ConeType(mjm.opt.cone)
+  m.opt.cone = mjm.opt.cone
   m.opt.disableflags = mjm.opt.disableflags
   m.opt.timestep = wp.float32(mjm.opt.timestep)
   m.opt.impratio = wp.float32(mjm.opt.impratio)
