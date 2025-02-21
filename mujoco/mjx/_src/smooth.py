@@ -439,7 +439,7 @@ def transmission(m: Model, d: Data):
     return d
 
   @wp.kernel
-  def compute_transmission(
+  def _transmission(
     m: Model,
     d: Data,
     # outputs
@@ -495,43 +495,8 @@ def transmission(m: Model, d: Data):
       # TODO handle site, tendon transmission types
       wp.printf("unhandled transmission type %d\n", trntype)
 
-  # pre-compute values for site transmissions
-  # has_refsite = m.actuator_trnid[:, 1] != -1
-
-  # site_dof_mask = wp.ones((m.nu, m.nv), dtype=wp.float32)
-  # wp.launch(_site_dof_mask, dim=m.nu, inputs=[m], outputs=[site_dof_mask])
-
-  # def compute_site_quats(m: Model):
-  #   i = wp.tid()
-  #   site_quat[i] = math.mul_quat(m.site_quat[i], d.xquat[m.site_bodyid[i]])
-
-  # wp.launch(compute_site_quats, dim=m.nsite, inputs=[m])
-
-  # length, moment = scan.flat(
-  #   m,
-  #   fn,
-  #   "uuujjquusss",
-  #   "uu",
-  #   m.actuator_trntype,
-  #   jp.array(m.actuator_trnid),
-  #   m.actuator_gear,
-  #   m.jnt_type,
-  #   jp.array(m.jnt_dofadr),
-  #   d.qpos,
-  #   has_refsite,
-  #   jp.array(site_dof_mask),
-  #   d.site_xpos,
-  #   d.site_xmat,
-  #   site_quat,
-  #   group_by="u",
-  # )
-  # length = length.reshape((m.nu,))
-  # moment = moment.reshape((m.nu, m.nv))
-
-  # d = d.replace(actuator_length=length, actuator_moment=moment)
-
   wp.launch(
-    compute_transmission,
+    _transmission,
     dim=[d.nworld, m.nu],
     inputs=[m, d],
     outputs=[d.actuator_length, d.actuator_moment],
