@@ -31,7 +31,7 @@ class _Efc:
 
 
 @wp.kernel
-def _update_contact_data(m: types.Model, d: types.Data, i_c: wp.array(dtype=wp.int32), efcs: _Efc, refsafe: bool):
+def _update_contact_data(m: types.Model, d: types.Data, i_c: wp.array(dtype=wp.int32), i_wc: wp.array(dtype=wp.int32), efcs: _Efc, refsafe: bool):
   id = wp.tid()
   if id < i_c[0]:
     worldid = efcs.worldid[id]
@@ -71,18 +71,21 @@ def _update_contact_data(m: types.Model, d: types.Data, i_c: wp.array(dtype=wp.i
     # Update constraints
     r = wp.max(efcs.invweight[id, 0] * (1.0 - imp) / imp, types.MJ_MINVAL)
     aref = float(0.0)
+    irow = wp.atomic_add(i_wc, worldid, 1)
     for i in range(m.nv):
       aref += -b * (efcs.J[id, i] * d.qvel[worldid, i])
-      d.efc_J[worldid, id, i] = efcs.J[id, i]
+      d.efc_J[worldid, irow, i] = efcs.J[id, i]
     aref -= k * imp * efcs.pos_aref[id, 0]
-    d.efc_D[worldid, id] = 1.0 / r
-    d.efc_aref[worldid, id] = aref
-    d.efc_pos[worldid, id] = efcs.pos_aref[id, 0] + efcs.margin[id, 0]
-    d.efc_margin[worldid, id] = efcs.margin[id, 0]
-    d.efc_frictionloss[worldid, id] = efcs.frictionloss[id, 0]
+    d.efc_D[worldid, irow] = 1.0 / r
+    d.efc_aref[worldid, irow] = aref
+    d.efc_pos[worldid, irow] = efcs.pos_aref[id, 0] + efcs.margin[id, 0]
+    d.efc_margin[worldid, irow] = efcs.margin[id, 0]
+    d.efc_frictionloss[worldid, irow] = efcs.frictionloss[id, 0]
 
+  # Update the number of constraints
   if id == 0:
     d.nefc = i_c[0]
+
 
 @wp.func
 def _jac(
@@ -157,7 +160,7 @@ def _efc_contact_pyramidal(
   contact_pyramidal: _Efc,
 ):
   id = wp.tid()
-  if id < i_c[2]:
+  if id < i_c[1]:
     n_id = con_id[id]
     w_id = worldid[id]
     con_dim = con_dim_id[id]
@@ -211,7 +214,7 @@ def _efc_contact_pyramidal(
 
 
 @wp.kernel
-def _allocate_efc_contact_pyramidal_elliptic(
+def _allocate_efc_contact_pyramidal(
   m: types.Model,
   d: types.Data,
   i_c: wp.array(dtype=wp.int32),
@@ -219,12 +222,12 @@ def _allocate_efc_contact_pyramidal_elliptic(
   con_id: wp.array(dtype=wp.int32),
   con_dim_id: wp.array(dtype=wp.int32),
 ):
-  id, w_id, i_con = wp.tid()
-  condim = wp.vec3i(3, 4, 6)[id]
+  w_id, i_con = wp.tid()
+  condim = 3
 
   if d.contact.dim[w_id, i_con] == condim:
     if m.opt.cone == types.MJ_CONE_PYRAMIDAL:
-      irow = wp.atomic_add(i_c, 2, 2 * (condim - 1))
+      irow = wp.atomic_add(i_c, 1, 2 * (condim - 1))
       for j in range(condim - 1):
         con_id[irow + 2 * j] = i_con
         con_id[irow + 2 * j + 1] = i_con
@@ -237,16 +240,17 @@ def _allocate_efc_contact_pyramidal_elliptic(
 def make_constraint(m: types.Model, d: types.Data):
   """Creates constraint jacobians and other supporting data."""
 
-  i_c = wp.zeros(3, dtype=int)
+  i_c = wp.zeros(2, dtype=int)
+  i_wc = wp.zeros(d.nworld, dtype=int)
   if not (m.opt.disableflags & types.MJ_DSBL_CONSTRAINT):
     # Prepare the contact constraints using conservative values
-    n_con = d.ncon * d.nworld * 12
+    n_con = d.ncon * d.nworld * 6
     worldid_con = wp.empty(n_con, dtype=wp.int32)
     con_id = wp.empty(n_con, dtype=wp.int32)
     com_dim_id = wp.empty(n_con, dtype=wp.int32)
     wp.launch(
-      _allocate_efc_contact_pyramidal_elliptic,
-      dim=(3, d.nworld, d.ncon),
+      _allocate_efc_contact_pyramidal,
+      dim=(d.nworld, d.ncon),
       inputs=[m, d, i_c],
       outputs=[worldid_con, con_id, com_dim_id],
     )
@@ -282,6 +286,6 @@ def make_constraint(m: types.Model, d: types.Data):
       )
 
   refsafe = not m.opt.disableflags & types.MJ_DSBL_REFSAFE
-  wp.launch(_update_contact_data, dim=d.nefc, inputs=[m, d, i_c, efcs, refsafe])
+  wp.launch(_update_contact_data, dim=d.nefc, inputs=[m, d, i_c, i_wc, efcs, refsafe])
 
   return d, d.nefc != 0

@@ -83,7 +83,6 @@ class Model:
   njnt: int
   ngeom: int
   nsite: int
-  neq: int
   nmocap: int
   nM: int
   opt: Option
@@ -125,16 +124,12 @@ class Model:
   geom_bodyid: wp.array(dtype=wp.int32, ndim=1)
   geom_pos: wp.array(dtype=wp.vec3, ndim=1)
   geom_quat: wp.array(dtype=wp.quat, ndim=1)
-  site_bodyid: wp.array(dtype=wp.int32, ndim=1)
   site_pos: wp.array(dtype=wp.vec3, ndim=1)
   site_quat: wp.array(dtype=wp.quat, ndim=1)
   dof_bodyid: wp.array(dtype=wp.int32, ndim=1)
   dof_jntid: wp.array(dtype=wp.int32, ndim=1)
   dof_parentid: wp.array(dtype=wp.int32, ndim=1)
   dof_Madr: wp.array(dtype=wp.int32, ndim=1)
-  dof_solref: wp.array(dtype=wp.float32, ndim=2)
-  dof_solimp: wp.array(dtype=wp.float32, ndim=2)
-  dof_frictionloss: wp.array(dtype=wp.float32, ndim=1)
   dof_armature: wp.array(dtype=wp.float32, ndim=1)
   dof_invweight0: wp.array(dtype=wp.float32, ndim=1)
   dof_damping: wp.array(dtype=wp.float32, ndim=1)
@@ -167,8 +162,6 @@ class Contact:
 class Data:
   nworld: int
   ncon: int
-  ne: int
-  nf: int
   nl: int
   nefc: int
   time: float

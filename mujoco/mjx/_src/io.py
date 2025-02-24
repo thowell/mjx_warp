@@ -34,7 +34,6 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.njnt = mjm.njnt
   m.ngeom = mjm.ngeom
   m.nsite = mjm.nsite
-  m.neq = mjm.neq
   m.nmocap = mjm.nmocap
   m.nM = mjm.nM
   m.opt.gravity = wp.vec3(mjm.opt.gravity)
@@ -132,16 +131,12 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.geom_bodyid = wp.array(mjm.geom_bodyid, dtype=wp.int32, ndim=1)
   m.geom_pos = wp.array(mjm.geom_pos, dtype=wp.vec3, ndim=1)
   m.geom_quat = wp.array(mjm.geom_quat, dtype=wp.quat, ndim=1)
-  m.site_bodyid = wp.array(mjm.site_bodyid, dtype=wp.int32, ndim=1)
   m.site_pos = wp.array(mjm.site_pos, dtype=wp.vec3, ndim=1)
   m.site_quat = wp.array(mjm.site_quat, dtype=wp.quat, ndim=1)
   m.dof_bodyid = wp.array(mjm.dof_bodyid, dtype=wp.int32, ndim=1)
   m.dof_jntid = wp.array(mjm.dof_jntid, dtype=wp.int32, ndim=1)
   m.dof_parentid = wp.array(mjm.dof_parentid, dtype=wp.int32, ndim=1)
   m.dof_Madr = wp.array(mjm.dof_Madr, dtype=wp.int32, ndim=1)
-  m.dof_solref = wp.array(mjm.dof_solref, dtype=wp.float32, ndim=2)
-  m.dof_solimp = wp.array(mjm.dof_solimp, dtype=wp.float32, ndim=2)
-  m.dof_frictionloss = wp.array(mjm.dof_frictionloss, dtype=wp.float32, ndim=1)
   m.dof_armature = wp.array(mjm.dof_armature, dtype=wp.float32, ndim=1)
   m.dof_damping = wp.array(mjm.dof_damping, dtype=wp.float32, ndim=1)
   m.dof_invweight0 = wp.array(mjm.dof_invweight0, dtype=wp.float32, ndim=1)
@@ -187,8 +182,6 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   d.nworld = nworld
   d.ncon = 0
   d.nefc = 0
-  d.ne = 0
-  d.nf = 0
   d.nl = 0
   d.time = 0.0
 
@@ -268,8 +261,6 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
   d = types.Data()
   d.nworld = nworld
   d.ncon = mjd.ncon
-  d.ne = mjd.ne
-  d.nf = mjd.nf
   d.nl = mjd.nl
   d.nefc = mjd.nefc
   d.time = mjd.time
