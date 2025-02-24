@@ -31,7 +31,14 @@ class _Efc:
 
 
 @wp.kernel
-def _update_contact_data(m: types.Model, d: types.Data, i_c: wp.array(dtype=wp.int32), i_wc: wp.array(dtype=wp.int32), efcs: _Efc, refsafe: bool):
+def _update_contact_data(
+  m: types.Model,
+  d: types.Data,
+  i_c: wp.array(dtype=wp.int32),
+  i_wc: wp.array(dtype=wp.int32),
+  efcs: _Efc,
+  refsafe: bool,
+):
   id = wp.tid()
   if id < i_c[0]:
     worldid = efcs.worldid[id]
@@ -174,7 +181,9 @@ def _efc_contact_pyramidal(
     invweight = m.body_invweight0[body1, 0] + m.body_invweight0[body2, 0]
     invweight = (
       invweight
-      + d.contact.friction[w_id, n_id, 0] * d.contact.friction[w_id, n_id, 0] * invweight
+      + d.contact.friction[w_id, n_id, 0]
+      * d.contact.friction[w_id, n_id, 0]
+      * invweight
     )
 
     active = pos < 0

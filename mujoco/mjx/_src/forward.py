@@ -276,5 +276,5 @@ def forward(m: Model, d: Data):
   # if nefc == 0
   wp.copy(d.qacc, d.qacc_smooth)
 
-  #if hasconstraints:
+  # if hasconstraints:
   # TODO(team): solver.solve

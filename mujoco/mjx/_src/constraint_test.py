@@ -34,7 +34,6 @@ def _assert_eq(a, b, name):
 
 
 class ConstraintTest(parameterized.TestCase):
-
   @parameterized.parameters(
     {
       "cone": mujoco.mjtCone.mjCONE_PYRAMIDAL,
