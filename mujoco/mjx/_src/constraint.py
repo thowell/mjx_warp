@@ -91,7 +91,7 @@ def _update_contact_data(
 
   # Update the number of constraints
   if id == 0:
-    d.nefc = i_c[0]
+    d.nefc[0] = i_c[0]
 
 
 @wp.func
@@ -264,17 +264,18 @@ def make_constraint(m: types.Model, d: types.Data):
       outputs=[worldid_con, con_id, com_dim_id],
     )
 
-    # Allocate the constraint rows
+    # Allocate the constraint rows using conservative values
+    nefcs = n_con + d.nl
     efcs = _Efc()
-    efcs.worldid = wp.zeros(shape=(d.nefc), dtype=wp.int32)
-    efcs.J = wp.zeros((d.nefc, m.nv), dtype=wp.float32)
-    efcs.pos_aref = wp.zeros(shape=(d.nefc), dtype=wp.float32)
-    efcs.pos_imp = wp.zeros(shape=(d.nefc), dtype=wp.float32)
-    efcs.invweight = wp.zeros(shape=(d.nefc), dtype=wp.float32)
-    efcs.solref = wp.zeros(shape=(d.nefc, types.MJ_NREF), dtype=wp.float32)
-    efcs.solimp = wp.zeros(shape=(d.nefc, types.MJ_NIMP), dtype=wp.float32)
-    efcs.margin = wp.zeros(shape=(d.nefc), dtype=wp.float32)
-    efcs.frictionloss = wp.zeros(shape=(d.nefc), dtype=wp.float32)
+    efcs.worldid = wp.zeros(shape=(nefcs), dtype=wp.int32)
+    efcs.J = wp.zeros((nefcs, m.nv), dtype=wp.float32)
+    efcs.pos_aref = wp.zeros(shape=(nefcs), dtype=wp.float32)
+    efcs.pos_imp = wp.zeros(shape=(nefcs), dtype=wp.float32)
+    efcs.invweight = wp.zeros(shape=(nefcs), dtype=wp.float32)
+    efcs.solref = wp.zeros(shape=(nefcs, types.MJ_NREF), dtype=wp.float32)
+    efcs.solimp = wp.zeros(shape=(nefcs, types.MJ_NIMP), dtype=wp.float32)
+    efcs.margin = wp.zeros(shape=(nefcs), dtype=wp.float32)
+    efcs.frictionloss = wp.zeros(shape=(nefcs), dtype=wp.float32)
 
     if not (m.opt.disableflags & types.MJ_DSBL_LIMIT) and (
       m.efc_jnt_slide_hinge_id.size != 0
@@ -295,6 +296,6 @@ def make_constraint(m: types.Model, d: types.Data):
       )
 
   refsafe = not m.opt.disableflags & types.MJ_DSBL_REFSAFE
-  wp.launch(_update_contact_data, dim=d.nefc, inputs=[m, d, i_c, i_wc, efcs, refsafe])
+  wp.launch(_update_contact_data, dim=nefcs, inputs=[m, d, i_c, i_wc, efcs, refsafe])
 
-  return d, d.nefc != 0
+  return d

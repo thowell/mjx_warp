@@ -218,9 +218,8 @@ def fwd_position(m: Model, d: Data):
   smooth.crb(m, d)
   smooth.factor_m(m, d)
   # TODO(team): collision_driver.collision
-  _, hasconstraints = constraint.make_constraint(m, d)
+  constraint.make_constraint(m, d)
   # TODO(team): smooth.transmission
-  return hasconstraints
 
 
 def fwd_velocity(m: Model, d: Data):
@@ -265,7 +264,7 @@ def fwd_acceleration(m: Model, d: Data):
 def forward(m: Model, d: Data):
   """Forward dynamics."""
 
-  hasconstraints = fwd_position(m, d)
+  fwd_position(m, d)
   # TODO(team): sensor.sensor_pos
   # TODO(taylorhowell): fwd_velocity
   # TODO(team): sensor.sensor_vel
@@ -276,5 +275,4 @@ def forward(m: Model, d: Data):
   # if nefc == 0
   wp.copy(d.qacc, d.qacc_smooth)
 
-  # if hasconstraints:
   # TODO(team): solver.solve

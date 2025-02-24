@@ -181,7 +181,7 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   d = types.Data()
   d.nworld = nworld
   d.ncon = 0
-  d.nefc = 0
+  d.nefc = wp.zeros(1, dtype=wp.int32)
   d.nl = 0
   d.time = 0.0
 
@@ -262,7 +262,7 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
   d.nworld = nworld
   d.ncon = mjd.ncon
   d.nl = mjd.nl
-  d.nefc = mjd.nefc
+  d.nefc = wp.zeros(1, dtype=wp.int32)
   d.time = mjd.time
 
   # TODO(erikfrey): would it be better to tile on the gpu?

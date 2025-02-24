@@ -163,7 +163,7 @@ class Data:
   nworld: int
   ncon: int
   nl: int
-  nefc: int
+  nefc: wp.array(dtype=wp.int32, ndim=1)
   time: float
   qpos: wp.array(dtype=wp.float32, ndim=2)
   qvel: wp.array(dtype=wp.float32, ndim=2)
