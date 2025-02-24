@@ -37,35 +37,33 @@ class ConstraintTest(parameterized.TestCase):
   @parameterized.parameters(
     {
       "cone": mujoco.mjtCone.mjCONE_PYRAMIDAL,
-      "fname": "humanoid/humanoid.xml",
     },
   )
-  def test_constraints(self, cone, fname: str):
+  def test_constraints(self, cone):
     """Test constraints."""
-    m = test_util.load_test_file("constraints.xml")
-    m.opt.cone = cone
-    d = mujoco.MjData(m)
+    mjm, mjd, mx, dx = test_util.fixture("constraints.xml", sparse=False)
+    mjm.opt.cone = cone
 
     for key in range(3):
-      mujoco.mj_resetDataKeyframe(m, d, key)
+      mujoco.mj_resetDataKeyframe(mjm, mjd, key)
 
-      mujoco.mj_forward(m, d)
-      mx = mjx.put_model(m)
-      dx = mjx.put_data(m, d)
+      mujoco.mj_forward(mjm, mjd)
+      mx = mjx.put_model(mjm)
+      dx = mjx.put_data(mjm, mjd)
       dx, _ = mjx.make_constraint(mx, dx)
 
-      _assert_eq(d.efc_J, np.reshape(dx.efc_J.numpy(), shape=(d.nefc * m.nv)), "efc_J")
-      _assert_eq(d.efc_D, np.reshape(dx.efc_D.numpy(), shape=(d.nefc)), "efc_D")
+      _assert_eq(mjd.efc_J, np.reshape(dx.efc_J.numpy(), shape=(mjd.nefc * mjm.nv)), "efc_J")
+      _assert_eq(mjd.efc_D, np.reshape(dx.efc_D.numpy(), shape=(mjd.nefc)), "efc_D")
       _assert_eq(
-        d.efc_aref, np.reshape(dx.efc_aref.numpy(), shape=(d.nefc)), "efc_aref"
+        mjd.efc_aref, np.reshape(dx.efc_aref.numpy(), shape=(mjd.nefc)), "efc_aref"
       )
-      _assert_eq(d.efc_pos, np.reshape(dx.efc_pos.numpy(), shape=(d.nefc)), "efc_pos")
+      _assert_eq(mjd.efc_pos, np.reshape(dx.efc_pos.numpy(), shape=(mjd.nefc)), "efc_pos")
       _assert_eq(
-        d.efc_margin, np.reshape(dx.efc_margin.numpy(), shape=(d.nefc)), "efc_margin"
+        mjd.efc_margin, np.reshape(dx.efc_margin.numpy(), shape=(mjd.nefc)), "efc_margin"
       )
       _assert_eq(
-        d.efc_frictionloss,
-        np.reshape(dx.efc_frictionloss.numpy(), shape=(d.nefc)),
+        mjd.efc_frictionloss,
+        np.reshape(dx.efc_frictionloss.numpy(), shape=(mjd.nefc)),
         "efc_frictionloss",
       )
 
