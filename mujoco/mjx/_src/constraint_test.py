@@ -50,7 +50,7 @@ class ConstraintTest(parameterized.TestCase):
       mujoco.mj_forward(mjm, mjd)
       mx = mjx.put_model(mjm)
       dx = mjx.put_data(mjm, mjd)
-      dx, _ = mjx.make_constraint(mx, dx)
+      dx = mjx.make_constraint(mx, dx)
 
       _assert_eq(mjd.efc_J, np.reshape(dx.efc_J.numpy(), shape=(mjd.nefc * mjm.nv)), "efc_J")
       _assert_eq(mjd.efc_D, np.reshape(dx.efc_D.numpy(), shape=(mjd.nefc)), "efc_D")
