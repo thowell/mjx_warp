@@ -22,31 +22,32 @@ import warp as wp
 from . import test_util
 from .support import xfrc_accumulate
 
-class SmoothTest(parameterized.TestCase):
 
- def test_xfrc_accumulated(self):
+class SmoothTest(parameterized.TestCase):
+  def test_xfrc_accumulated(self):
     """Tests that xfrc_accumulate ouput matches mj_xfrcAccumulate."""
     np.random.seed(0)
-    mjm, mjd, m, d = test_util.fixture('pendula.xml')
+    mjm, mjd, m, d = test_util.fixture("pendula.xml")
     xfrc = np.random.randn(*d.xfrc_applied.numpy().shape)
     d.xfrc_applied = wp.from_numpy(xfrc, dtype=wp.spatial_vector)
     qfrc = xfrc_accumulate(m, d)
 
     qfrc_expected = np.zeros(m.nv)
-    xfrc =xfrc[0]
+    xfrc = xfrc[0]
     mjd.xfrc_applied[:] = xfrc
     for i in range(1, m.nbody):
-        mujoco.mj_applyFT(
-            mjm,
-            mjd,
-            mjd.xfrc_applied[i, :3],
-            mjd.xfrc_applied[i, 3:],
-            mjd.xipos[i],
-            i,
-            qfrc_expected,
-        )
+      mujoco.mj_applyFT(
+        mjm,
+        mjd,
+        mjd.xfrc_applied[i, :3],
+        mjd.xfrc_applied[i, 3:],
+        mjd.xipos[i],
+        i,
+        qfrc_expected,
+      )
     np.testing.assert_almost_equal(qfrc.numpy()[0], qfrc_expected, 6)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
   wp.init()
   absltest.main()

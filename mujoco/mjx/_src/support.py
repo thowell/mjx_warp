@@ -13,122 +13,84 @@
 # limitations under the License.
 # ==============================================================================
 
-
 import mujoco
 import warp as wp
 from .types import Model
 from .types import Data
+from .types import array2df
+
 
 def is_sparse(m: mujoco.MjModel):
   if m.opt.jacobian == mujoco.mjtJacobian.mjJAC_AUTO:
     return m.nv >= 60
   return m.opt.jacobian == mujoco.mjtJacobian.mjJAC_SPARSE
 
+
 @wp.kernel
 def process_level(
-    body_tree: wp.array(dtype=int),
-    body_parentid: wp.array(dtype=int),
-    dof_bodyid: wp.array(dtype=int),
-    matrix: wp.array2d(dtype=wp.bool),
-    beg: int,
+  body_tree: wp.array(ndim=1, dtype=int),
+  body_parentid: wp.array(ndim=1, dtype=int),
+  dof_bodyid: wp.array(ndim=1, dtype=int),
+  mask: wp.array2d(dtype=wp.bool),
+  beg: int,
 ):
-    tid_x, tid_y = wp.tid()
-    j = beg + tid_x
-    dofid = tid_y 
+  dofid, tid_y = wp.tid()
+  j = beg + tid_y
+  el = body_tree[j]
+  parent_id = body_parentid[el]
+  parent_val = mask[dofid, parent_id]
+  mask[dofid, el] = parent_val or (dof_bodyid[dofid] == el)
 
-    el = body_tree[j]
-    parent_id = body_parentid[el]
-    parent_val = matrix[parent_id, dofid]
-    matrix[el, dofid] = parent_val or (dof_bodyid[dofid] == el)
-
-@wp.kernel
-def compute_jacobians(
-    d:Data,
-    m:Model,
-    mask: wp.array2d(dtype=wp.bool),
-    jacp: wp.array3d(dtype=wp.vec3),
-    jacr: wp.array3d(dtype=wp.vec3)
-):
-    worldid, bodyid, dofid = wp.tid()
-   
-    offset = d.xipos[worldid, bodyid] - d.subtree_com[worldid,  m.body_rootid[bodyid]]
-    cdof_vec = d.cdof[worldid, dofid]  
-    angular = wp.vec3(cdof_vec[0], cdof_vec[1], cdof_vec[2])
-    linear = wp.vec3(cdof_vec[3], cdof_vec[4], cdof_vec[5])
-    jacp[worldid, bodyid, dofid] = (linear + wp.cross(angular, offset)) * wp.float(mask[bodyid, dofid])
-    jacr[worldid, bodyid, dofid] = angular *  wp.float(mask[bodyid, dofid])
 
 @wp.kernel
 def compute_qfrc(
-    d:Data,
-    jacp:  wp.array3d(dtype=wp.vec3),   
-    jacr: wp.array3d(dtype=wp.vec3),  
-    qfrc_total: wp.array2d(dtype=float)
+  d: Data,
+  m: Model,
+  mask: wp.array2d(dtype=wp.bool),
+  qfrc_total: array2df,
 ):
-    worldid, bodyid, dofid = wp.tid()
-    jacp_vec = jacp[worldid, bodyid, dofid]
-    jacr_vec = jacr[worldid, bodyid, dofid]
-    xfrc_applied_vec = d.xfrc_applied[worldid, bodyid]
-    
-    jacp_force = (
-        jacp_vec[0] * xfrc_applied_vec[0] +
-        jacp_vec[1] * xfrc_applied_vec[1] +
-        jacp_vec[2] * xfrc_applied_vec[2] 
-    )
-    
-    jacr_torque = (
-        jacr_vec[0] * xfrc_applied_vec[3] +
-        jacr_vec[1] * xfrc_applied_vec[4] +
-        jacr_vec[2] * xfrc_applied_vec[5]
-    )
-    
-    wp.atomic_add(qfrc_total[worldid], dofid, jacp_force + jacr_torque)
+  worldid, dofid = wp.tid()
+  accumul = float(0.0)
+  cdof_vec = d.cdof[worldid, dofid]
+  rotational_cdof = wp.vec3(cdof_vec[0], cdof_vec[1], cdof_vec[2])
+
+  jac = wp.spatial_vector(
+    cdof_vec[3], cdof_vec[4], cdof_vec[5], cdof_vec[0], cdof_vec[1], cdof_vec[2]
+  )
+
+  for bodyid in range(m.nbody):
+    if mask[dofid, bodyid]:
+      offset = d.xipos[worldid, bodyid] - d.subtree_com[worldid, m.body_rootid[bodyid]]
+      cross_term = wp.cross(rotational_cdof, offset)
+      accumul += wp.dot(jac, d.xfrc_applied[worldid, bodyid]) + wp.dot(
+        cross_term,
+        wp.vec3(
+          d.xfrc_applied[worldid, bodyid][0],
+          d.xfrc_applied[worldid, bodyid][1],
+          d.xfrc_applied[worldid, bodyid][2],
+        ),
+      )
+
+  qfrc_total[worldid, dofid] = accumul
 
 
-def xfrc_accumulate(m: Model, d: Data):
+def xfrc_accumulate(m: Model, d: Data) -> array2df:
+  body_treeadr_np = m.body_treeadr.numpy()
+  mask = wp.zeros((m.nbody, m.nv), dtype=wp.bool)
 
-    body_tree_np = wp.from_numpy(m.body_tree.numpy().astype(int))
-    body_treeadr_np = m.body_treeadr.numpy()
-    
-    # compute mask matrix
-    mask = wp.zeros((m.nbody, m.nv), dtype=wp.bool)
-    for i in range(len(body_treeadr_np)):
-        beg = body_treeadr_np[i]
-        end = body_treeadr_np[i+1] if i < len(body_treeadr_np)-1 else len(body_tree_np)
-        
-        if end > beg:
-            wp.launch(
-                kernel=process_level,
-                dim=[(end - beg), m.nv],
-                inputs=[
-                    m.body_tree,
-                    m.body_parentid,
-                    m.dof_bodyid,
-                    mask,
-                    beg
-                ]
-            )
+  for i in range(len(body_treeadr_np)):
+    beg = body_treeadr_np[i]
+    end = m.nbody if i == len(body_treeadr_np) - 1 else body_treeadr_np[i + 1]
 
+    if end > beg:
+      wp.launch(
+        kernel=process_level,
+        dim=[m.nv, (end - beg)],
+        inputs=[m.body_tree, m.body_parentid, m.dof_bodyid, mask, beg],
+      )
 
-    # compute jac using precomputed mask
-    jacp = wp.zeros(shape=(d.nworld, m.nbody, m.nv), dtype=wp.vec3)
-    jacr = wp.zeros_like(jacp)
-    wp.launch(
-        kernel=compute_jacobians,
-        dim=(d.nworld,  m.nbody, m.nv),
-        inputs=[d,
-            m,
-            mask, 
-            jacp, 
-            jacr]
-    )
+  qfrc_total = wp.zeros((d.nworld, m.nv), dtype=float)
 
-    # multiply forces with precomputed jcap and jcar to get qfrc
-    qfrc_total = wp.zeros((d.nworld, m.nv), dtype=float)
-    wp.launch(
-        kernel=compute_qfrc,
-        dim=(d.nworld, m.nbody, m.nv),
-        inputs=[d, jacp, jacr, qfrc_total]
-    )
+  wp.launch(kernel=compute_qfrc, dim=(d.nworld, m.nv), inputs=[d, m, mask, qfrc_total])
 
-    return qfrc_total
+  return qfrc_total
