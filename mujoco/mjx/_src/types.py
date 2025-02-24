@@ -16,9 +16,6 @@ import warp as wp
 import enum
 import mujoco
 
-import mujoco
-from mujoco import mjx
-
 MJ_MINVAL = mujoco.mjMINVAL
 
 
