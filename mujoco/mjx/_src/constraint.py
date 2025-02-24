@@ -14,9 +14,7 @@
 # ==============================================================================
 
 import warp as wp
-from . import math
 from . import types
-from typing import Any
 
 
 @wp.struct
@@ -33,54 +31,56 @@ class _Efc:
 
 
 @wp.kernel
-def _update_contact_data(m: types.Model, d: types.Data, efcs: _Efc, refsafe: bool):
+def _update_contact_data(m: types.Model, d: types.Data, i_c: wp.array(dtype=wp.int32), efcs: _Efc, refsafe: bool, hasconstraints: bool):
   id = wp.tid()
-  worldid = efcs.worldid[id]
+  if id < i_c[0]:
+    worldid = efcs.worldid[id]
+    hasconstraints = True
 
-  # Calculate kbi
-  timeconst = efcs.solref[id, 0]
-  dampratio = efcs.solref[id, 1]
-  dmin = efcs.solimp[id, 0]
-  dmax = efcs.solimp[id, 1]
-  width = efcs.solimp[id, 2]
-  mid = efcs.solimp[id, 3]
-  power = efcs.solimp[id, 4]
+    # Calculate kbi
+    timeconst = efcs.solref[id, 0]
+    dampratio = efcs.solref[id, 1]
+    dmin = efcs.solimp[id, 0]
+    dmax = efcs.solimp[id, 1]
+    width = efcs.solimp[id, 2]
+    mid = efcs.solimp[id, 3]
+    power = efcs.solimp[id, 4]
 
-  if refsafe:
-    timeconst = wp.max(timeconst, 2.0 * m.opt.timestep)
+    if refsafe:
+      timeconst = wp.max(timeconst, 2.0 * m.opt.timestep)
 
-  dmin = wp.clamp(dmin, types.MJ_MINIMP, types.MJ_MAXIMP)
-  dmax = wp.clamp(dmax, types.MJ_MINIMP, types.MJ_MAXIMP)
-  width = wp.max(types.MJ_MINVAL, width)
-  mid = wp.clamp(mid, types.MJ_MINIMP, types.MJ_MAXIMP)
-  power = wp.max(1.0, power)
+    dmin = wp.clamp(dmin, types.MJ_MINIMP, types.MJ_MAXIMP)
+    dmax = wp.clamp(dmax, types.MJ_MINIMP, types.MJ_MAXIMP)
+    width = wp.max(types.MJ_MINVAL, width)
+    mid = wp.clamp(mid, types.MJ_MINIMP, types.MJ_MAXIMP)
+    power = wp.max(1.0, power)
 
-  # See https://mujoco.readthedocs.io/en/latest/modeling.html#solver-parameters
-  k = 1.0 / (dmax * dmax * timeconst * timeconst * dampratio * dampratio)
-  b = 2.0 / (dmax * timeconst)
-  k = wp.select(efcs.solref[id, 0] <= 0, k, -efcs.solref[id, 0] / (dmax * dmax))
-  b = wp.select(efcs.solref[id, 1] <= 0, b, -efcs.solref[id, 1] / dmax)
+    # See https://mujoco.readthedocs.io/en/latest/modeling.html#solver-parameters
+    k = 1.0 / (dmax * dmax * timeconst * timeconst * dampratio * dampratio)
+    b = 2.0 / (dmax * timeconst)
+    k = wp.select(efcs.solref[id, 0] <= 0, k, -efcs.solref[id, 0] / (dmax * dmax))
+    b = wp.select(efcs.solref[id, 1] <= 0, b, -efcs.solref[id, 1] / dmax)
 
-  imp_x = wp.abs(efcs.pos_imp[id, 0]) / width
-  imp_a = (1.0 / wp.pow(mid, power - 1.0)) * wp.pow(imp_x, power)
-  imp_b = 1.0 - (1.0 / wp.pow(1.0 - mid, power - 1.0)) * wp.pow(1.0 - imp_x, power)
-  imp_y = wp.select(imp_x < mid, imp_b, imp_a)
-  imp = dmin + imp_y * (dmax - dmin)
-  imp = wp.clamp(imp, dmin, dmax)
-  imp = wp.select(imp_x > 1.0, imp, dmax)
+    imp_x = wp.abs(efcs.pos_imp[id, 0]) / width
+    imp_a = (1.0 / wp.pow(mid, power - 1.0)) * wp.pow(imp_x, power)
+    imp_b = 1.0 - (1.0 / wp.pow(1.0 - mid, power - 1.0)) * wp.pow(1.0 - imp_x, power)
+    imp_y = wp.select(imp_x < mid, imp_b, imp_a)
+    imp = dmin + imp_y * (dmax - dmin)
+    imp = wp.clamp(imp, dmin, dmax)
+    imp = wp.select(imp_x > 1.0, imp, dmax)
 
-  # Update constraints
-  r = wp.max(efcs.invweight[id, 0] * (1.0 - imp) / imp, types.MJ_MINVAL)
-  aref = float(0.0)
-  for i in range(m.nv):
-    aref += -b * (efcs.J[id, i] * d.qvel[worldid, i])
-    d.efc_J[worldid, id, i] = efcs.J[id, i]
-  aref -= k * imp * efcs.pos_aref[id, 0]
-  d.efc_D[worldid, id] = 1.0 / r
-  d.efc_aref[worldid, id] = aref
-  d.efc_pos[worldid, id] = efcs.pos_aref[id, 0] + efcs.margin[id, 0]
-  d.efc_margin[worldid, id] = efcs.margin[id, 0]
-  d.efc_frictionloss[worldid, id] = efcs.frictionloss[id, 0]
+    # Update constraints
+    r = wp.max(efcs.invweight[id, 0] * (1.0 - imp) / imp, types.MJ_MINVAL)
+    aref = float(0.0)
+    for i in range(m.nv):
+      aref += -b * (efcs.J[id, i] * d.qvel[worldid, i])
+      d.efc_J[worldid, id, i] = efcs.J[id, i]
+    aref -= k * imp * efcs.pos_aref[id, 0]
+    d.efc_D[worldid, id] = 1.0 / r
+    d.efc_aref[worldid, id] = aref
+    d.efc_pos[worldid, id] = efcs.pos_aref[id, 0] + efcs.margin[id, 0]
+    d.efc_margin[worldid, id] = efcs.margin[id, 0]
+    d.efc_frictionloss[worldid, id] = efcs.frictionloss[id, 0]
 
 
 @wp.func
@@ -156,56 +156,57 @@ def _efc_contact_pyramidal(
   contact_pyramidal: _Efc,
 ):
   id = wp.tid()
-  n_id = con_id[id]
-  w_id = worldid[id]
-  con_dim = con_dim_id[id]
+  if id < i_c[2]:
+    n_id = con_id[id]
+    w_id = worldid[id]
+    con_dim = con_dim_id[id]
 
-  pos = d.contact.dist[w_id, n_id] - d.contact.includemargin[w_id, n_id]
+    pos = d.contact.dist[w_id, n_id] - d.contact.includemargin[w_id, n_id]
 
-  body1 = m.geom_bodyid[d.contact.geom[w_id, n_id, 0]]
-  body2 = m.geom_bodyid[d.contact.geom[w_id, n_id, 1]]
+    body1 = m.geom_bodyid[d.contact.geom[w_id, n_id, 0]]
+    body2 = m.geom_bodyid[d.contact.geom[w_id, n_id, 1]]
 
-  # pyramidal has common invweight across all edges
-  invweight = m.body_invweight0[body1, 0] + m.body_invweight0[body2, 0]
-  invweight = (
-    invweight
-    + d.contact.friction[w_id, n_id, 0] * d.contact.friction[w_id, n_id, 0] * invweight
-  )
-
-  active = pos < 0
-  if active:
-    irow = wp.atomic_add(i_c, 0, 1)
-    contact_pyramidal.worldid[irow] = w_id
-    contact_pyramidal.pos_imp[irow, 0] = pos
-    for i in range(types.MJ_NREF):
-      contact_pyramidal.solref[irow, i] = d.contact.solref[w_id, n_id, i]
-    for i in range(types.MJ_NIMP):
-      contact_pyramidal.solimp[irow, i] = d.contact.solimp[w_id, n_id, i]
-    contact_pyramidal.margin[irow, 0] = d.contact.includemargin[w_id, n_id]
-    contact_pyramidal.invweight[irow, 0] = (
+    # pyramidal has common invweight across all edges
+    invweight = m.body_invweight0[body1, 0] + m.body_invweight0[body2, 0]
+    invweight = (
       invweight
-      * 2.0
-      * d.contact.friction[w_id, n_id, 0]
-      * d.contact.friction[w_id, n_id, 0]
-      / m.opt.impratio
+      + d.contact.friction[w_id, n_id, 0] * d.contact.friction[w_id, n_id, 0] * invweight
     )
-    for i in range(m.nv):
-      diff_0 = float(0.0)
-      diff_i = float(0.0)
-      for xyz in range(3):
-        jac1p, _ = _jac(m, d, w_id, d.contact.pos[w_id, n_id], xyz, body1, i)
-        jac2p, _ = _jac(m, d, w_id, d.contact.pos[w_id, n_id], xyz, body2, i)
-        diff_0 += d.contact.frame[w_id, n_id][0, xyz] * (jac2p - jac1p)
-        diff_i += d.contact.frame[w_id, n_id][con_dim, xyz] * (jac2p - jac1p)
-      if id % 2 == 0:
-        contact_pyramidal.J[irow, i] = (
-          diff_0 + diff_i * d.contact.friction[w_id, n_id, con_dim - 1]
-        )
-      else:
-        contact_pyramidal.J[irow, i] = (
-          diff_0 - diff_i * d.contact.friction[w_id, n_id, con_dim - 1]
-        )
-    contact_pyramidal.pos_aref[irow, 0] = pos
+
+    active = pos < 0
+    if active:
+      irow = wp.atomic_add(i_c, 0, 1)
+      contact_pyramidal.worldid[irow] = w_id
+      contact_pyramidal.pos_imp[irow, 0] = pos
+      for i in range(types.MJ_NREF):
+        contact_pyramidal.solref[irow, i] = d.contact.solref[w_id, n_id, i]
+      for i in range(types.MJ_NIMP):
+        contact_pyramidal.solimp[irow, i] = d.contact.solimp[w_id, n_id, i]
+      contact_pyramidal.margin[irow, 0] = d.contact.includemargin[w_id, n_id]
+      contact_pyramidal.invweight[irow, 0] = (
+        invweight
+        * 2.0
+        * d.contact.friction[w_id, n_id, 0]
+        * d.contact.friction[w_id, n_id, 0]
+        / m.opt.impratio
+      )
+      for i in range(m.nv):
+        diff_0 = float(0.0)
+        diff_i = float(0.0)
+        for xyz in range(3):
+          jac1p, _ = _jac(m, d, w_id, d.contact.pos[w_id, n_id], xyz, body1, i)
+          jac2p, _ = _jac(m, d, w_id, d.contact.pos[w_id, n_id], xyz, body2, i)
+          diff_0 += d.contact.frame[w_id, n_id][0, xyz] * (jac2p - jac1p)
+          diff_i += d.contact.frame[w_id, n_id][con_dim, xyz] * (jac2p - jac1p)
+        if id % 2 == 0:
+          contact_pyramidal.J[irow, i] = (
+            diff_0 + diff_i * d.contact.friction[w_id, n_id, con_dim - 1]
+          )
+        else:
+          contact_pyramidal.J[irow, i] = (
+            diff_0 - diff_i * d.contact.friction[w_id, n_id, con_dim - 1]
+          )
+      contact_pyramidal.pos_aref[irow, 0] = pos
 
 
 @wp.kernel
@@ -271,27 +272,16 @@ def make_constraint(m: types.Model, d: types.Data):
         outputs=[efcs],
       )
 
-    con_size = int(i_c.numpy()[2])
-    if con_size != 0:
-      if m.opt.cone == types.MJ_CONE_PYRAMIDAL:
-        wp.launch(
-          _efc_contact_pyramidal,
-          dim=con_size,
-          inputs=[m, d, worldid_con, i_c, con_id, com_dim_id],
-          outputs=[efcs],
-        )
-
-  i_c_np = int(i_c.numpy()[0])
-  if i_c_np == 0:
-    d.efc_J = wp.empty((0, m.nv))
-    d.efc_D = wp.empty(0)
-    d.efc_aref = wp.empty(0)
-    d.efc_frictionloss = wp.empty(0)
-    d.efc_pos = wp.empty(0)
-    d.efc_margin = wp.empty(0)
-    return d
+    if m.opt.cone == types.MJ_CONE_PYRAMIDAL:
+      wp.launch(
+        _efc_contact_pyramidal,
+        dim=n_con,
+        inputs=[m, d, worldid_con, i_c, con_id, com_dim_id],
+        outputs=[efcs],
+      )
 
   refsafe = not m.opt.disableflags & types.MJ_DSBL_REFSAFE
-  wp.launch(_update_contact_data, dim=i_c_np, inputs=[m, d, efcs, refsafe])
+  hasconstraints = wp.bool(False)
+  wp.launch(_update_contact_data, dim=d.nefc, inputs=[m, d, i_c, efcs, refsafe], outputs=[hasconstraints])
 
-  return d
+  return d, hasconstraints

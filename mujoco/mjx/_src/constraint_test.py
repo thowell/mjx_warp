@@ -47,15 +47,15 @@ class ConstraintTest(parameterized.TestCase):
     m.opt.cone = cone
     d = mujoco.MjData(m)
 
-    # sample a mix of active/inactive constraints at different timesteps
     for key in range(3):
       mujoco.mj_resetDataKeyframe(m, d, key)
 
       mujoco.mj_forward(m, d)
       mx = mjx.put_model(m)
       dx = mjx.put_data(m, d)
-      dx = mjx.make_constraint(mx, dx)
+      dx, _ = mjx.make_constraint(mx, dx)
 
+      print(d)
       _assert_eq(d.efc_J, np.reshape(dx.efc_J.numpy(), shape=(d.nefc * m.nv)), "efc_J")
       _assert_eq(d.efc_D, np.reshape(dx.efc_D.numpy(), shape=(d.nefc)), "efc_D")
       _assert_eq(
