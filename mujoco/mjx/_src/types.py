@@ -54,22 +54,6 @@ MJ_CONE_PYRAMIDAL = mujoco.mjtCone.mjCONE_PYRAMIDAL.value
 MJ_CONE_ELLIPTIC = mujoco.mjtCone.mjCONE_ELLIPTIC.value
 
 
-# equality cosntraint type
-MJ_EQ_CONNECT = mujoco.mjtEq.mjEQ_CONNECT.value
-MJ_EQ_WELD = mujoco.mjtEq.mjEQ_WELD.value
-MJ_EQ_JOINT = mujoco.mjtEq.mjEQ_JOINT.value
-MJ_EQ_TENDON = mujoco.mjtEq.mjEQ_TENDON.value
-
-
-# object types
-MJ_OBJ_UNKNOWN = mujoco.mjtObj.mjOBJ_UNKNOWN.value
-MJ_OBJ_BODY = mujoco.mjtObj.mjOBJ_BODY.value
-MJ_OBJ_XBODY = mujoco.mjtObj.mjOBJ_XBODY.value
-MJ_OBJ_GEOM = mujoco.mjtObj.mjOBJ_GEOM.value
-MJ_OBJ_SITE = mujoco.mjtObj.mjOBJ_SITE.value
-MJ_OBJ_CAMERA = mujoco.mjtObj.mjOBJ_CAMERA.value
-
-
 class vec10f(wp.types.vector(length=10, dtype=wp.float32)):
   pass
 
@@ -159,13 +143,6 @@ class Model:
   actuator_actadr: wp.array(dtype=wp.int32, ndim=1)
   actuator_dyntype: wp.array(dtype=wp.int32, ndim=1)
   actuator_dynprm: wp.array(dtype=wp.float32, ndim=2)
-  eq_type: wp.array(dtype=wp.int32, ndim=1)
-  eq_obj1id: wp.array(dtype=wp.int32, ndim=1)
-  eq_obj2id: wp.array(dtype=wp.int32, ndim=1)
-  eq_objtype: wp.array(dtype=wp.int32, ndim=1)
-  eq_solref: wp.array(dtype=wp.float32, ndim=2)
-  eq_solimp: wp.array(dtype=wp.float32, ndim=2)
-  eq_data: wp.array(dtype=wp.float32, ndim=2)
   opt: Option
   # warp only
   efc_jnt_slide_hinge_id: wp.array(dtype=wp.int32, ndim=1)
@@ -196,7 +173,6 @@ class Data:
   nefc: int
   time: float
   qpos: wp.array(dtype=wp.float32, ndim=2)
-  eq_active: wp.array(dtype=wp.int32, ndim=2)
   qvel: wp.array(dtype=wp.float32, ndim=2)
   qfrc_applied: wp.array(dtype=wp.float32, ndim=2)
   mocap_pos: wp.array(dtype=wp.vec3, ndim=2)

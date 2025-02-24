@@ -58,7 +58,6 @@ def _update_contact_data(m: types.Model, d: types.Data, efcs: _Efc, refsafe: boo
   # See https://mujoco.readthedocs.io/en/latest/modeling.html#solver-parameters
   k = 1.0 / (dmax * dmax * timeconst * timeconst * dampratio * dampratio)
   b = 2.0 / (dmax * timeconst)
-  # TODO(robotics-simulation): check various solparam settings in model gen test
   k = wp.select(efcs.solref[id, 0] <= 0, k, -efcs.solref[id, 0] / (dmax * dmax))
   b = wp.select(efcs.solref[id, 1] <= 0, b, -efcs.solref[id, 1] / dmax)
 
@@ -194,13 +193,10 @@ def _efc_contact_pyramidal(
       diff_0 = float(0.0)
       diff_i = float(0.0)
       for xyz in range(3):
-        jac1p, jac1r = _jac(m, d, w_id, d.contact.pos[w_id, n_id], xyz, body1, i)
-        jac2p, jac2r = _jac(m, d, w_id, d.contact.pos[w_id, n_id], xyz, body2, i)
+        jac1p, _ = _jac(m, d, w_id, d.contact.pos[w_id, n_id], xyz, body1, i)
+        jac2p, _ = _jac(m, d, w_id, d.contact.pos[w_id, n_id], xyz, body2, i)
         diff_0 += d.contact.frame[w_id, n_id][0, xyz] * (jac2p - jac1p)
-        if con_dim < 3:
-          diff_i += d.contact.frame[w_id, n_id][con_dim, xyz] * (jac2p - jac1p)
-        else:
-          diff_i += d.contact.frame[w_id, n_id][con_dim - 3, xyz] * (jac2r - jac1r)
+        diff_i += d.contact.frame[w_id, n_id][con_dim, xyz] * (jac2p - jac1p)
       if id % 2 == 0:
         contact_pyramidal.J[irow, i] = (
           diff_0 + diff_i * d.contact.friction[w_id, n_id, con_dim - 1]

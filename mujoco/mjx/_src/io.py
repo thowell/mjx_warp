@@ -145,13 +145,6 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.dof_armature = wp.array(mjm.dof_armature, dtype=wp.float32, ndim=1)
   m.dof_damping = wp.array(mjm.dof_damping, dtype=wp.float32, ndim=1)
   m.dof_invweight0 = wp.array(mjm.dof_invweight0, dtype=wp.float32, ndim=1)
-  m.eq_type = wp.array(mjm.eq_type, dtype=wp.int32, ndim=1)
-  m.eq_obj1id = wp.array(mjm.eq_obj1id, dtype=wp.int32, ndim=1)
-  m.eq_obj2id = wp.array(mjm.eq_obj2id, dtype=wp.int32, ndim=1)
-  m.eq_objtype = wp.array(mjm.eq_objtype, dtype=wp.int32, ndim=1)
-  m.eq_solref = wp.array(mjm.eq_solref, dtype=wp.float32, ndim=2)
-  m.eq_solimp = wp.array(mjm.eq_solimp, dtype=wp.float32, ndim=2)
-  m.eq_data = wp.array(mjm.eq_data, dtype=wp.float32, ndim=2)
   m.opt.gravity = wp.vec3(mjm.opt.gravity)
   m.opt.is_sparse = support.is_sparse(mjm)
   m.opt.cone = mjm.opt.cone
@@ -201,7 +194,6 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
 
   qpos0 = np.tile(mjm.qpos0, (nworld, 1))
   d.qpos = wp.array(qpos0, dtype=wp.float32, ndim=2)
-  d.eq_active = wp.array((nworld, mjm.neq), dtype=wp.int32)
   d.qvel = wp.zeros((nworld, mjm.nv), dtype=wp.float32, ndim=2)
   d.qfrc_applied = wp.zeros((nworld, mjm.nv), dtype=wp.float32, ndim=2)
   d.mocap_pos = wp.zeros((nworld, mjm.nmocap), dtype=wp.vec3)
@@ -305,7 +297,6 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
   )
 
   d.qpos = wp.array(tile(mjd.qpos), dtype=wp.float32, ndim=2)
-  d.eq_active = wp.array(tile(mjd.eq_active), dtype=wp.int32, ndim=2)
   d.qvel = wp.array(tile(mjd.qvel), dtype=wp.float32, ndim=2)
   d.qfrc_applied = wp.array(tile(mjd.qfrc_applied), dtype=wp.float32, ndim=2)
   d.mocap_pos = wp.array(tile(mjd.mocap_pos), dtype=wp.vec3, ndim=2)

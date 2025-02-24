@@ -34,18 +34,14 @@ def _assert_eq(a, b, name):
 
 
 class ConstraintTest(parameterized.TestCase):
-  def setUp(self):
-    super().setUp()
-    np.random.seed(42)
 
   @parameterized.parameters(
     {
       "cone": mujoco.mjtCone.mjCONE_PYRAMIDAL,
-      "rand_eq_active": False,
       "fname": "humanoid/humanoid.xml",
     },
   )
-  def test_constraints(self, cone, rand_eq_active, fname: str):
+  def test_constraints(self, cone, fname: str):
     """Test constraints."""
     m = test_util.load_test_file("constraints.xml")
     m.opt.cone = cone
@@ -54,8 +50,6 @@ class ConstraintTest(parameterized.TestCase):
     # sample a mix of active/inactive constraints at different timesteps
     for key in range(3):
       mujoco.mj_resetDataKeyframe(m, d, key)
-      if rand_eq_active:
-        d.eq_active[:] = np.random.randint(0, 2, size=m.neq)
 
       mujoco.mj_forward(m, d)
       mx = mjx.put_model(m)
