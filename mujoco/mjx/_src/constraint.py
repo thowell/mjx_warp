@@ -31,11 +31,10 @@ class _Efc:
 
 
 @wp.kernel
-def _update_contact_data(m: types.Model, d: types.Data, i_c: wp.array(dtype=wp.int32), efcs: _Efc, refsafe: bool, hasconstraints: bool):
+def _update_contact_data(m: types.Model, d: types.Data, i_c: wp.array(dtype=wp.int32), efcs: _Efc, refsafe: bool):
   id = wp.tid()
   if id < i_c[0]:
     worldid = efcs.worldid[id]
-    hasconstraints = True
 
     # Calculate kbi
     timeconst = efcs.solref[id, 0]
@@ -82,6 +81,8 @@ def _update_contact_data(m: types.Model, d: types.Data, i_c: wp.array(dtype=wp.i
     d.efc_margin[worldid, id] = efcs.margin[id, 0]
     d.efc_frictionloss[worldid, id] = efcs.frictionloss[id, 0]
 
+  if id == 0:
+    d.nefc = i_c[0]
 
 @wp.func
 def _jac(
@@ -281,7 +282,6 @@ def make_constraint(m: types.Model, d: types.Data):
       )
 
   refsafe = not m.opt.disableflags & types.MJ_DSBL_REFSAFE
-  hasconstraints = wp.bool(False)
-  wp.launch(_update_contact_data, dim=d.nefc, inputs=[m, d, i_c, efcs, refsafe], outputs=[hasconstraints])
+  wp.launch(_update_contact_data, dim=d.nefc, inputs=[m, d, i_c, efcs, refsafe])
 
-  return d, hasconstraints
+  return d, d.nefc != 0

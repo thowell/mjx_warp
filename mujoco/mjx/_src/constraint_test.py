@@ -55,7 +55,6 @@ class ConstraintTest(parameterized.TestCase):
       dx = mjx.put_data(m, d)
       dx, _ = mjx.make_constraint(mx, dx)
 
-      print(d)
       _assert_eq(d.efc_J, np.reshape(dx.efc_J.numpy(), shape=(d.nefc * m.nv)), "efc_J")
       _assert_eq(d.efc_D, np.reshape(dx.efc_D.numpy(), shape=(d.nefc)), "efc_D")
       _assert_eq(
