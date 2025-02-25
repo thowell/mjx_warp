@@ -149,10 +149,17 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
 
 
 def make_data(
-  mjm: mujoco.MjModel, nworld: int = 1, nefc_maxbatch: int = 512
+  mjm: mujoco.MjModel, nworld: int = 1, njmax: int = -1
 ) -> types.Data:
   d = types.Data()
   d.nworld = nworld
+  d.nefc_total = wp.zeros((1), dtype=wp.int32, ndim=1)
+
+  if njmax == -1:
+    # TODO(team): heuristic for njmax
+    njmax = 512
+  d.njmax = njmax
+
   d.time = 0.0
 
   qpos0 = np.tile(mjm.qpos0, (nworld, 1))
@@ -200,13 +207,11 @@ def make_data(
   d.qfrc_constraint = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qacc_smooth = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qfrc_constraint = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
-  d.nefc_active = 0
-  d.nefc_maxbatch = nefc_maxbatch
-  d.efc_J = wp.zeros((nefc_maxbatch, mjm.nv), dtype=wp.float32)
-  d.efc_D = wp.zeros((nefc_maxbatch), dtype=wp.float32)
-  d.efc_aref = wp.zeros((nefc_maxbatch), dtype=wp.float32)
-  d.efc_force = wp.zeros((nefc_maxbatch), dtype=wp.float32)
-  d.efc_worldid = wp.zeros((nefc_maxbatch), dtype=wp.int32)
+  d.efc_J = wp.zeros((njmax, mjm.nv), dtype=wp.float32)
+  d.efc_D = wp.zeros((njmax), dtype=wp.float32)
+  d.efc_aref = wp.zeros((njmax), dtype=wp.float32)
+  d.efc_force = wp.zeros((njmax), dtype=wp.float32)
+  d.efc_worldid = wp.zeros((njmax), dtype=wp.int32)
   d.world_efcadr = wp.zeros((nworld), dtype=wp.int32)
   d.world_efcsize = wp.zeros((nworld), dtype=wp.int32)
 
@@ -221,14 +226,21 @@ def make_data(
 
 
 def put_data(
-  mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1, nefc_maxbatch: int = 512
+  mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1, njmax: int = -1
 ) -> types.Data:
   d = types.Data()
   d.nworld = nworld
-  d.time = mjd.time
+  d.nefc_total = wp.array([mjd.nefc * nworld], dtype=wp.int32, ndim=1)
 
-  if nworld * mjd.nefc > nefc_maxbatch:
-    raise ValueError("nworld * nefc > nefc_maxbatch")
+  if njmax == -1:
+    # TODO(team): heuristic for njmax
+    njmax = 512
+  d.njmax = njmax
+
+  if nworld * mjd.nefc > njmax:
+    raise ValueError("nworld * nefc > njmax")
+
+  d.time = mjd.time
 
   # TODO(erikfrey): would it be better to tile on the gpu?
   def tile(x):
@@ -295,9 +307,7 @@ def put_data(
   d.qfrc_constraint = wp.array(tile(mjd.qfrc_constraint), dtype=wp.float32, ndim=2)
 
   nefc = mjd.nefc
-  d.nefc_active = nworld * nefc
-  d.nefc_maxbatch = nefc_maxbatch
-  efc_worldid = np.zeros(nefc_maxbatch, dtype=int)
+  efc_worldid = np.zeros(njmax, dtype=int)
   world_efcadr = np.zeros(nworld, dtype=int)
   world_efcsize = np.zeros(nworld, dtype=int)
 
@@ -309,7 +319,7 @@ def put_data(
       world_efcadr[i] = 0
     world_efcsize[i] = nefc
 
-  nefc_fill = nefc_maxbatch - nworld * nefc
+  nefc_fill = njmax - nworld * nefc
 
   efc_J_fill = np.vstack(
     [np.repeat(efc_J, nworld, axis=0), np.zeros((nefc_fill, mjm.nv))]

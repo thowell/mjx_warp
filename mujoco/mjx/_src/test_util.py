@@ -53,7 +53,7 @@ def benchmark(
   solver: str = "cg",
   iterations: int = 1,
   ls_iterations: int = 4,
-  nefc_active: int = 0,
+  nefc_total: int = 0,
 ) -> Tuple[float, float, int]:
   """Benchmark a model."""
 
@@ -66,8 +66,8 @@ def benchmark(
   m.opt.ls_iterations = ls_iterations
 
   mx = io.put_model(m)
-  dx = io.make_data(m, nworld=batch_size, nefc_maxbatch=nefc_active)
-  dx.nefc_active = nefc_active
+  dx = io.make_data(m, nworld=batch_size, njmax=nefc_total)
+  dx.nefc_total = wp.array([nefc_total], dtype=wp.int32, ndim=1)
 
   wp.clear_kernel_cache()
   jit_beg = time.perf_counter()

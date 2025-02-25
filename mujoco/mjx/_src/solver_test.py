@@ -31,7 +31,7 @@ class SolverTest(parameterized.TestCase):
     iterations: int = 2,
     ls_iterations: int = 4,
     nworld: int = 1,
-    nefc_maxbatch: int = 512,
+    njmax: int = 512,
     keyframe: int = 0,
   ):
     path = epath.resource_path("mujoco.mjx") / "test_data" / fname
@@ -46,7 +46,7 @@ class SolverTest(parameterized.TestCase):
     mujoco.mj_resetDataKeyframe(mjm, mjd, keyframe)
     mujoco.mj_step(mjm, mjd)
     m = io.put_model(mjm)
-    d = io.put_data(mjm, mjd, nworld=nworld, nefc_maxbatch=nefc_maxbatch)
+    d = io.put_data(mjm, mjd, nworld=nworld, njmax=njmax)
     return mjm, mjd, m, d
 
   @parameterized.parameters(
@@ -87,7 +87,7 @@ class SolverTest(parameterized.TestCase):
       mjd.qacc_warmstart = qacc_warmstart
 
       m = io.put_model(mjm)
-      d = io.put_data(mjm, mjd, nefc_maxbatch=mjd.nefc)
+      d = io.put_data(mjm, mjd, njmax=mjd.nefc)
       d.qacc.zero_()
       d.qfrc_constraint.zero_()
       d.efc_force.zero_()
@@ -160,12 +160,12 @@ class SolverTest(parameterized.TestCase):
       iterations=iterations,
       ls_iterations=ls_iterations,
       nworld=3,
-      nefc_maxbatch=96,
+      njmax=2 * nefc_active,
     )
 
-    d.nefc_active = nefc_active
+    d.nefc_total = wp.array([nefc_active], dtype=wp.int32, ndim=1)
 
-    nefc_fill = d.nefc_maxbatch - d.nefc_active
+    nefc_fill = d.njmax - nefc_active
 
     qacc_warmstart = np.vstack(
       [

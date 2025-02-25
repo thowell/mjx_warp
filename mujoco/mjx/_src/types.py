@@ -128,6 +128,8 @@ class Model:
 @wp.struct
 class Data:
   nworld: int
+  nefc_total: wp.array(dtype=wp.int32, ndim=1) # warp only
+  njmax: int
   time: float
   qpos: wp.array(dtype=wp.float32, ndim=2)
   qvel: wp.array(dtype=wp.float32, ndim=2)
@@ -169,8 +171,6 @@ class Data:
   qfrc_smooth: wp.array(dtype=wp.float32, ndim=2)
   qacc_smooth: wp.array(dtype=wp.float32, ndim=2)
   qfrc_constraint: wp.array(dtype=wp.float32, ndim=2)
-  nefc_active: int  # warp only
-  nefc_maxbatch: int  # warp only
   efc_J: wp.array(dtype=wp.float32, ndim=2)
   efc_D: wp.array(dtype=wp.float32, ndim=1)
   efc_aref: wp.array(dtype=wp.float32, ndim=1)

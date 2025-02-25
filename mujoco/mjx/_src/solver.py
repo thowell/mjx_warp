@@ -35,7 +35,7 @@ class Context:
 
 def _context(m: types.Model, d: types.Data) -> Context:
   ctx = Context()
-  ctx.Jaref = wp.empty(shape=(d.nefc_maxbatch), dtype=wp.float32)
+  ctx.Jaref = wp.empty(shape=(d.njmax), dtype=wp.float32)
   ctx.Ma = wp.empty(shape=(d.nworld, m.nv), dtype=wp.float32)
   ctx.grad = wp.empty(shape=(d.nworld, m.nv), dtype=wp.float32)
   ctx.Mgrad = wp.empty(shape=(d.nworld, m.nv), dtype=wp.float32)
@@ -44,11 +44,11 @@ def _context(m: types.Model, d: types.Data) -> Context:
   ctx.cost = wp.empty(shape=(d.nworld), dtype=wp.float32)
   ctx.prev_cost = wp.empty(shape=(d.nworld), dtype=wp.float32)
   ctx.solver_niter = wp.empty(shape=(d.nworld), dtype=wp.int32)
-  ctx.active = wp.empty(shape=(d.nefc_maxbatch), dtype=wp.int32)
+  ctx.active = wp.empty(shape=(d.njmax), dtype=wp.int32)
   ctx.gtol = wp.empty(shape=(d.nworld), dtype=wp.float32)
   ctx.mv = wp.empty(shape=(d.nworld, m.nv), dtype=wp.float32)
-  ctx.jv = wp.empty(shape=(d.nefc_maxbatch), dtype=wp.float32)
-  ctx.quad = wp.empty(shape=(d.nefc_maxbatch, 3), dtype=wp.float32)
+  ctx.jv = wp.empty(shape=(d.njmax), dtype=wp.float32)
+  ctx.quad = wp.empty(shape=(d.njmax, 3), dtype=wp.float32)
   ctx.quad_gauss = wp.empty(shape=(d.nworld, 3), dtype=wp.float32)
   ctx.quad_total = wp.empty(shape=(d.nworld, 3), dtype=wp.float32)
   ctx.h = wp.empty(shape=(d.nworld, m.nv, m.nv), dtype=wp.float32)
@@ -70,6 +70,10 @@ def _create_context(ctx: Context, m: types.Model, d: types.Data, grad: bool = Tr
   @wp.kernel
   def _jaref(ctx: Context, m: types.Model, d: types.Data):
     efcid, dofid = wp.tid()
+
+    if efcid >= d.nefc_total[0]:
+      return
+    
     worldid = d.efc_worldid[efcid]
     wp.atomic_add(
       ctx.Jaref,
@@ -77,7 +81,7 @@ def _create_context(ctx: Context, m: types.Model, d: types.Data, grad: bool = Tr
       d.efc_J[efcid, dofid] * d.qacc[worldid, dofid] - d.efc_aref[efcid] / float(m.nv),
     )
 
-  wp.launch(_jaref, dim=(d.nefc_active, m.nv), inputs=[ctx, m, d])
+  wp.launch(_jaref, dim=(d.njmax, m.nv), inputs=[ctx, m, d])
 
   # Ma = qM @ qacc
   support.mul_m(m, d, d.qacc, ctx.Ma)
@@ -131,6 +135,10 @@ def _create_lspoint(ls_pnt: LSPoint, m: types.Model, d: types.Data, ctx: Context
   @wp.kernel
   def _quad(ctx: Context, d: types.Data):
     efcid = wp.tid()
+
+    if efcid >= d.nefc_total[0]:
+      return
+  
     worldid = d.efc_worldid[efcid]
     x = ctx.Jaref[efcid] + ctx.alpha[worldid] * ctx.jv[efcid]
     # TODO(team): active and conditionally active constraints
@@ -139,7 +147,7 @@ def _create_lspoint(ls_pnt: LSPoint, m: types.Model, d: types.Data, ctx: Context
     wp.atomic_add(ctx.quad_total[worldid], 1, ctx.quad[efcid, 1] * active)
     wp.atomic_add(ctx.quad_total[worldid], 2, ctx.quad[efcid, 2] * active)
 
-  wp.launch(_quad, dim=(d.nefc_active), inputs=[ctx, d])
+  wp.launch(_quad, dim=(d.njmax), inputs=[ctx, d])
 
   @wp.kernel
   def _cost_deriv01(ls_pnt: LSPoint, ctx: Context):
@@ -194,6 +202,10 @@ def _update_constraint(m: types.Model, d: types.Data, ctx: Context):
   @wp.kernel
   def _efc_kernel(ctx: Context, d: types.Data):
     efcid = wp.tid()
+
+    if efcid >= d.nefc_total[0]:
+      return
+  
     worldid = d.efc_worldid[efcid]
     Jaref = ctx.Jaref[efcid]
     efc_D = d.efc_D[efcid]
@@ -208,7 +220,7 @@ def _update_constraint(m: types.Model, d: types.Data, ctx: Context):
     # cost = 0.5 * sum(efc_D * Jaref * Jaref * active))
     wp.atomic_add(ctx.cost, worldid, 0.5 * efc_D * Jaref * Jaref * float(active))
 
-  wp.launch(_efc_kernel, dim=(d.nefc_active), inputs=[ctx, d])
+  wp.launch(_efc_kernel, dim=(d.njmax), inputs=[ctx, d])
 
   # qfrc_constraint = efc_J.T @ efc_force
   d.qfrc_constraint.zero_()
@@ -216,6 +228,10 @@ def _update_constraint(m: types.Model, d: types.Data, ctx: Context):
   @wp.kernel
   def _qfrc_constraint(d: types.Data):
     dofid, efcid = wp.tid()
+
+    if efcid >= d.nefc_total[0]:
+      return
+  
     worldid = d.efc_worldid[efcid]
     wp.atomic_add(
       d.qfrc_constraint[worldid],
@@ -223,7 +239,7 @@ def _update_constraint(m: types.Model, d: types.Data, ctx: Context):
       d.efc_J[efcid, dofid] * d.efc_force[efcid],
     )
 
-  wp.launch(_qfrc_constraint, dim=(m.nv, d.nefc_active), inputs=[d])
+  wp.launch(_qfrc_constraint, dim=(m.nv, d.njmax), inputs=[d])
 
   # gauss = 0.5 * (Ma - qfrc_smooth).T @ (qacc - qacc_smooth)
   ctx.gauss.zero_()
@@ -265,6 +281,10 @@ def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
     @wp.kernel
     def _JTDAJ(ctx: Context, d: types.Data):
       dofi, dofj, efcid = wp.tid()
+
+      if efcid >= d.nefc_total[0]:
+        return
+    
       worldid = d.efc_worldid[efcid]
       wp.atomic_add(
         ctx.h[worldid, dofi],
@@ -275,7 +295,7 @@ def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
         * float(ctx.active[efcid]),
       )
 
-    wp.launch(_JTDAJ, dim=(m.nv, m.nv, d.nefc_active), inputs=[ctx, d])
+    wp.launch(_JTDAJ, dim=(m.nv, m.nv, d.njmax), inputs=[ctx, d])
 
     TILE = m.nv
 
@@ -325,6 +345,10 @@ def _linesearch(m: types.Model, d: types.Data, ctx: Context):
   @wp.kernel
   def _jv(ctx: Context, d: types.Data):
     efcid, dofid = wp.tid()
+
+    if efcid >= d.nefc_total[0]:
+      return
+  
     worldid = d.efc_worldid[efcid]
     wp.atomic_add(
       ctx.jv,
@@ -332,7 +356,7 @@ def _linesearch(m: types.Model, d: types.Data, ctx: Context):
       d.efc_J[efcid, dofid] * ctx.search[worldid, dofid],
     )
 
-  wp.launch(_jv, dim=(d.nefc_active, m.nv), inputs=[ctx, d])
+  wp.launch(_jv, dim=(d.njmax, m.nv), inputs=[ctx, d])
 
   # prepare quadratics
   # quad_gauss = [gauss, search.T @ Ma - search.T @ qfrc_smooth, 0.5 * search.T @ mv]
@@ -362,6 +386,10 @@ def _linesearch(m: types.Model, d: types.Data, ctx: Context):
   @wp.kernel
   def _quad(ctx: Context, d: types.Data):
     efcid = wp.tid()
+
+    if efcid >= d.nefc_total[0]:
+      return
+  
     Jaref = ctx.Jaref[efcid]
     jv = ctx.jv[efcid]
     efc_D = d.efc_D[efcid]
@@ -369,7 +397,7 @@ def _linesearch(m: types.Model, d: types.Data, ctx: Context):
     ctx.quad[efcid, 1] = jv * Jaref * efc_D
     ctx.quad[efcid, 2] = 0.5 * jv * jv * efc_D
 
-  wp.launch(_quad, dim=(d.nefc_active), inputs=[ctx, d])
+  wp.launch(_quad, dim=(d.njmax), inputs=[ctx, d])
 
   # initialize interval
   ls_ctx = _create_lscontext(m, d, ctx)
@@ -622,10 +650,14 @@ def _linesearch(m: types.Model, d: types.Data, ctx: Context):
   @wp.kernel
   def _jaref(ctx: Context, d: types.Data):
     efcid = wp.tid()
+
+    if efcid >= d.nefc_total[0]:
+      return
+  
     worldid = d.efc_worldid[efcid]
     ctx.Jaref[efcid] += ctx.alpha[worldid] * ctx.jv[efcid]
 
-  wp.launch(_jaref, dim=(d.nefc_active), inputs=[ctx, d])
+  wp.launch(_jaref, dim=(d.njmax), inputs=[ctx, d])
 
 
 def solve(m: types.Model, d: types.Data):

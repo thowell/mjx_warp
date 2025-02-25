@@ -274,7 +274,7 @@ def forward(m: Model, d: Data):
   fwd_acceleration(m, d)
   # TODO(team): sensor.sensor_acc
 
-  if d.nefc_active == 0:
+  if d.njmax == 0:
     wp.copy(d.qacc, d.qacc_smooth)
   else:
     solver.solve(m, d)
