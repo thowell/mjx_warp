@@ -34,37 +34,28 @@ def _assert_eq(a, b, name):
 
 
 class ConstraintTest(parameterized.TestCase):
-  @parameterized.parameters(
-    {
-      "cone": mujoco.mjtCone.mjCONE_PYRAMIDAL,
-    },
-  )
-  def test_constraints(self, cone):
+
+  def test_constraints(self):
     """Test constraints."""
-    mjm, mjd, mx, dx = test_util.fixture("constraints.xml", sparse=False)
-    mjm.opt.cone = cone
+    mjm, mjd, _, _ = test_util.fixture("constraints.xml", sparse=False)
+    mjm.opt.cone = mujoco.mjtCone.mjCONE_PYRAMIDAL
 
     for key in range(3):
       mujoco.mj_resetDataKeyframe(mjm, mjd, key)
 
       mujoco.mj_forward(mjm, mjd)
-      mx = mjx.put_model(mjm)
-      dx = mjx.put_data(mjm, mjd)
-      dx = mjx.make_constraint(mx, dx)
+      m = mjx.put_model(mjm)
+      d = mjx.put_data(mjm, mjd)
+      d = mjx.make_constraint(m, d)
 
-      _assert_eq(mjd.efc_J, np.reshape(dx.efc_J.numpy(), shape=(mjd.nefc * mjm.nv)), "efc_J")
-      _assert_eq(mjd.efc_D, np.reshape(dx.efc_D.numpy(), shape=(mjd.nefc)), "efc_D")
+      _assert_eq(mjd.efc_J, np.reshape(d.efc_J.numpy(), shape=(mjd.nefc * mjm.nv)), "efc_J")
+      _assert_eq(mjd.efc_D, np.reshape(d.efc_D.numpy(), shape=(mjd.nefc)), "efc_D")
       _assert_eq(
-        mjd.efc_aref, np.reshape(dx.efc_aref.numpy(), shape=(mjd.nefc)), "efc_aref"
+        mjd.efc_aref, np.reshape(d.efc_aref.numpy(), shape=(mjd.nefc)), "efc_aref"
       )
-      _assert_eq(mjd.efc_pos, np.reshape(dx.efc_pos.numpy(), shape=(mjd.nefc)), "efc_pos")
+      _assert_eq(mjd.efc_pos, np.reshape(d.efc_pos.numpy(), shape=(mjd.nefc)), "efc_pos")
       _assert_eq(
-        mjd.efc_margin, np.reshape(dx.efc_margin.numpy(), shape=(mjd.nefc)), "efc_margin"
-      )
-      _assert_eq(
-        mjd.efc_frictionloss,
-        np.reshape(dx.efc_frictionloss.numpy(), shape=(mjd.nefc)),
-        "efc_frictionloss",
+        mjd.efc_margin, np.reshape(d.efc_margin.numpy(), shape=(mjd.nefc)), "efc_margin"
       )
 
 

@@ -27,7 +27,6 @@ class _Efc:
   solref: wp.array(ndim=2, dtype=wp.float32)
   solimp: wp.array(ndim=2, dtype=wp.float32)
   margin: wp.array(ndim=2, dtype=wp.float32)
-  frictionloss: wp.array(ndim=2, dtype=wp.float32)
 
 
 @wp.kernel
@@ -87,7 +86,6 @@ def _update_contact_data(
     d.efc_aref[worldid, irow] = aref
     d.efc_pos[worldid, irow] = efcs.pos_aref[id, 0] + efcs.margin[id, 0]
     d.efc_margin[worldid, irow] = efcs.margin[id, 0]
-    d.efc_frictionloss[worldid, irow] = efcs.frictionloss[id, 0]
 
   # Update the number of constraints
   if id == 0:
@@ -120,9 +118,8 @@ def _jac(
     wp.spatial_top(d.cdof[worldid, dofid]), offset
   )
   jacp = temp_jac[xyz] * float(in_tree)
-  jacr = d.cdof[worldid, dofid][xyz] * float(in_tree)
 
-  return jacp, jacr
+  return jacp
 
 
 @wp.kernel
@@ -207,8 +204,8 @@ def _efc_contact_pyramidal(
         diff_0 = float(0.0)
         diff_i = float(0.0)
         for xyz in range(3):
-          jac1p, _ = _jac(m, d, w_id, d.contact.pos[w_id, n_id], xyz, body1, i)
-          jac2p, _ = _jac(m, d, w_id, d.contact.pos[w_id, n_id], xyz, body2, i)
+          jac1p = _jac(m, d, w_id, d.contact.pos[w_id, n_id], xyz, body1, i)
+          jac2p = _jac(m, d, w_id, d.contact.pos[w_id, n_id], xyz, body2, i)
           diff_0 += d.contact.frame[w_id, n_id][0, xyz] * (jac2p - jac1p)
           diff_i += d.contact.frame[w_id, n_id][con_dim, xyz] * (jac2p - jac1p)
         if id % 2 == 0:
@@ -235,15 +232,14 @@ def _allocate_efc_contact_pyramidal(
   condim = 3
 
   if d.contact.dim[w_id, i_con] == condim:
-    if m.opt.cone == types.MJ_CONE_PYRAMIDAL:
-      irow = wp.atomic_add(i_c, 1, 2 * (condim - 1))
-      for j in range(condim - 1):
-        con_id[irow + 2 * j] = i_con
-        con_id[irow + 2 * j + 1] = i_con
-        con_dim_id[irow + 2 * j] = j + 1
-        con_dim_id[irow + 2 * j + 1] = j + 1
-        worldid_con[irow + 2 * j] = w_id
-        worldid_con[irow + 2 * j + 1] = w_id
+    irow = wp.atomic_add(i_c, 1, 2 * (condim - 1))
+    for j in range(condim - 1):
+      con_id[irow + 2 * j] = i_con
+      con_id[irow + 2 * j + 1] = i_con
+      con_dim_id[irow + 2 * j] = j + 1
+      con_dim_id[irow + 2 * j + 1] = j + 1
+      worldid_con[irow + 2 * j] = w_id
+      worldid_con[irow + 2 * j + 1] = w_id
 
 
 def make_constraint(m: types.Model, d: types.Data):
@@ -275,7 +271,6 @@ def make_constraint(m: types.Model, d: types.Data):
     efcs.solref = wp.zeros(shape=(nefcs, types.MJ_NREF), dtype=wp.float32)
     efcs.solimp = wp.zeros(shape=(nefcs, types.MJ_NIMP), dtype=wp.float32)
     efcs.margin = wp.zeros(shape=(nefcs), dtype=wp.float32)
-    efcs.frictionloss = wp.zeros(shape=(nefcs), dtype=wp.float32)
 
     if not (m.opt.disableflags & types.MJ_DSBL_LIMIT) and (
       m.efc_jnt_slide_hinge_id.size != 0

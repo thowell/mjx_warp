@@ -163,34 +163,9 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.opt.timestep = wp.float32(mjm.opt.timestep)
   m.opt.impratio = wp.float32(mjm.opt.impratio)
   # Pre-build the permanent constraint rows
-  nl_slide_hinge = int(
-    sum(
-      ((mjm.jnt_type == types.MJ_JNT_SLIDE) + (mjm.jnt_type == types.MJ_JNT_HINGE))
-      * mjm.jnt_limited
-    )
-  )
-  i_c = wp.zeros(1, dtype=int)
-  m.efc_jnt_slide_hinge_id = wp.empty(shape=(nl_slide_hinge), dtype=wp.int32)
-  wp.launch(
-    _prebuild_efc_jnt_limit,
-    dim=(mjm.njnt),
-    inputs=[m, i_c],
-  )
+  m.efc_jnt_slide_hinge_id = wp.array(np.nonzero(mjm.jnt_limited & ((mjm.jnt_type == mujoco.mjtJoint.mjJNT_SLIDE) | (mjm.jnt_type == mujoco.mjtJoint.mjJNT_HINGE)))[0], dtype=wp.int32)
 
   return m
-
-
-@wp.kernel
-def _prebuild_efc_jnt_limit(
-  m: types.Model,
-  i_c: wp.array(dtype=wp.int32),
-):
-  id = wp.tid()
-  if (
-    m.jnt_type[id] == types.MJ_JNT_SLIDE or m.jnt_type[id] == types.MJ_JNT_HINGE
-  ) and m.jnt_limited[id]:
-    irow = wp.atomic_add(i_c, 0, 1)
-    m.efc_jnt_slide_hinge_id[irow] = id
 
 
 def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
