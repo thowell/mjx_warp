@@ -23,7 +23,6 @@ MJ_NREF = mujoco.mjNREF
 MJ_NIMP = mujoco.mjNIMP
 
 
-
 class DisableBit(enum.IntFlag):
   """Disable default feature bitflags.
 
@@ -311,7 +310,6 @@ class Data:
   qfrc_damper: wp.array(dtype=wp.float32, ndim=2)
   qfrc_actuator: wp.array(dtype=wp.float32, ndim=2)
   qfrc_smooth: wp.array(dtype=wp.float32, ndim=2)
-  qacc_smooth: wp.array(dtype=wp.float32, ndim=2)
   contact: Contact
   efc_J: wp.array(dtype=wp.float32, ndim=3)
   efc_pos: wp.array(dtype=wp.float32, ndim=2)

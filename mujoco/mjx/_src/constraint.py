@@ -247,7 +247,7 @@ def make_constraint(m: types.Model, d: types.Data):
 
   i_c = wp.zeros(2, dtype=int)
   i_wc = wp.zeros(d.nworld, dtype=int)
-  if not (m.opt.disableflags & types.MJ_DSBL_CONSTRAINT):
+  if not (m.opt.disableflags & types.DisableBit.CONSTRAINT.value):
     # Prepare the contact constraints using conservative values
     n_con = d.ncon * d.nworld * 6
     worldid_con = wp.empty(n_con, dtype=wp.int32)
@@ -272,7 +272,7 @@ def make_constraint(m: types.Model, d: types.Data):
     efcs.solimp = wp.zeros(shape=(nefcs, types.MJ_NIMP), dtype=wp.float32)
     efcs.margin = wp.zeros(shape=(nefcs), dtype=wp.float32)
 
-    if not (m.opt.disableflags & types.MJ_DSBL_LIMIT) and (
+    if not (m.opt.disableflags & types.DisableBit.LIMIT.value) and (
       m.efc_jnt_slide_hinge_id.size != 0
     ):
       wp.launch(
@@ -282,7 +282,7 @@ def make_constraint(m: types.Model, d: types.Data):
         outputs=[efcs],
       )
 
-    if m.opt.cone == types.MJ_CONE_PYRAMIDAL:
+    if m.opt.cone == types.ConeType.PYRAMIDAL.value:
       wp.launch(
         _efc_contact_pyramidal,
         dim=n_con,
@@ -290,7 +290,7 @@ def make_constraint(m: types.Model, d: types.Data):
         outputs=[efcs],
       )
 
-  refsafe = not m.opt.disableflags & types.MJ_DSBL_REFSAFE
+  refsafe = not m.opt.disableflags & types.DisableBit.REFSAFE.value
   wp.launch(_update_contact_data, dim=nefcs, inputs=[m, d, i_c, i_wc, efcs, refsafe])
 
   return d
