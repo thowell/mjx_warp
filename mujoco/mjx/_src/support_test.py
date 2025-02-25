@@ -39,8 +39,8 @@ def _assert_eq(a, b, name):
 
 class SupportTest(parameterized.TestCase):
   @parameterized.parameters(True, False)
-  def test_mul_m_sparse(self, sparse):
-    """Tests mul_m sparse."""
+  def test_mul_m(self, sparse):
+    """Tests mul_m."""
     mjm, mjd, m, d = test_util.fixture("pendula.xml", sparse=sparse)
 
     mj_res = np.zeros(mjm.nv)
