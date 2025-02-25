@@ -51,6 +51,9 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.qpos0 = wp.array(mjm.qpos0, dtype=wp.float32, ndim=1)
   m.qpos_spring = wp.array(mjm.qpos_spring, dtype=wp.float32, ndim=1)
 
+  # dof lower triangle row and column indices
+  dof_tri_row, dof_tri_col = np.tril_indices(mjm.nv)
+
   # body_tree is BFS ordering of body ids
   # body_treeadr contains starting index of each body tree level
   bodies, body_depth = {}, np.zeros(mjm.nbody, dtype=int) - 1
@@ -139,6 +142,8 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.dof_Madr = wp.array(mjm.dof_Madr, dtype=wp.int32, ndim=1)
   m.dof_armature = wp.array(mjm.dof_armature, dtype=wp.float32, ndim=1)
   m.dof_damping = wp.array(mjm.dof_damping, dtype=wp.float32, ndim=1)
+  m.dof_tri_row = wp.from_numpy(dof_tri_row, dtype=wp.int32)
+  m.dof_tri_col = wp.from_numpy(dof_tri_col, dtype=wp.int32)
   m.actuator_actlimited = wp.array(mjm.actuator_actlimited, dtype=wp.int32, ndim=1)
   m.actuator_actrange = wp.array(mjm.actuator_actrange, dtype=wp.vec2f, ndim=1)
   m.actuator_actadr = wp.array(mjm.actuator_actadr, dtype=wp.int32, ndim=1)

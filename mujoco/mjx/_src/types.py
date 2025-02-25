@@ -118,6 +118,8 @@ class Model:
   dof_Madr: wp.array(dtype=wp.int32, ndim=1)
   dof_armature: wp.array(dtype=wp.float32, ndim=1)
   dof_damping: wp.array(dtype=wp.float32, ndim=1)
+  dof_tri_row: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  dof_tri_col: wp.array(dtype=wp.int32, ndim=1)  # warp only
   actuator_actlimited: wp.array(dtype=wp.int32, ndim=1)
   actuator_actrange: wp.array(dtype=wp.vec2f, ndim=1)
   actuator_actadr: wp.array(dtype=wp.int32, ndim=1)

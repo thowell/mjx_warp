@@ -73,7 +73,7 @@ def _create_context(ctx: Context, m: types.Model, d: types.Data, grad: bool = Tr
 
     if efcid >= d.nefc_total[0]:
       return
-    
+
     worldid = d.efc_worldid[efcid]
     wp.atomic_add(
       ctx.Jaref,
@@ -138,7 +138,7 @@ def _create_lspoint(ls_pnt: LSPoint, m: types.Model, d: types.Data, ctx: Context
 
     if efcid >= d.nefc_total[0]:
       return
-  
+
     worldid = d.efc_worldid[efcid]
     x = ctx.Jaref[efcid] + ctx.alpha[worldid] * ctx.jv[efcid]
     # TODO(team): active and conditionally active constraints
@@ -205,7 +205,7 @@ def _update_constraint(m: types.Model, d: types.Data, ctx: Context):
 
     if efcid >= d.nefc_total[0]:
       return
-  
+
     worldid = d.efc_worldid[efcid]
     Jaref = ctx.Jaref[efcid]
     efc_D = d.efc_D[efcid]
@@ -231,7 +231,7 @@ def _update_constraint(m: types.Model, d: types.Data, ctx: Context):
 
     if efcid >= d.nefc_total[0]:
       return
-  
+
     worldid = d.efc_worldid[efcid]
     wp.atomic_add(
       d.qfrc_constraint[worldid],
@@ -276,15 +276,26 @@ def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
   elif m.opt.solver == 2:  # Newton
     # TODO(team): sparse version
     # h = qM + (efc_J.T * efc_D * active) @ efc_J
-    wp.copy(ctx.h, d.qM)
+    @wp.kernel
+    def _copy_lower_triangle(m: types.Model, d: types.Data, ctx: Context):
+      worldid, elementid = wp.tid()
+      rowid = m.dof_tri_row[elementid]
+      colid = m.dof_tri_col[elementid]
+      ctx.h[worldid, rowid, colid] = d.qM[worldid, rowid, colid]
+
+    wp.launch(
+      _copy_lower_triangle, dim=(d.nworld, m.dof_tri_row.size), inputs=[m, d, ctx]
+    )
 
     @wp.kernel
-    def _JTDAJ(ctx: Context, d: types.Data):
-      dofi, dofj, efcid = wp.tid()
+    def _JTDAJ(ctx: Context, m: types.Model, d: types.Data):
+      efcid, elementid = wp.tid()
+      dofi = m.dof_tri_row[elementid]
+      dofj = m.dof_tri_col[elementid]
 
       if efcid >= d.nefc_total[0]:
         return
-      
+
       efc_D = d.efc_D[efcid]
       active = ctx.active[efcid]
       if efc_D == 0.0 or active == 0:
@@ -297,7 +308,7 @@ def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
         d.efc_J[efcid, dofi] * d.efc_J[efcid, dofj] * efc_D * float(active),
       )
 
-    wp.launch(_JTDAJ, dim=(m.nv, m.nv, d.njmax), inputs=[ctx, d])
+    wp.launch(_JTDAJ, dim=(d.njmax, m.dof_tri_row.size), inputs=[ctx, m, d])
 
     TILE = m.nv
 
@@ -350,7 +361,7 @@ def _linesearch(m: types.Model, d: types.Data, ctx: Context):
 
     if efcid >= d.nefc_total[0]:
       return
-  
+
     worldid = d.efc_worldid[efcid]
     wp.atomic_add(
       ctx.jv,
@@ -391,7 +402,7 @@ def _linesearch(m: types.Model, d: types.Data, ctx: Context):
 
     if efcid >= d.nefc_total[0]:
       return
-  
+
     Jaref = ctx.Jaref[efcid]
     jv = ctx.jv[efcid]
     efc_D = d.efc_D[efcid]
@@ -655,7 +666,7 @@ def _linesearch(m: types.Model, d: types.Data, ctx: Context):
 
     if efcid >= d.nefc_total[0]:
       return
-  
+
     worldid = d.efc_worldid[efcid]
     ctx.Jaref[efcid] += ctx.alpha[worldid] * ctx.jv[efcid]
 
