@@ -17,7 +17,7 @@ def mul_m(
 ):
   """Multiply vector by inertia matrix."""
 
-  if not wp.static(m.opt.is_sparse):
+  if not m.opt.is_sparse:
     output.zero_()
 
     @wp.kernel
