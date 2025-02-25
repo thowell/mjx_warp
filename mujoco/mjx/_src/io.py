@@ -163,7 +163,16 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.opt.timestep = wp.float32(mjm.opt.timestep)
   m.opt.impratio = wp.float32(mjm.opt.impratio)
   # Pre-build the permanent constraint rows
-  m.efc_jnt_slide_hinge_id = wp.array(np.nonzero(mjm.jnt_limited & ((mjm.jnt_type == mujoco.mjtJoint.mjJNT_SLIDE) | (mjm.jnt_type == mujoco.mjtJoint.mjJNT_HINGE)))[0], dtype=wp.int32)
+  m.efc_jnt_slide_hinge_id = wp.array(
+    np.nonzero(
+      mjm.jnt_limited
+      & (
+        (mjm.jnt_type == mujoco.mjtJoint.mjJNT_SLIDE)
+        | (mjm.jnt_type == mujoco.mjtJoint.mjJNT_HINGE)
+      )
+    )[0],
+    dtype=wp.int32,
+  )
 
   return m
 

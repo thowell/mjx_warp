@@ -34,7 +34,6 @@ def _assert_eq(a, b, name):
 
 
 class ConstraintTest(parameterized.TestCase):
-
   def test_constraints(self):
     """Test constraints."""
     mjm, mjd, _, _ = test_util.fixture("constraints.xml", sparse=False)
@@ -48,12 +47,16 @@ class ConstraintTest(parameterized.TestCase):
       d = mjx.put_data(mjm, mjd)
       d = mjx.make_constraint(m, d)
 
-      _assert_eq(mjd.efc_J, np.reshape(d.efc_J.numpy(), shape=(mjd.nefc * mjm.nv)), "efc_J")
+      _assert_eq(
+        mjd.efc_J, np.reshape(d.efc_J.numpy(), shape=(mjd.nefc * mjm.nv)), "efc_J"
+      )
       _assert_eq(mjd.efc_D, np.reshape(d.efc_D.numpy(), shape=(mjd.nefc)), "efc_D")
       _assert_eq(
         mjd.efc_aref, np.reshape(d.efc_aref.numpy(), shape=(mjd.nefc)), "efc_aref"
       )
-      _assert_eq(mjd.efc_pos, np.reshape(d.efc_pos.numpy(), shape=(mjd.nefc)), "efc_pos")
+      _assert_eq(
+        mjd.efc_pos, np.reshape(d.efc_pos.numpy(), shape=(mjd.nefc)), "efc_pos"
+      )
       _assert_eq(
         mjd.efc_margin, np.reshape(d.efc_margin.numpy(), shape=(mjd.nefc)), "efc_margin"
       )
