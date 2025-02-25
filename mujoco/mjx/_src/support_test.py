@@ -14,7 +14,6 @@
 # ==============================================================================
 
 from absl.testing import absltest
-from absl.testing import parameterized
 import mujoco
 import numpy as np
 import warp as wp
@@ -23,7 +22,7 @@ from . import test_util
 from .support import xfrc_accumulate
 
 
-class SupportTest(parameterized.TestCase):
+class SupportTest(absltest.TestCase):
   def test_xfrc_accumulated(self):
     """Tests that xfrc_accumulate ouput matches mj_xfrcAccumulate."""
     np.random.seed(0)
