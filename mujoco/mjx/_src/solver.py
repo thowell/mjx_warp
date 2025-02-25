@@ -284,15 +284,17 @@ def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
 
       if efcid >= d.nefc_total[0]:
         return
-    
+      
+      efc_D = d.efc_D[efcid]
+      active = ctx.active[efcid]
+      if efc_D == 0.0 or active == 0:
+        return
+
       worldid = d.efc_worldid[efcid]
       wp.atomic_add(
         ctx.h[worldid, dofi],
         dofj,
-        d.efc_J[efcid, dofi]
-        * d.efc_J[efcid, dofj]
-        * d.efc_D[efcid]
-        * float(ctx.active[efcid]),
+        d.efc_J[efcid, dofi] * d.efc_J[efcid, dofj] * efc_D * float(active),
       )
 
     wp.launch(_JTDAJ, dim=(m.nv, m.nv, d.njmax), inputs=[ctx, d])
