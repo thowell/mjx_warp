@@ -77,7 +77,7 @@ def _update_efc_row(
   d.efc_margin[worldid, irow] = margin
 
   # Update the number of constraints
-  d.nefc[0] += 1
+  wp.atomic_add(d.nefc, 0, 1)
 
 
 @wp.func
@@ -200,20 +200,20 @@ def _efc_contact_pyramidal(
         else:
           J[irow, i] = diff_0 - diff_i * d.contact.friction[w_id, n_id, con_dim - 1]
 
-    _update_efc_row(
-      m,
-      d,
-      w_id,
-      irow,
-      J[irow],
-      pos,
-      pos,
-      invweight,
-      d.contact.solref[w_id, n_id],
-      d.contact.solimp[w_id, n_id],
-      d.contact.includemargin[w_id, n_id],
-      refsafe,
-    )
+      _update_efc_row(
+        m,
+        d,
+        w_id,
+        irow,
+        J[irow],
+        pos,
+        pos,
+        invweight,
+        d.contact.solref[w_id, n_id],
+        d.contact.solimp[w_id, n_id],
+        d.contact.includemargin[w_id, n_id],
+        refsafe,
+      )
 
 
 @wp.kernel
