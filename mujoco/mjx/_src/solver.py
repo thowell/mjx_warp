@@ -92,7 +92,7 @@ def _create_context(ctx: Context, m: types.Model, d: types.Data, grad: bool = Tr
   ctx.done.zero_()
 
   _update_constraint(m, d, ctx)
-  if wp.static(grad):
+  if grad:
     _update_gradient(m, d, ctx)
 
     # search = -Mgrad
