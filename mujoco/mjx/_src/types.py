@@ -130,25 +130,6 @@ class vec10f(wp.types.vector(length=10, dtype=wp.float32)):
   pass
 
 
-class DynType(enum.IntEnum):
-  """Type of actuator dynamics.
-
-  Members:
-    NONE: no internal dynamics; ctrl specifies force
-    INTEGRATOR: integrator: da/dt = u
-    FILTER: linear filter: da/dt = (u-a) / tau
-    FILTEREXACT: linear filter: da/dt = (u-a) / tau, with exact integration
-    MUSCLE: piece-wise linear filter with two time constants
-  """
-
-  NONE = mujoco.mjtDyn.mjDYN_NONE
-  INTEGRATOR = mujoco.mjtDyn.mjDYN_INTEGRATOR
-  FILTER = mujoco.mjtDyn.mjDYN_FILTER
-  FILTEREXACT = mujoco.mjtDyn.mjDYN_FILTEREXACT
-  MUSCLE = mujoco.mjtDyn.mjDYN_MUSCLE
-  # unsupported: USER
-
-
 vec10 = vec10f
 array2df = wp.array2d(dtype=wp.float32)
 array3df = wp.array3d(dtype=wp.float32)
