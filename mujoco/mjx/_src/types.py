@@ -184,6 +184,7 @@ class Model:
   body_invweight0: wp.array(dtype=wp.float32, ndim=2)
   jnt_bodyid: wp.array(dtype=wp.int32, ndim=1)
   jnt_limited: wp.array(dtype=wp.int32, ndim=1)
+  jnt_limited_slide_hinge_adr: wp.array(dtype=wp.int32, ndim=1)  # warp only
   jnt_solref: wp.array(dtype=wp.float32, ndim=2)
   jnt_solimp: wp.array(dtype=wp.float32, ndim=2)
   jnt_type: wp.array(dtype=wp.int32, ndim=1)
@@ -224,8 +225,6 @@ class Model:
   actuator_dyntype: wp.array(dtype=wp.int32, ndim=1)
   actuator_dynprm: wp.array(dtype=vec10f, ndim=1)
   opt: Option
-  # warp only
-  efc_jnt_slide_hinge_id: wp.array(dtype=wp.int32, ndim=1)
 
 
 @wp.struct
@@ -295,7 +294,6 @@ class Data:
   efc_J: wp.array(dtype=wp.float32, ndim=3)
   efc_pos: wp.array(dtype=wp.float32, ndim=2)
   efc_margin: wp.array(dtype=wp.float32, ndim=2)
-  efc_frictionloss: wp.array(dtype=wp.float32, ndim=2)
   efc_D: wp.array(dtype=wp.float32, ndim=2)
   efc_aref: wp.array(dtype=wp.float32, ndim=2)
 

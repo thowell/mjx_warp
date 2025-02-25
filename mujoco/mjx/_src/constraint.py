@@ -22,8 +22,7 @@ def _update_efc_row(
   m: types.Model,
   d: types.Data,
   worldid: wp.int32,
-  irow: wp.int32,
-  J: wp.array(ndim=1, dtype=wp.float32),
+  efcid: wp.int32,
   pos_aref: wp.float32,
   pos_imp: wp.float32,
   invweight: wp.float32,
@@ -31,6 +30,7 @@ def _update_efc_row(
   solimp: wp.array(ndim=1, dtype=wp.float32),
   margin: wp.float32,
   refsafe: bool,
+  Jqvel: float,
 ):
   # Calculate kbi
   timeconst = solref[0]
@@ -65,30 +65,21 @@ def _update_efc_row(
   imp = wp.select(imp_x > 1.0, imp, dmax)
 
   # Update constraints
-  r = wp.max(invweight * (1.0 - imp) / imp, types.MJ_MINVAL)
-  aref = float(0.0)
-  for i in range(m.nv):
-    aref += -b * (J[i] * d.qvel[worldid, i])
-    d.efc_J[worldid, irow, i] = J[i]
-  aref -= k * imp * pos_aref
-  d.efc_D[worldid, irow] = 1.0 / r
-  d.efc_aref[worldid, irow] = aref
-  d.efc_pos[worldid, irow] = pos_aref + margin
-  d.efc_margin[worldid, irow] = margin
-
-  # Update the number of constraints
-  wp.atomic_add(d.nefc, 0, 1)
+  d.efc_D[worldid, efcid] = 1.0 / wp.max(invweight * (1.0 - imp) / imp, types.MJ_MINVAL)
+  d.efc_aref[worldid, efcid] = -k * imp * pos_aref - b * Jqvel
+  d.efc_pos[worldid, efcid] = pos_aref + margin
+  d.efc_margin[worldid, efcid] = margin
 
 
 @wp.func
 def _jac(
   m: types.Model,
   d: types.Data,
-  worldid: wp.int32,
   point: wp.vec3,
   xyz: wp.int32,
   bodyid: wp.int32,
   dofid: wp.int32,
+  worldid: wp.int32,
 ):
   dof_bodyid = m.dof_bodyid[dofid]
   in_tree = int(dof_bodyid == 0)
@@ -101,48 +92,49 @@ def _jac(
 
   offset = point - wp.vec3(d.subtree_com[worldid, m.body_rootid[bodyid]])
 
-  temp_jac = wp.vec3(0.0)
-  temp_jac = wp.spatial_bottom(d.cdof[worldid, dofid]) + wp.cross(
+  jac = wp.spatial_bottom(d.cdof[worldid, dofid]) + wp.cross(
     wp.spatial_top(d.cdof[worldid, dofid]), offset
   )
-  jacp = temp_jac[xyz] * float(in_tree)
 
-  return jacp
+  return jac[xyz] * float(in_tree)
 
 
 @wp.kernel
 def _efc_limit_slide_hinge(
   m: types.Model,
   d: types.Data,
-  i_c: wp.array(ndim=1, dtype=wp.int32),
-  jnt_id: wp.array(ndim=1, dtype=wp.int32),
-  J: wp.array(ndim=2, dtype=wp.float32),
   refsafe: bool,
 ):
-  worldid, id = wp.tid()
-  n_id = jnt_id[id]
+  worldid, jntlimitedid = wp.tid()
+  jntid = m.jnt_limited_slide_hinge_adr[jntlimitedid]
 
-  qpos = d.qpos[worldid, m.jnt_qposadr[n_id]]
-  dist_min, dist_max = qpos - m.jnt_range[n_id][0], m.jnt_range[n_id][1] - qpos
-  pos = wp.min(dist_min, dist_max) - m.jnt_margin[n_id]
+  qpos = d.qpos[worldid, m.jnt_qposadr[jntid]]
+  dist_min, dist_max = qpos - m.jnt_range[jntid][0], m.jnt_range[jntid][1] - qpos
+  pos = wp.min(dist_min, dist_max) - m.jnt_margin[jntid]
   active = pos < 0
+
   if active:
-    irow = wp.atomic_add(i_c, 0, 1)
-    J[irow, m.jnt_dofadr[n_id]] = float(dist_min < dist_max) * 2.0 - 1.0
+    efcid = wp.atomic_add(d.nefc, worldid, 1)
+
+    dofadr = m.jnt_dofadr[jntid]
+
+    J = float(dist_min < dist_max) * 2.0 - 1.0
+    d.efc_J[worldid, efcid, dofadr] = J
+    Jqvel = J * d.qvel[worldid, dofadr]
 
     _update_efc_row(
       m,
       d,
       worldid,
-      irow,
-      J[irow],
+      efcid,
       pos,
       pos,
-      m.dof_invweight0[m.jnt_dofadr[n_id]],
-      m.jnt_solref[n_id],
-      m.jnt_solimp[n_id],
-      m.jnt_margin[n_id],
+      m.dof_invweight0[dofadr],
+      m.jnt_solref[jntid],
+      m.jnt_solimp[jntid],
+      m.jnt_margin[jntid],
       refsafe,
+      Jqvel,
     )
 
 
@@ -150,129 +142,87 @@ def _efc_limit_slide_hinge(
 def _efc_contact_pyramidal(
   m: types.Model,
   d: types.Data,
-  worldid: wp.array(ndim=1, dtype=wp.int32),
-  i_c: wp.array(ndim=1, dtype=wp.int32),
-  con_id: wp.array(ndim=1, dtype=wp.int32),
-  con_dim_id: wp.array(ndim=1, dtype=wp.int32),
-  J: wp.array(ndim=2, dtype=wp.float32),
   refsafe: bool,
 ):
-  id = wp.tid()
-  if id < i_c[1]:
-    n_id = con_id[id]
-    w_id = worldid[id]
-    con_dim = con_dim_id[id]
+  worldid, conid, dimid = wp.tid()
 
-    pos = d.contact.dist[w_id, n_id] - d.contact.includemargin[w_id, n_id]
+  if d.contact.dim[worldid, conid] != 3:
+    return
 
-    body1 = m.geom_bodyid[d.contact.geom[w_id, n_id, 0]]
-    body2 = m.geom_bodyid[d.contact.geom[w_id, n_id, 1]]
+  pos = d.contact.dist[worldid, conid] - d.contact.includemargin[worldid, conid]
+  active = pos < 0
+
+  if active:
+    efcid = wp.atomic_add(d.nefc, worldid, 1)
+
+    body1 = m.geom_bodyid[d.contact.geom[worldid, conid, 0]]
+    body2 = m.geom_bodyid[d.contact.geom[worldid, conid, 1]]
+
+    fri0 = d.contact.friction[worldid, conid, 0]
 
     # pyramidal has common invweight across all edges
     invweight = m.body_invweight0[body1, 0] + m.body_invweight0[body2, 0]
-    invweight = (
-      invweight
-      + d.contact.friction[w_id, n_id, 0]
-      * d.contact.friction[w_id, n_id, 0]
-      * invweight
+    invweight = invweight + fri0 * fri0 * invweight
+    invweight = invweight * 2.0 * fri0 * fri0 / m.opt.impratio
+
+    dimid2 = dimid / 2 + 1
+
+    Jqvel = float(0.0)
+    for i in range(m.nv):
+      diff_0 = float(0.0)
+      diff_i = float(0.0)
+      for xyz in range(3):
+        con_pos = d.contact.pos[worldid, conid]
+        jac1p = _jac(m, d, con_pos, xyz, body1, i, worldid)
+        jac2p = _jac(m, d, con_pos, xyz, body2, i, worldid)
+        jac_dif = jac2p - jac1p
+        diff_0 += d.contact.frame[worldid, conid][0, xyz] * jac_dif
+        diff_i += d.contact.frame[worldid, conid][dimid2, xyz] * jac_dif
+      if dimid % 2 == 0:
+        J = diff_0 + diff_i * d.contact.friction[worldid, conid, dimid2 - 1]
+      else:
+        J = diff_0 - diff_i * d.contact.friction[worldid, conid, dimid2 - 1]
+
+      d.efc_J[worldid, efcid, i] = J
+      Jqvel += J * d.qvel[worldid, i]
+
+    _update_efc_row(
+      m,
+      d,
+      worldid,
+      efcid,
+      pos,
+      pos,
+      invweight,
+      d.contact.solref[worldid, conid],
+      d.contact.solimp[worldid, conid],
+      d.contact.includemargin[worldid, conid],
+      refsafe,
+      Jqvel,
     )
-
-    active = pos < 0
-    if active:
-      irow = wp.atomic_add(i_c, 0, 1)
-      invweight = (
-        invweight
-        * 2.0
-        * d.contact.friction[w_id, n_id, 0]
-        * d.contact.friction[w_id, n_id, 0]
-        / m.opt.impratio
-      )
-      for i in range(m.nv):
-        diff_0 = float(0.0)
-        diff_i = float(0.0)
-        for xyz in range(3):
-          jac1p = _jac(m, d, w_id, d.contact.pos[w_id, n_id], xyz, body1, i)
-          jac2p = _jac(m, d, w_id, d.contact.pos[w_id, n_id], xyz, body2, i)
-          diff_0 += d.contact.frame[w_id, n_id][0, xyz] * (jac2p - jac1p)
-          diff_i += d.contact.frame[w_id, n_id][con_dim, xyz] * (jac2p - jac1p)
-        if id % 2 == 0:
-          J[irow, i] = diff_0 + diff_i * d.contact.friction[w_id, n_id, con_dim - 1]
-        else:
-          J[irow, i] = diff_0 - diff_i * d.contact.friction[w_id, n_id, con_dim - 1]
-
-      _update_efc_row(
-        m,
-        d,
-        w_id,
-        irow,
-        J[irow],
-        pos,
-        pos,
-        invweight,
-        d.contact.solref[w_id, n_id],
-        d.contact.solimp[w_id, n_id],
-        d.contact.includemargin[w_id, n_id],
-        refsafe,
-      )
-
-
-@wp.kernel
-def _allocate_efc_contact_pyramidal(
-  d: types.Data,
-  i_c: wp.array(dtype=wp.int32),
-  worldid_con: wp.array(dtype=wp.int32),
-  con_id: wp.array(dtype=wp.int32),
-  con_dim_id: wp.array(dtype=wp.int32),
-):
-  w_id, i_con = wp.tid()
-  condim = 3
-
-  if d.contact.dim[w_id, i_con] == condim:
-    irow = wp.atomic_add(i_c, 1, 2 * (condim - 1))
-    for j in range(condim - 1):
-      con_id[irow + 2 * j] = i_con
-      con_id[irow + 2 * j + 1] = i_con
-      con_dim_id[irow + 2 * j] = j + 1
-      con_dim_id[irow + 2 * j + 1] = j + 1
-      worldid_con[irow + 2 * j] = w_id
-      worldid_con[irow + 2 * j + 1] = w_id
 
 
 def make_constraint(m: types.Model, d: types.Data):
   """Creates constraint jacobians and other supporting data."""
 
-  i_c = wp.zeros(2, dtype=int)
   if not (m.opt.disableflags & types.DisableBit.CONSTRAINT.value):
-    # Prepare the contact constraints using conservative values
-    n_con = d.ncon * d.nworld * 6
-    worldid_con = wp.empty(n_con, dtype=wp.int32)
-    con_id = wp.empty(n_con, dtype=wp.int32)
-    com_dim_id = wp.empty(n_con, dtype=wp.int32)
-    wp.launch(
-      _allocate_efc_contact_pyramidal,
-      dim=(d.nworld, d.ncon),
-      inputs=[d, i_c],
-      outputs=[worldid_con, con_id, com_dim_id],
-    )
+    d.nefc.zero_()
+    d.efc_J.zero_()
 
     refsafe = not m.opt.disableflags & types.DisableBit.REFSAFE.value
 
     if not (m.opt.disableflags & types.DisableBit.LIMIT.value) and (
-      m.efc_jnt_slide_hinge_id.size != 0
+      m.jnt_limited_slide_hinge_adr.size != 0
     ):
-      temp_jac = wp.zeros((m.efc_jnt_slide_hinge_id.size, m.nv), dtype=wp.float32)
       wp.launch(
         _efc_limit_slide_hinge,
-        dim=(d.nworld, m.efc_jnt_slide_hinge_id.size),
-        inputs=[m, d, i_c, m.efc_jnt_slide_hinge_id, temp_jac, refsafe],
+        dim=(d.nworld, m.jnt_limited_slide_hinge_adr.size),
+        inputs=[m, d, refsafe],
       )
 
     if m.opt.cone == types.ConeType.PYRAMIDAL.value:
-      temp_jac = wp.zeros((n_con, m.nv), dtype=wp.float32)
       wp.launch(
         _efc_contact_pyramidal,
-        dim=n_con,
-        inputs=[m, d, worldid_con, i_c, con_id, com_dim_id, temp_jac, refsafe],
+        dim=(d.nworld, d.ncon, 4),
+        inputs=[m, d, refsafe],
       )
-
-  return d
