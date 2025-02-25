@@ -76,7 +76,7 @@ def compute_qfrc(
 
 def xfrc_accumulate(m: Model, d: Data) -> array2df:
   body_treeadr_np = m.body_treeadr.numpy()
-  mask = wp.zeros((m.nbody, m.nv), dtype=wp.bool)
+  mask = wp.zeros((m.nv, m.nbody), dtype=wp.bool)
 
   for i in range(len(body_treeadr_np)):
     beg = body_treeadr_np[i]

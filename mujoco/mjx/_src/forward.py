@@ -304,13 +304,13 @@ def fwd_acceleration(m: Model, d: Data):
   """Add up all non-constraint forces, compute qacc_smooth."""
 
   qfrc_applied = d.qfrc_applied
-  xfrc = xfrc_accumulate(m, d)
+  qfrc_accumulated = xfrc_accumulate(m, d)
 
   @wp.kernel
   def _qfrc_smooth(
     d: Data,
     qfrc_applied: wp.array(ndim=2, dtype=wp.float32),
-    xfrc: wp.array(ndim=2, dtype=wp.float32),
+    qfrc_accumulated: wp.array(ndim=2, dtype=wp.float32),
   ):
     worldid, dofid = wp.tid()
     d.qfrc_smooth[worldid, dofid] = (
@@ -318,10 +318,12 @@ def fwd_acceleration(m: Model, d: Data):
       - d.qfrc_bias[worldid, dofid]
       + d.qfrc_actuator[worldid, dofid]
       + qfrc_applied[worldid, dofid]
-      + xfrc[worldid, dofid]
+      + qfrc_accumulated[worldid, dofid]
     )
 
-  wp.launch(_qfrc_smooth, dim=(d.nworld, m.nv), inputs=[d, qfrc_applied, xfrc])
+  wp.launch(
+    _qfrc_smooth, dim=(d.nworld, m.nv), inputs=[d, qfrc_applied, qfrc_accumulated]
+  )
 
   smooth.solve_m(m, d, d.qacc_smooth, d.qfrc_smooth)
 

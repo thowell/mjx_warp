@@ -23,7 +23,7 @@ from . import test_util
 from .support import xfrc_accumulate
 
 
-class SmoothTest(parameterized.TestCase):
+class SupportTest(parameterized.TestCase):
   def test_xfrc_accumulated(self):
     """Tests that xfrc_accumulate ouput matches mj_xfrcAccumulate."""
     np.random.seed(0)
