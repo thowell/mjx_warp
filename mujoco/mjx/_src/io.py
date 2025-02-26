@@ -53,7 +53,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
       is_, js, madr_ijs = is_ + [i], js + [j], madr_ijs + [madr_ij]
 
   qM_i, qM_j, qM_madr_ij = (np.array(x, dtype=np.int32) for x in (is_, js, madr_ijs))
-  
+
   jnt_limited_slide_hinge_adr = np.nonzero(
     mjm.jnt_limited
     & (
