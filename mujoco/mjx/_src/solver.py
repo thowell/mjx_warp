@@ -85,14 +85,9 @@ def _create_context(ctx: Context, m: types.Model, d: types.Data, grad: bool = Tr
 
   # Ma = qM @ qacc
   support.mul_m(m, d, ctx.Ma, d.qacc)
-  # ctx.grad.zero_()
-  # ctx.Mgrad.zero_()
-  # ctx.search.zero_()
-  # ctx.gauss.zero_()
+  
   ctx.cost.fill_(wp.inf)
-  # ctx.prev_cost.zero_()
   ctx.solver_niter.zero_()
-  # ctx.active.zero_()
   ctx.done.zero_()
 
   _update_constraint(m, d, ctx)
