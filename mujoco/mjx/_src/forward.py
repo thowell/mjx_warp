@@ -29,6 +29,7 @@ from .types import MJ_MINVAL
 from .types import DisableBit
 from .types import JointType
 from .types import DynType
+from .support import xfrc_accumulate
 
 
 def _advance(
@@ -306,19 +307,26 @@ def fwd_acceleration(m: Model, d: Data):
   """Add up all non-constraint forces, compute qacc_smooth."""
 
   qfrc_applied = d.qfrc_applied
-  # TODO(team) += support.xfrc_accumulate(m, d)
+  qfrc_accumulated = xfrc_accumulate(m, d)
 
   @wp.kernel
-  def _qfrc_smooth(d: Data, qfrc_applied: wp.array(ndim=2, dtype=wp.float32)):
+  def _qfrc_smooth(
+    d: Data,
+    qfrc_applied: wp.array(ndim=2, dtype=wp.float32),
+    qfrc_accumulated: wp.array(ndim=2, dtype=wp.float32),
+  ):
     worldid, dofid = wp.tid()
     d.qfrc_smooth[worldid, dofid] = (
       d.qfrc_passive[worldid, dofid]
       - d.qfrc_bias[worldid, dofid]
       + d.qfrc_actuator[worldid, dofid]
       + qfrc_applied[worldid, dofid]
+      + qfrc_accumulated[worldid, dofid]
     )
 
-  wp.launch(_qfrc_smooth, dim=(d.nworld, m.nv), inputs=[d, qfrc_applied])
+  wp.launch(
+    _qfrc_smooth, dim=(d.nworld, m.nv), inputs=[d, qfrc_applied, qfrc_accumulated]
+  )
 
   smooth.solve_m(m, d, d.qacc_smooth, d.qfrc_smooth)
 

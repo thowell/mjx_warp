@@ -245,7 +245,7 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   d.qfrc_smooth = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qfrc_constraint = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qacc_smooth = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
-
+  d.xfrc_applied = wp.zeros((nworld, mjm.nbody), dtype=wp.spatial_vector)
   # internal tmp arrays
   d.qfrc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qacc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
@@ -350,6 +350,7 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
   d.efc_D = wp.zeros((nworld, mjd.nefc), dtype=wp.float32)
   d.efc_aref = wp.zeros((nworld, mjd.nefc), dtype=wp.float32)
 
+  d.xfrc_applied = wp.array(tile(mjd.xfrc_applied), dtype=wp.spatial_vector, ndim=2)
   # internal tmp arrays
   d.qfrc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qacc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
