@@ -158,7 +158,7 @@ def make_data(
 ) -> types.Data:
   d = types.Data()
   d.nworld = nworld
-  d.nefc_total = wp.zeros((1), dtype=wp.int32, ndim=1)
+  d.nefc_total = wp.zeros((1,), dtype=wp.int32, ndim=1)
 
   if njmax == -1:
     # TODO(team): heuristic for njmax
@@ -213,12 +213,12 @@ def make_data(
   d.qacc_smooth = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qfrc_constraint = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.efc_J = wp.zeros((njmax, mjm.nv), dtype=wp.float32)
-  d.efc_D = wp.zeros((njmax), dtype=wp.float32)
-  d.efc_aref = wp.zeros((njmax), dtype=wp.float32)
-  d.efc_force = wp.zeros((njmax), dtype=wp.float32)
-  d.efc_worldid = wp.zeros((njmax), dtype=wp.int32)
-  d.world_efcadr = wp.zeros((nworld), dtype=wp.int32)
-  d.world_efcsize = wp.zeros((nworld), dtype=wp.int32)
+  d.efc_D = wp.zeros((njmax,), dtype=wp.float32)
+  d.efc_aref = wp.zeros((njmax,), dtype=wp.float32)
+  d.efc_force = wp.zeros((njmax,), dtype=wp.float32)
+  d.efc_worldid = wp.zeros((njmax,), dtype=wp.int32)
+  d.world_efcadr = wp.zeros((nworld,), dtype=wp.int32)
+  d.world_efcsize = wp.zeros((nworld,), dtype=wp.int32)
 
   # internal tmp arrays
   d.qfrc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)

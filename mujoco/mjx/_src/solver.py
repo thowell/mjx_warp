@@ -20,9 +20,9 @@ class Context:
   gtol: wp.array(dtype=wp.float32, ndim=1)
   mv: wp.array(dtype=wp.float32, ndim=2)
   jv: wp.array(dtype=wp.float32, ndim=1)
-  quad: wp.array(dtype=wp.float32, ndim=2)
-  quad_gauss: wp.array(dtype=wp.float32, ndim=2)
-  quad_total: wp.array(dtype=wp.float32, ndim=2)
+  quad: wp.array(dtype=wp.vec3f, ndim=1)
+  quad_gauss: wp.array(dtype=wp.vec3f, ndim=1)
+  quad_total: wp.array(dtype=wp.vec3f, ndim=1)
   h: wp.array(dtype=wp.float32, ndim=3)
   alpha: wp.array(dtype=wp.float32, ndim=1)
   prev_grad: wp.array(dtype=wp.float32, ndim=2)
@@ -35,30 +35,30 @@ class Context:
 
 def _context(m: types.Model, d: types.Data) -> Context:
   ctx = Context()
-  ctx.Jaref = wp.empty(shape=(d.njmax), dtype=wp.float32)
+  ctx.Jaref = wp.empty(shape=(d.njmax,), dtype=wp.float32)
   ctx.Ma = wp.empty(shape=(d.nworld, m.nv), dtype=wp.float32)
   ctx.grad = wp.empty(shape=(d.nworld, m.nv), dtype=wp.float32)
   ctx.Mgrad = wp.empty(shape=(d.nworld, m.nv), dtype=wp.float32)
   ctx.search = wp.empty(shape=(d.nworld, m.nv), dtype=wp.float32)
-  ctx.gauss = wp.empty(shape=(d.nworld), dtype=wp.float32)
-  ctx.cost = wp.empty(shape=(d.nworld), dtype=wp.float32)
-  ctx.prev_cost = wp.empty(shape=(d.nworld), dtype=wp.float32)
-  ctx.solver_niter = wp.empty(shape=(d.nworld), dtype=wp.int32)
-  ctx.active = wp.empty(shape=(d.njmax), dtype=wp.int32)
-  ctx.gtol = wp.empty(shape=(d.nworld), dtype=wp.float32)
+  ctx.gauss = wp.empty(shape=(d.nworld,), dtype=wp.float32)
+  ctx.cost = wp.empty(shape=(d.nworld,), dtype=wp.float32)
+  ctx.prev_cost = wp.empty(shape=(d.nworld,), dtype=wp.float32)
+  ctx.solver_niter = wp.empty(shape=(d.nworld,), dtype=wp.int32)
+  ctx.active = wp.empty(shape=(d.njmax,), dtype=wp.int32)
+  ctx.gtol = wp.empty(shape=(d.nworld,), dtype=wp.float32)
   ctx.mv = wp.empty(shape=(d.nworld, m.nv), dtype=wp.float32)
-  ctx.jv = wp.empty(shape=(d.njmax), dtype=wp.float32)
-  ctx.quad = wp.empty(shape=(d.njmax, 3), dtype=wp.float32)
-  ctx.quad_gauss = wp.empty(shape=(d.nworld, 3), dtype=wp.float32)
-  ctx.quad_total = wp.empty(shape=(d.nworld, 3), dtype=wp.float32)
+  ctx.jv = wp.empty(shape=(d.njmax,), dtype=wp.float32)
+  ctx.quad = wp.empty(shape=(d.njmax,), dtype=wp.vec3f)
+  ctx.quad_gauss = wp.empty(shape=(d.nworld,), dtype=wp.vec3f)
+  ctx.quad_total = wp.empty(shape=(d.nworld,), dtype=wp.vec3f)
   ctx.h = wp.empty(shape=(d.nworld, m.nv, m.nv), dtype=wp.float32)
-  ctx.alpha = wp.empty(shape=(d.nworld), dtype=wp.float32)
+  ctx.alpha = wp.empty(shape=(d.nworld,), dtype=wp.float32)
   ctx.prev_grad = wp.empty(shape=(d.nworld, m.nv), dtype=wp.float32)
   ctx.prev_Mgrad = wp.empty(shape=(d.nworld, m.nv), dtype=wp.float32)
-  ctx.beta = wp.empty(shape=(d.nworld), dtype=wp.float32)
-  ctx.beta_num = wp.empty(shape=(d.nworld), dtype=wp.float32)
-  ctx.beta_den = wp.empty(shape=(d.nworld), dtype=wp.float32)
-  ctx.done = wp.empty(shape=(d.nworld), dtype=wp.int32)
+  ctx.beta = wp.empty(shape=(d.nworld,), dtype=wp.float32)
+  ctx.beta_num = wp.empty(shape=(d.nworld,), dtype=wp.float32)
+  ctx.beta_den = wp.empty(shape=(d.nworld,), dtype=wp.float32)
+  ctx.done = wp.empty(shape=(d.nworld,), dtype=wp.int32)
 
   return ctx
 
@@ -142,27 +142,25 @@ def _create_lspoint(ls_pnt: LSPoint, m: types.Model, d: types.Data, ctx: Context
     worldid = d.efc_worldid[efcid]
     x = ctx.Jaref[efcid] + ctx.alpha[worldid] * ctx.jv[efcid]
     # TODO(team): active and conditionally active constraints
-    active = float(x < 0.0)
-    wp.atomic_add(ctx.quad_total[worldid], 0, ctx.quad[efcid, 0] * active)
-    wp.atomic_add(ctx.quad_total[worldid], 1, ctx.quad[efcid, 1] * active)
-    wp.atomic_add(ctx.quad_total[worldid], 2, ctx.quad[efcid, 2] * active)
+    if x < 0.0:
+      wp.atomic_add(ctx.quad_total, worldid, ctx.quad[efcid])
 
-  wp.launch(_quad, dim=(d.njmax), inputs=[ctx, d])
+  wp.launch(_quad, dim=(d.njmax,), inputs=[ctx, d])
 
   @wp.kernel
   def _cost_deriv01(ls_pnt: LSPoint, ctx: Context):
     worldid = wp.tid()
     alpha = ls_pnt.alpha[worldid]
     alpha_sq = alpha * alpha
-    quad_total0 = ctx.quad_total[worldid, 0]
-    quad_total1 = ctx.quad_total[worldid, 1]
-    quad_total2 = ctx.quad_total[worldid, 2]
+    quad_total0 = ctx.quad_total[worldid][0]
+    quad_total1 = ctx.quad_total[worldid][1]
+    quad_total2 = ctx.quad_total[worldid][2]
 
     ls_pnt.cost[worldid] = alpha_sq * quad_total2 + alpha * quad_total1 + quad_total0
     ls_pnt.deriv_0[worldid] = 2.0 * alpha * quad_total2 + quad_total1
     ls_pnt.deriv_1[worldid] = 2.0 * quad_total2 + float(quad_total2 == 0.0)
 
-  wp.launch(_cost_deriv01, dim=(d.nworld), inputs=[ls_pnt, ctx])
+  wp.launch(_cost_deriv01, dim=(d.nworld,), inputs=[ls_pnt, ctx])
 
 
 @wp.struct
@@ -220,7 +218,7 @@ def _update_constraint(m: types.Model, d: types.Data, ctx: Context):
     # cost = 0.5 * sum(efc_D * Jaref * Jaref * active))
     wp.atomic_add(ctx.cost, worldid, 0.5 * efc_D * Jaref * Jaref * float(active))
 
-  wp.launch(_efc_kernel, dim=(d.njmax), inputs=[ctx, d])
+  wp.launch(_efc_kernel, dim=(d.njmax,), inputs=[ctx, d])
 
   # qfrc_constraint = efc_J.T @ efc_force
   d.qfrc_constraint.zero_()
@@ -321,7 +319,7 @@ def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
       output_tile = wp.tile_cholesky_solve(fact_tile, input_tile)
       wp.tile_store(ctx.Mgrad[worldid], output_tile)
 
-    wp.launch_tiled(_cholesky, dim=(d.nworld), inputs=[ctx], block_dim=256)
+    wp.launch_tiled(_cholesky, dim=(d.nworld,), inputs=[ctx], block_dim=256)
 
 
 @wp.func
@@ -347,7 +345,7 @@ def _linesearch(m: types.Model, d: types.Data, ctx: Context):
     smag = wp.math.sqrt(sum) * m.stat.meaninertia * float(wp.max(1, NV))
     ctx.gtol[worldid] = m.opt.tolerance * m.opt.ls_tolerance * smag
 
-  wp.launch(_gtol, dim=(d.nworld), inputs=[ctx, m])
+  wp.launch(_gtol, dim=(d.nworld,), inputs=[ctx, m])
 
   # mv = qM @ search
   support.mul_m(m, d, ctx.search, ctx.mv)
@@ -373,27 +371,20 @@ def _linesearch(m: types.Model, d: types.Data, ctx: Context):
 
   # prepare quadratics
   # quad_gauss = [gauss, search.T @ Ma - search.T @ qfrc_smooth, 0.5 * search.T @ mv]
-  @wp.kernel
-  def _quad_gauss0(ctx: Context):
-    worldid = wp.tid()
-    ctx.quad_gauss[worldid, 0] = ctx.gauss[worldid]
-    ctx.quad_gauss[worldid, 1] = 0.0
-    ctx.quad_gauss[worldid, 2] = 0.0
-
-  wp.launch(_quad_gauss0, dim=(d.nworld), inputs=[ctx])
+  ctx.quad_gauss.zero_()
 
   @wp.kernel
-  def _quad_gauss12(ctx: Context, d: types.Data):
+  def _quad_gauss(ctx: Context, m: types.Model, d: types.Data):
     worldid, dofid = wp.tid()
     search = ctx.search[worldid, dofid]
-    wp.atomic_add(
-      ctx.quad_gauss[worldid],
-      1,
+    quad_gauss = wp.vec3(
+      ctx.gauss[worldid] / float(m.nv),
       search * (ctx.Ma[worldid, dofid] - d.qfrc_smooth[worldid, dofid]),
+      0.5 * search * ctx.mv[worldid, dofid],
     )
-    wp.atomic_add(ctx.quad_gauss[worldid], 2, 0.5 * search * ctx.mv[worldid, dofid])
+    wp.atomic_add(ctx.quad_gauss, worldid, quad_gauss)
 
-  wp.launch(_quad_gauss12, dim=(d.nworld, m.nv), inputs=[ctx, d])
+  wp.launch(_quad_gauss, dim=(d.nworld, m.nv), inputs=[ctx, m, d])
 
   # quad = [0.5 * Jaref * Jaref * efc_D, jv * Jaref * efc_D, 0.5 * jv * jv * efc_D]
   @wp.kernel
@@ -406,9 +397,9 @@ def _linesearch(m: types.Model, d: types.Data, ctx: Context):
     Jaref = ctx.Jaref[efcid]
     jv = ctx.jv[efcid]
     efc_D = d.efc_D[efcid]
-    ctx.quad[efcid, 0] = 0.5 * Jaref * Jaref * efc_D
-    ctx.quad[efcid, 1] = jv * Jaref * efc_D
-    ctx.quad[efcid, 2] = 0.5 * jv * jv * efc_D
+    ctx.quad[efcid][0] = 0.5 * Jaref * Jaref * efc_D
+    ctx.quad[efcid][1] = jv * Jaref * efc_D
+    ctx.quad[efcid][2] = 0.5 * jv * jv * efc_D
 
   wp.launch(_quad, dim=(d.njmax), inputs=[ctx, d])
 
@@ -423,7 +414,7 @@ def _linesearch(m: types.Model, d: types.Data, ctx: Context):
     worldid = wp.tid()
     lo.alpha[worldid] = p0.alpha[worldid] - p0.deriv_0[worldid] / p0.deriv_1[worldid]
 
-  wp.launch(_lo_alpha, dim=(d.nworld), inputs=[ls_ctx.lo, ls_ctx.p0, ctx])
+  wp.launch(_lo_alpha, dim=(d.nworld,), inputs=[ls_ctx.lo, ls_ctx.p0, ctx])
 
   _create_lspoint(ls_ctx.lo, m, d, ctx)
 
@@ -460,7 +451,7 @@ def _linesearch(m: types.Model, d: types.Data, ctx: Context):
       lesser * ls_ctx.lo.deriv_1[worldid] + not_lesser * ls_ctx.p0.deriv_1[worldid]
     )
 
-  wp.launch(_tree_map, dim=(d.nworld), inputs=[ls_ctx])
+  wp.launch(_tree_map, dim=(d.nworld,), inputs=[ls_ctx])
 
   ls_ctx.swap.fill_(1)
   ls_ctx.ls_iter.fill_(0)
@@ -482,7 +473,7 @@ def _linesearch(m: types.Model, d: types.Data, ctx: Context):
         ls_ctx.lo.alpha[worldid] + ls_ctx.hi.alpha[worldid]
       )
 
-    wp.launch(_alpha_lo_next_hi_next_mid, dim=(d.nworld), inputs=[ls_ctx])
+    wp.launch(_alpha_lo_next_hi_next_mid, dim=(d.nworld,), inputs=[ls_ctx])
 
     _create_lspoint(ls_ctx.lo_next, m, d, ctx)
     _create_lspoint(ls_ctx.hi_next, m, d, ctx)
@@ -615,7 +606,7 @@ def _linesearch(m: types.Model, d: types.Data, ctx: Context):
       swap = swap or swap_hi_next or swap_hi_mid or swap_hi_lo_next
       ls_ctx.swap[worldid] = int(swap)
 
-    wp.launch(_swap_lo_hi, dim=(d.nworld), inputs=[ls_ctx])
+    wp.launch(_swap_lo_hi, dim=(d.nworld,), inputs=[ls_ctx])
 
     @wp.kernel
     def _done(ls_ctx: LSContext, ctx: Context, m: types.Model, ls_iter: int):
@@ -632,7 +623,7 @@ def _linesearch(m: types.Model, d: types.Data, ctx: Context):
       )
       ls_ctx.done[worldid] = int(done)
 
-    wp.launch(_done, dim=(d.nworld), inputs=[ls_ctx, ctx, m, i])
+    wp.launch(_done, dim=(d.nworld,), inputs=[ls_ctx, ctx, m, i])
     # TODO(team): return if all done
 
   @wp.kernel
@@ -649,7 +640,7 @@ def _linesearch(m: types.Model, d: types.Data, ctx: Context):
       + (1.0 - lo_hi_cost) * ls_ctx.hi.alpha[worldid]
     )
 
-  wp.launch(_alpha, dim=(d.nworld), inputs=[ctx, ls_ctx])
+  wp.launch(_alpha, dim=(d.nworld,), inputs=[ctx, ls_ctx])
 
   @wp.kernel
   def _qacc_ma(ctx: Context, d: types.Data):
@@ -670,7 +661,7 @@ def _linesearch(m: types.Model, d: types.Data, ctx: Context):
     worldid = d.efc_worldid[efcid]
     ctx.Jaref[efcid] += ctx.alpha[worldid] * ctx.jv[efcid]
 
-  wp.launch(_jaref, dim=(d.njmax), inputs=[ctx, d])
+  wp.launch(_jaref, dim=(d.njmax,), inputs=[ctx, d])
 
 
 def solve(m: types.Model, d: types.Data):
@@ -721,7 +712,7 @@ def solve(m: types.Model, d: types.Data):
           0.0, ctx.beta_num[worldid] / wp.max(mujoco.mjMINVAL, ctx.beta_den[worldid])
         )
 
-      wp.launch(_beta, dim=(d.nworld), inputs=[ctx])
+      wp.launch(_beta, dim=(d.nworld,), inputs=[ctx])
 
       @wp.kernel
       def _search_cg(ctx: Context):
@@ -749,7 +740,7 @@ def solve(m: types.Model, d: types.Data):
       done = done or (gradient < m.opt.tolerance)
       ctx.done[worldid] = int(done)
 
-    wp.launch(_done, dim=(d.nworld), inputs=[ctx, m, i])
+    wp.launch(_done, dim=(d.nworld,), inputs=[ctx, m, i])
     # TODO(team): return if all done
 
   wp.copy(d.qacc_warmstart, d.qacc)
