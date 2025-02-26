@@ -10,8 +10,10 @@ class Context:
   Jaref: wp.array(dtype=wp.float32, ndim=1)
   Ma: wp.array(dtype=wp.float32, ndim=2)
   grad: wp.array(dtype=wp.float32, ndim=2)
+  grad_dot: wp.array(dtype=wp.float32, ndim=1)
   Mgrad: wp.array(dtype=wp.float32, ndim=2)
   search: wp.array(dtype=wp.float32, ndim=2)
+  search_dot: wp.array(dtype=wp.float32, ndim=1)
   gauss: wp.array(dtype=wp.float32, ndim=1)
   cost: wp.array(dtype=wp.float32, ndim=1)
   prev_cost: wp.array(dtype=wp.float32, ndim=1)
@@ -38,8 +40,10 @@ def _context(m: types.Model, d: types.Data) -> Context:
   ctx.Jaref = wp.empty(shape=(d.njmax,), dtype=wp.float32)
   ctx.Ma = wp.empty(shape=(d.nworld, m.nv), dtype=wp.float32)
   ctx.grad = wp.empty(shape=(d.nworld, m.nv), dtype=wp.float32)
+  ctx.grad_dot = wp.empty(shape=(d.nworld,), dtype=wp.float32)
   ctx.Mgrad = wp.empty(shape=(d.nworld, m.nv), dtype=wp.float32)
   ctx.search = wp.empty(shape=(d.nworld, m.nv), dtype=wp.float32)
+  ctx.search_dot = wp.empty(shape=(d.nworld,), dtype=wp.float32)
   ctx.gauss = wp.empty(shape=(d.nworld,), dtype=wp.float32)
   ctx.cost = wp.empty(shape=(d.nworld,), dtype=wp.float32)
   ctx.prev_cost = wp.empty(shape=(d.nworld,), dtype=wp.float32)
@@ -85,7 +89,7 @@ def _create_context(ctx: Context, m: types.Model, d: types.Data, grad: bool = Tr
 
   # Ma = qM @ qacc
   support.mul_m(m, d, ctx.Ma, d.qacc)
-  
+
   ctx.cost.fill_(wp.inf)
   ctx.solver_niter.zero_()
   ctx.done.zero_()
@@ -95,15 +99,16 @@ def _create_context(ctx: Context, m: types.Model, d: types.Data, grad: bool = Tr
     _update_gradient(m, d, ctx)
 
     # search = -Mgrad
-    @wp.kernel
-    def _search(
-      Mgrad: wp.array(ndim=2, dtype=wp.float32),
-      search: wp.array(ndim=2, dtype=wp.float32),
-    ):
-      worldid, dofid = wp.tid()
-      search[worldid, dofid] = -1.0 * Mgrad[worldid, dofid]
+    ctx.search_dot.zero_()
 
-    wp.launch(_search, dim=(d.nworld, m.nv), inputs=[ctx.Mgrad, ctx.search])
+    @wp.kernel
+    def _search(ctx: Context):
+      worldid, dofid = wp.tid()
+      search = -1.0 * ctx.Mgrad[worldid, dofid]
+      ctx.search[worldid, dofid] = search
+      wp.atomic_add(ctx.search_dot, worldid, search * search)
+
+    wp.launch(_search, dim=(d.nworld, m.nv), inputs=[ctx])
 
 
 @wp.struct
@@ -253,14 +258,18 @@ def _update_constraint(m: types.Model, d: types.Data, ctx: Context):
 
 def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
   # grad = Ma - qfrc_smooth - qfrc_constraint
+  ctx.grad_dot.zero_()
+
   @wp.kernel
   def _grad(ctx: Context, d: types.Data):
     worldid, dofid = wp.tid()
-    ctx.grad[worldid, dofid] = (
+    grad = (
       ctx.Ma[worldid, dofid]
       - d.qfrc_smooth[worldid, dofid]
       - d.qfrc_constraint[worldid, dofid]
     )
+    ctx.grad[worldid, dofid] = grad
+    wp.atomic_add(ctx.grad_dot, worldid, grad * grad)
 
   wp.launch(_grad, dim=(d.nworld, m.nv), inputs=[ctx, d])
 
@@ -328,16 +337,14 @@ def _in_bracket(x: float, y: float) -> bool:
 
 
 def _linesearch(m: types.Model, d: types.Data, ctx: Context):
-  NV = m.nv
-
   @wp.kernel
   def _gtol(ctx: Context, m: types.Model):
     worldid = wp.tid()
-    sum = float(0.0)
-    for i in range(NV):
-      search = ctx.search[worldid, i]
-      sum += search * search
-    smag = wp.math.sqrt(sum) * m.stat.meaninertia * float(wp.max(1, NV))
+    smag = (
+      wp.math.sqrt(ctx.search_dot[worldid])
+      * m.stat.meaninertia
+      * float(wp.max(1, m.nv))
+    )
     ctx.gtol[worldid] = m.opt.tolerance * m.opt.ls_tolerance * smag
 
   wp.launch(_gtol, dim=(d.nworld,), inputs=[ctx, m])
@@ -676,11 +683,14 @@ def solve(m: types.Model, d: types.Data):
     _update_gradient(m, d, ctx)
 
     if m.opt.solver == 2:  # Newton
+      ctx.search_dot.zero_()
 
       @wp.kernel
       def _search_newton(ctx: Context):
         worldid, dofid = wp.tid()
-        ctx.search[worldid, dofid] = -1.0 * ctx.Mgrad[worldid, dofid]
+        search = -1.0 * ctx.Mgrad[worldid, dofid]
+        ctx.search[worldid, dofid] = search
+        wp.atomic_add(ctx.search_dot, worldid, search * search)
 
       wp.launch(_search_newton, dim=(d.nworld, m.nv), inputs=[ctx])
     else:  # polak-ribiere
@@ -709,27 +719,25 @@ def solve(m: types.Model, d: types.Data):
 
       wp.launch(_beta, dim=(d.nworld,), inputs=[ctx])
 
+      ctx.search_dot.zero_()
+
       @wp.kernel
       def _search_cg(ctx: Context):
         worldid, dofid = wp.tid()
-        ctx.search[worldid, dofid] = (
+        search = (
           -1.0 * ctx.Mgrad[worldid, dofid]
           + ctx.beta[worldid] * ctx.search[worldid, dofid]
         )
+        ctx.search[worldid, dofid] = search
+        wp.atomic_add(ctx.search_dot, worldid, search * search)
 
       wp.launch(_search_cg, dim=(d.nworld, m.nv), inputs=[ctx])
-
-    NV = m.nv
 
     @wp.kernel
     def _done(ctx: Context, m: types.Model, solver_niter: int):
       worldid = wp.tid()
       improvement = _rescale(m, ctx.prev_cost[worldid] - ctx.cost[worldid])
-      sum = float(0.0)
-      for i in range(NV):
-        grad = ctx.grad[worldid, i]
-        sum += grad * grad
-      gradient = _rescale(m, wp.math.sqrt(sum))
+      gradient = _rescale(m, wp.math.sqrt(ctx.grad_dot[worldid]))
       done = solver_niter >= m.opt.iterations
       done = done or (improvement < m.opt.tolerance)
       done = done or (gradient < m.opt.tolerance)
