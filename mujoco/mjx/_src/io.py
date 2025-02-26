@@ -160,6 +160,7 @@ def make_data(
   d.nworld = nworld
   d.nefc_total = wp.zeros((1,), dtype=wp.int32, ndim=1)
 
+  # TODO(team): move to Model?
   if njmax == -1:
     # TODO(team): heuristic for njmax
     njmax = 512
@@ -237,6 +238,7 @@ def put_data(
   d.nworld = nworld
   d.nefc_total = wp.array([mjd.nefc * nworld], dtype=wp.int32, ndim=1)
 
+  # TODO(team): move to Model?
   if njmax == -1:
     # TODO(team): heuristic for njmax
     njmax = 512
