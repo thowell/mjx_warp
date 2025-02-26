@@ -41,6 +41,14 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.qpos0 = wp.array(mjm.qpos0, dtype=wp.float32, ndim=1)
   m.qpos_spring = wp.array(mjm.qpos_spring, dtype=wp.float32, ndim=1)
 
+  jnt_limited_slide_hinge_adr = np.nonzero(
+    mjm.jnt_limited
+    & (
+      (mjm.jnt_type == mujoco.mjtJoint.mjJNT_SLIDE)
+      | (mjm.jnt_type == mujoco.mjtJoint.mjJNT_HINGE)
+    )
+  )[0]
+
   # body_tree is BFS ordering of body ids
   # body_treeadr contains starting index of each body tree level
   bodies, body_depth = {}, np.zeros(mjm.nbody, dtype=int) - 1
@@ -115,6 +123,9 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.body_invweight0 = wp.array(mjm.body_invweight0, dtype=wp.float32, ndim=2)
   m.jnt_bodyid = wp.array(mjm.jnt_bodyid, dtype=wp.int32, ndim=1)
   m.jnt_limited = wp.array(mjm.jnt_limited, dtype=wp.int32, ndim=1)
+  m.jnt_limited_slide_hinge_adr = wp.array(
+    jnt_limited_slide_hinge_adr, dtype=wp.int32, ndim=1
+  )
   m.jnt_type = wp.array(mjm.jnt_type, dtype=wp.int32, ndim=1)
   m.jnt_solref = wp.array(mjm.jnt_solref, dtype=wp.float32, ndim=2)
   m.jnt_solimp = wp.array(mjm.jnt_solimp, dtype=wp.float32, ndim=2)
@@ -159,17 +170,6 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.opt.disableflags = mjm.opt.disableflags
   m.opt.timestep = wp.float32(mjm.opt.timestep)
   m.opt.impratio = wp.float32(mjm.opt.impratio)
-  # Pre-build the permanent constraint rows
-  m.efc_jnt_slide_hinge_id = wp.array(
-    np.nonzero(
-      mjm.jnt_limited
-      & (
-        (mjm.jnt_type == mujoco.mjtJoint.mjJNT_SLIDE)
-        | (mjm.jnt_type == mujoco.mjtJoint.mjJNT_HINGE)
-      )
-    )[0],
-    dtype=wp.int32,
-  )
 
   return m
 
@@ -178,7 +178,7 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   d = types.Data()
   d.nworld = nworld
   d.ncon = 0
-  d.nefc = wp.zeros(1, dtype=wp.int32)
+  d.nefc = wp.zeros(nworld, dtype=wp.int32)
   d.nl = 0
   d.time = 0.0
 
@@ -236,7 +236,6 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1) -> types.Data:
   d.efc_J = wp.zeros((nworld, 1, mjm.nv), dtype=wp.float32)
   d.efc_pos = wp.zeros((nworld, 1), dtype=wp.float32)
   d.efc_margin = wp.zeros((nworld, 1), dtype=wp.float32)
-  d.efc_frictionloss = wp.zeros((nworld, 1), dtype=wp.float32)
   d.efc_D = wp.zeros((nworld, 1), dtype=wp.float32)
   d.efc_aref = wp.zeros((nworld, 1), dtype=wp.float32)
   d.qfrc_passive = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
@@ -348,7 +347,6 @@ def put_data(mjm: mujoco.MjModel, mjd: mujoco.MjData, nworld: int = 1) -> types.
   d.efc_J = wp.zeros((nworld, mjd.nefc, mjm.nv), dtype=wp.float32)
   d.efc_pos = wp.zeros((nworld, mjd.nefc), dtype=wp.float32)
   d.efc_margin = wp.zeros((nworld, mjd.nefc), dtype=wp.float32)
-  d.efc_frictionloss = wp.zeros((nworld, mjd.nefc), dtype=wp.float32)
   d.efc_D = wp.zeros((nworld, mjd.nefc), dtype=wp.float32)
   d.efc_aref = wp.zeros((nworld, mjd.nefc), dtype=wp.float32)
 

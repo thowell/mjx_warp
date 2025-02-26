@@ -45,21 +45,13 @@ class ConstraintTest(parameterized.TestCase):
       mujoco.mj_forward(mjm, mjd)
       m = mjx.put_model(mjm)
       d = mjx.put_data(mjm, mjd)
-      d = mjx.make_constraint(m, d)
+      mjx.make_constraint(m, d)
 
-      _assert_eq(
-        mjd.efc_J, np.reshape(d.efc_J.numpy(), shape=(mjd.nefc * mjm.nv)), "efc_J"
-      )
-      _assert_eq(mjd.efc_D, np.reshape(d.efc_D.numpy(), shape=(mjd.nefc)), "efc_D")
-      _assert_eq(
-        mjd.efc_aref, np.reshape(d.efc_aref.numpy(), shape=(mjd.nefc)), "efc_aref"
-      )
-      _assert_eq(
-        mjd.efc_pos, np.reshape(d.efc_pos.numpy(), shape=(mjd.nefc)), "efc_pos"
-      )
-      _assert_eq(
-        mjd.efc_margin, np.reshape(d.efc_margin.numpy(), shape=(mjd.nefc)), "efc_margin"
-      )
+      _assert_eq(d.efc_J.numpy().reshape(-1), mjd.efc_J, "efc_J")
+      _assert_eq(d.efc_D.numpy()[0], mjd.efc_D, "efc_D")
+      _assert_eq(d.efc_aref.numpy()[0], mjd.efc_aref, "efc_aref")
+      _assert_eq(d.efc_pos.numpy()[0], mjd.efc_pos, "efc_pos")
+      _assert_eq(d.efc_margin.numpy()[0], mjd.efc_margin, "efc_margin")
 
 
 if __name__ == "__main__":
