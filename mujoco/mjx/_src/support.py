@@ -18,6 +18,7 @@ def mul_m(
   """Multiply vector by inertia matrix."""
 
   if not m.opt.is_sparse:
+    # TODO(team): tile_matmul
     res.zero_()
 
     @wp.kernel
