@@ -222,10 +222,6 @@ class SolverTest(parameterized.TestCase):
       [[0] * mjd0.nefc, [1] * mjd1.nefc, [2] * mjd2.nefc, [-1] * nefc_fill]
     )
 
-    world_efcadr = np.array([0, mjd0.nefc, mjd0.nefc + mjd1.nefc])
-
-    world_efcsize = np.array([mjd0.nefc, mjd1.nefc, mjd2.nefc])
-
     d.qacc_warmstart = wp.from_numpy(qacc_warmstart, dtype=wp.float32)
     d.qM = wp.from_numpy(qM, dtype=wp.float32)
     d.qacc_smooth = wp.from_numpy(qacc_smooth, dtype=wp.float32)
@@ -234,8 +230,6 @@ class SolverTest(parameterized.TestCase):
     d.efc_D = wp.from_numpy(efc_D_fill, dtype=wp.float32)
     d.efc_aref = wp.from_numpy(efc_aref_fill, dtype=wp.float32)
     d.efc_worldid = wp.from_numpy(efc_worldid, dtype=wp.int32)
-    d.world_efcadr = wp.from_numpy(world_efcadr, dtype=wp.int32)
-    d.world_efcsize = wp.from_numpy(world_efcsize, dtype=wp.int32)
 
     if solver_ == mujoco.mjtSolver.mjSOL_CG:
       m0 = io.put_model(mjm0)
@@ -289,20 +283,18 @@ class SolverTest(parameterized.TestCase):
       _assert_eq(d.qfrc_constraint.numpy()[1], mjd1.qfrc_constraint, "qfrc_constraint1")
       _assert_eq(d.qfrc_constraint.numpy()[2], mjd2.qfrc_constraint, "qfrc_constraint2")
 
-      world_efcadr = d.world_efcadr.numpy()
-      world_efcsize = d.world_efcsize.numpy()
       _assert_eq(
-        d.efc_force.numpy()[world_efcadr[0] : world_efcadr[0] + world_efcsize[0]],
+        d.efc_force.numpy()[: mjd0.nefc],
         mjd0.efc_force,
         "efc_force0",
       )
       _assert_eq(
-        d.efc_force.numpy()[world_efcadr[1] : world_efcadr[1] + world_efcsize[1]],
+        d.efc_force.numpy()[mjd0.nefc : mjd0.nefc + mjd1.nefc],
         mjd1.efc_force,
         "efc_force1",
       )
       _assert_eq(
-        d.efc_force.numpy()[world_efcadr[2] : world_efcadr[2] + world_efcsize[2]],
+        d.efc_force.numpy()[mjd0.nefc + mjd1.nefc : mjd0.nefc + mjd1.nefc + mjd2.nefc],
         mjd2.efc_force,
         "efc_force2",
       )

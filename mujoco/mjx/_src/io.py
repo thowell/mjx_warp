@@ -280,8 +280,6 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1, njmax: int = -1) -> types.Da
   d.efc_force = wp.zeros((njmax,), dtype=wp.float32)
   d.efc_margin = wp.zeros((njmax,), dtype=wp.float32)
   d.efc_worldid = wp.zeros((njmax,), dtype=wp.int32)
-  d.world_efcadr = wp.zeros((nworld,), dtype=wp.int32)
-  d.world_efcsize = wp.zeros((nworld,), dtype=wp.int32)
 
   d.xfrc_applied = wp.zeros((nworld, mjm.nbody), dtype=wp.spatial_vector)
   # internal tmp arrays
@@ -384,16 +382,9 @@ def put_data(
 
   nefc = mjd.nefc
   efc_worldid = np.zeros(njmax, dtype=int)
-  world_efcadr = np.zeros(nworld, dtype=int)
-  world_efcsize = np.zeros(nworld, dtype=int)
 
   for i in range(nworld):
     efc_worldid[i * nefc : (i + 1) * nefc] = i
-    if i > 0:
-      world_efcadr[i] = world_efcadr[i - 1] + nefc
-    else:
-      world_efcadr[i] = 0
-    world_efcsize[i] = nefc
 
   nefc_fill = njmax - nworld * nefc
 
@@ -423,8 +414,6 @@ def put_data(
   d.efc_force = wp.array(efc_force_fill, dtype=wp.float32, ndim=1)
   d.efc_margin = wp.array(efc_margin_fill, dtype=wp.float32, ndim=1)
   d.efc_worldid = wp.from_numpy(efc_worldid, dtype=wp.int32)
-  d.world_efcadr = wp.from_numpy(world_efcadr, dtype=wp.int32)
-  d.world_efcsize = wp.from_numpy(world_efcsize, dtype=wp.int32)
   d.act = wp.array(tile(mjd.act), dtype=wp.float32, ndim=2)
   d.act_dot = wp.array(tile(mjd.act_dot), dtype=wp.float32, ndim=2)
   d.contact.dist = wp.array(tile(mjd.contact.dist), dtype=wp.float32, ndim=2)
