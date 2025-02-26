@@ -13,16 +13,46 @@
 # limitations under the License.
 # ==============================================================================
 
+"""Tests for support functions."""
+
 from absl.testing import absltest
+from absl.testing import parameterized
 import mujoco
+from mujoco import mjx
 import numpy as np
 import warp as wp
-
 from . import test_util
 from .support import xfrc_accumulate
 
+wp.config.verify_cuda = True
 
-class SupportTest(absltest.TestCase):
+# tolerance for difference between MuJoCo and mjWarp support calculations - mostly
+# due to float precision
+_TOLERANCE = 5e-5
+
+
+def _assert_eq(a, b, name):
+  tol = _TOLERANCE * 10  # avoid test noise
+  err_msg = f"mismatch: {name}"
+  np.testing.assert_allclose(a, b, err_msg=err_msg, atol=tol, rtol=tol)
+
+
+class SupportTest(parameterized.TestCase):
+  @parameterized.parameters(True, False)
+  def test_mul_m(self, sparse):
+    """Tests mul_m."""
+    mjm, mjd, m, d = test_util.fixture("pendula.xml", sparse=sparse)
+
+    mj_res = np.zeros(mjm.nv)
+    mj_vec = np.random.uniform(low=-1.0, high=1.0, size=mjm.nv)
+    mujoco.mj_mulM(mjm, mjd, mj_res, mj_vec)
+
+    res = wp.zeros((1, mjm.nv), dtype=wp.float32)
+    vec = wp.from_numpy(np.expand_dims(mj_vec, axis=0), dtype=wp.float32)
+    mjx.mul_m(m, d, res, vec)
+
+    _assert_eq(res.numpy()[0], mj_res, f"mul_m ({'sparse' if sparse else 'dense'})")
+
   def test_xfrc_accumulated(self):
     """Tests that xfrc_accumulate ouput matches mj_xfrcAccumulate."""
     np.random.seed(0)
