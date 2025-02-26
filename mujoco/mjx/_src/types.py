@@ -139,10 +139,11 @@ array3df = wp.array3d(dtype=wp.float32)
 class Option:
   gravity: wp.vec3
   is_sparse: bool  # warp only
+  timestep: float
+  integrator: int  # mjtIntegrator
   cone: int
   disableflags: int
   impratio: wp.float32
-  timestep: float
 
 
 @wp.struct
