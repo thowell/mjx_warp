@@ -275,7 +275,7 @@ def make_data(mjm: mujoco.MjModel, nworld: int = 1, njmax: int = -1) -> types.Da
   d.qacc_smooth = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.efc_J = wp.zeros((njmax, mjm.nv), dtype=wp.float32)
   d.efc_D = wp.zeros((njmax,), dtype=wp.float32)
-  d.efc_pos = wp.zeros((nworld, 1), dtype=wp.float32)
+  d.efc_pos = wp.zeros((njmax,), dtype=wp.float32)
   d.efc_aref = wp.zeros((njmax,), dtype=wp.float32)
   d.efc_force = wp.zeros((njmax,), dtype=wp.float32)
   d.efc_margin = wp.zeros((njmax,), dtype=wp.float32)
