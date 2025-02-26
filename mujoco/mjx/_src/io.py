@@ -16,9 +16,6 @@
 import warp as wp
 import mujoco
 import numpy as np
-import warp as wp
-
-import mujoco
 
 from . import support
 from . import types
@@ -44,7 +41,9 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.opt.solver = mjm.opt.solver
   m.opt.iterations = mjm.opt.iterations
   m.opt.ls_iterations = mjm.opt.ls_iterations
+  m.opt.integrator = mjm.opt.integrator
   m.opt.disableflags = mjm.opt.disableflags
+  m.opt.impratio = wp.float32(mjm.opt.impratio)
   m.opt.is_sparse = support.is_sparse(mjm)
   m.stat.meaninertia = mjm.stat.meaninertia
 
@@ -53,6 +52,27 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
 
   # dof lower triangle row and column indices
   dof_tri_row, dof_tri_col = np.tril_indices(mjm.nv)
+
+  # indices for sparse qM
+  is_, js, madr_ijs = [], [], []
+  for i in range(mjm.nv):
+    madr_ij, j = mjm.dof_Madr[i], i
+
+    while True:
+      madr_ij, j = madr_ij + 1, mjm.dof_parentid[j]
+      if j == -1:
+        break
+      is_, js, madr_ijs = is_ + [i], js + [j], madr_ijs + [madr_ij]
+
+  qM_i, qM_j, qM_madr_ij = (np.array(x, dtype=np.int32) for x in (is_, js, madr_ijs))
+
+  jnt_limited_slide_hinge_adr = np.nonzero(
+    mjm.jnt_limited
+    & (
+      (mjm.jnt_type == mujoco.mjtJoint.mjJNT_SLIDE)
+      | (mjm.jnt_type == mujoco.mjtJoint.mjJNT_HINGE)
+    )
+  )[0]
 
   # body_tree is BFS ordering of body ids
   # body_treeadr contains starting index of each body tree level
@@ -105,6 +125,9 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
     qLD_tileadr = np.cumsum(tile_off)[:-1]
     qLD_tilesize = np.array(sorted(tiles.keys()))
 
+  m.qM_i = wp.array(qM_i, dtype=wp.int32, ndim=1)
+  m.qM_j = wp.array(qM_j, dtype=wp.int32, ndim=1)
+  m.qM_madr_ij = wp.array(qM_madr_ij, dtype=wp.int32, ndim=1)
   m.qLD_update_tree = wp.array(qLD_update_tree, dtype=wp.vec3i, ndim=1)
   m.qLD_update_treeadr = wp.array(
     qLD_update_treeadr, dtype=wp.int32, ndim=1, device="cpu"
@@ -125,13 +148,25 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.body_rootid = wp.array(mjm.body_rootid, dtype=wp.int32, ndim=1)
   m.body_inertia = wp.array(mjm.body_inertia, dtype=wp.vec3, ndim=1)
   m.body_mass = wp.array(mjm.body_mass, dtype=wp.float32, ndim=1)
+  m.body_invweight0 = wp.array(mjm.body_invweight0, dtype=wp.float32, ndim=2)
   m.jnt_bodyid = wp.array(mjm.jnt_bodyid, dtype=wp.int32, ndim=1)
+  m.jnt_limited = wp.array(mjm.jnt_limited, dtype=wp.int32, ndim=1)
+  m.jnt_limited_slide_hinge_adr = wp.array(
+    jnt_limited_slide_hinge_adr, dtype=wp.int32, ndim=1
+  )
   m.jnt_type = wp.array(mjm.jnt_type, dtype=wp.int32, ndim=1)
+  m.jnt_solref = wp.array(mjm.jnt_solref, dtype=wp.float32, ndim=2)
+  m.jnt_solimp = wp.array(mjm.jnt_solimp, dtype=wp.float32, ndim=2)
   m.jnt_qposadr = wp.array(mjm.jnt_qposadr, dtype=wp.int32, ndim=1)
   m.jnt_dofadr = wp.array(mjm.jnt_dofadr, dtype=wp.int32, ndim=1)
   m.jnt_axis = wp.array(mjm.jnt_axis, dtype=wp.vec3, ndim=1)
   m.jnt_pos = wp.array(mjm.jnt_pos, dtype=wp.vec3, ndim=1)
+  m.jnt_range = wp.array(mjm.jnt_range, dtype=wp.float32, ndim=2)
+  m.jnt_margin = wp.array(mjm.jnt_margin, dtype=wp.float32, ndim=1)
   m.jnt_stiffness = wp.array(mjm.jnt_stiffness, dtype=wp.float32, ndim=1)
+  m.jnt_actfrclimited = wp.array(mjm.jnt_actfrclimited, dtype=wp.bool, ndim=1)
+  m.jnt_actfrcrange = wp.array(mjm.jnt_actfrcrange, dtype=wp.vec2, ndim=1)
+  m.geom_bodyid = wp.array(mjm.geom_bodyid, dtype=wp.int32, ndim=1)
   m.geom_pos = wp.array(mjm.geom_pos, dtype=wp.vec3, ndim=1)
   m.geom_quat = wp.array(mjm.geom_quat, dtype=wp.quat, ndim=1)
   m.site_pos = wp.array(mjm.site_pos, dtype=wp.vec3, ndim=1)
@@ -144,8 +179,18 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.dof_damping = wp.array(mjm.dof_damping, dtype=wp.float32, ndim=1)
   m.dof_tri_row = wp.from_numpy(dof_tri_row, dtype=wp.int32)
   m.dof_tri_col = wp.from_numpy(dof_tri_col, dtype=wp.int32)
-  m.actuator_actlimited = wp.array(mjm.actuator_actlimited, dtype=wp.int32, ndim=1)
-  m.actuator_actrange = wp.array(mjm.actuator_actrange, dtype=wp.vec2f, ndim=1)
+  m.dof_invweight0 = wp.array(mjm.dof_invweight0, dtype=wp.float32, ndim=1)
+  m.actuator_trntype = wp.array(mjm.actuator_trntype, dtype=wp.int32, ndim=1)
+  m.actuator_trnid = wp.array(mjm.actuator_trnid, dtype=wp.int32, ndim=2)
+  m.actuator_ctrllimited = wp.array(mjm.actuator_ctrllimited, dtype=wp.bool, ndim=1)
+  m.actuator_ctrlrange = wp.array(mjm.actuator_ctrlrange, dtype=wp.vec2, ndim=1)
+  m.actuator_forcelimited = wp.array(mjm.actuator_forcelimited, dtype=wp.bool, ndim=1)
+  m.actuator_forcerange = wp.array(mjm.actuator_forcerange, dtype=wp.vec2, ndim=1)
+  m.actuator_gainprm = wp.array(mjm.actuator_gainprm, dtype=wp.float32, ndim=2)
+  m.actuator_biasprm = wp.array(mjm.actuator_biasprm, dtype=wp.float32, ndim=2)
+  m.actuator_gear = wp.array(mjm.actuator_gear, dtype=wp.spatial_vector, ndim=1)
+  m.actuator_actlimited = wp.array(mjm.actuator_actlimited, dtype=wp.bool, ndim=1)
+  m.actuator_actrange = wp.array(mjm.actuator_actrange, dtype=wp.vec2, ndim=1)
   m.actuator_actadr = wp.array(mjm.actuator_actadr, dtype=wp.int32, ndim=1)
   m.actuator_dyntype = wp.array(mjm.actuator_dyntype, dtype=wp.int32, ndim=1)
   m.actuator_dynprm = wp.array(mjm.actuator_dynprm, dtype=types.vec10f, ndim=1)
@@ -153,9 +198,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   return m
 
 
-def make_data(
-  mjm: mujoco.MjModel, nworld: int = 1, njmax: int = -1
-) -> types.Data:
+def make_data(mjm: mujoco.MjModel, nworld: int = 1, njmax: int = -1) -> types.Data:
   d = types.Data()
   d.nworld = nworld
   d.nefc_total = wp.zeros((1,), dtype=wp.int32, ndim=1)
@@ -166,6 +209,9 @@ def make_data(
     njmax = 512
   d.njmax = njmax
 
+  d.ncon = 0
+  d.nefc = wp.zeros(nworld, dtype=wp.int32)
+  d.nl = 0
   d.time = 0.0
 
   qpos0 = np.tile(mjm.qpos0, (nworld, 1))
@@ -190,6 +236,10 @@ def make_data(
   d.site_xmat = wp.zeros((nworld, mjm.nsite), dtype=wp.mat33)
   d.cinert = wp.zeros((nworld, mjm.nbody), dtype=types.vec10)
   d.cdof = wp.zeros((nworld, mjm.nv), dtype=wp.spatial_vector)
+  d.ctrl = wp.zeros((nworld, mjm.nu), dtype=wp.float32)
+  d.actuator_velocity = wp.zeros((nworld, mjm.nu), dtype=wp.float32)
+  d.actuator_force = wp.zeros((nworld, mjm.nu), dtype=wp.float32)
+  d.actuator_length = wp.zeros((nworld, mjm.nu), dtype=wp.float32)
   d.actuator_moment = wp.zeros((nworld, mjm.nu, mjm.nv), dtype=wp.float32)
   d.crb = wp.zeros((nworld, mjm.nbody), dtype=types.vec10)
   if support.is_sparse(mjm):
@@ -201,10 +251,21 @@ def make_data(
   d.act_dot = wp.zeros((nworld, mjm.na), dtype=wp.float32)
   d.act = wp.zeros((nworld, mjm.na), dtype=wp.float32)
   d.qLDiagInv = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
-  d.actuator_velocity = wp.zeros((nworld, mjm.nu), dtype=wp.float32)
   d.cvel = wp.zeros((nworld, mjm.nbody), dtype=wp.spatial_vector)
   d.cdof_dot = wp.zeros((nworld, mjm.nv), dtype=wp.spatial_vector)
   d.qfrc_bias = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
+  d.contact = types.Contact()
+  d.contact.dist = wp.zeros((nworld, d.ncon), dtype=wp.float32)
+  d.contact.pos = wp.zeros((nworld, d.ncon), dtype=wp.vec3f)
+  d.contact.frame = wp.zeros((nworld, d.ncon), dtype=wp.mat33f)
+  d.contact.includemargin = wp.zeros((nworld, d.ncon), dtype=wp.float32)
+  d.contact.friction = wp.zeros((nworld, d.ncon, 5), dtype=wp.float32)
+  d.contact.solref = wp.zeros((nworld, d.ncon, types.MJ_NREF), dtype=wp.float32)
+  d.contact.solreffriction = wp.zeros((nworld, d.ncon, types.MJ_NREF), dtype=wp.float32)
+  d.contact.solimp = wp.zeros((nworld, d.ncon, types.MJ_NIMP), dtype=wp.float32)
+  d.contact.dim = wp.zeros((nworld, d.ncon), dtype=wp.int32)
+  d.contact.geom = wp.zeros((nworld, d.ncon, 2), dtype=wp.int32)
+  d.contact.efc_address = wp.zeros((nworld, d.ncon), dtype=wp.int32)
   d.qfrc_passive = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qfrc_spring = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qfrc_damper = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
@@ -212,15 +273,17 @@ def make_data(
   d.qfrc_smooth = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qfrc_constraint = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qacc_smooth = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
-  d.qfrc_constraint = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.efc_J = wp.zeros((njmax, mjm.nv), dtype=wp.float32)
   d.efc_D = wp.zeros((njmax,), dtype=wp.float32)
+  d.efc_pos = wp.zeros((nworld, 1), dtype=wp.float32)
   d.efc_aref = wp.zeros((njmax,), dtype=wp.float32)
   d.efc_force = wp.zeros((njmax,), dtype=wp.float32)
+  d.efc_margin = wp.zeros((njmax,), dtype=wp.float32)
   d.efc_worldid = wp.zeros((njmax,), dtype=wp.int32)
   d.world_efcadr = wp.zeros((nworld,), dtype=wp.int32)
   d.world_efcsize = wp.zeros((nworld,), dtype=wp.int32)
 
+  d.xfrc_applied = wp.zeros((nworld, mjm.nbody), dtype=wp.spatial_vector)
   # internal tmp arrays
   d.qfrc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qacc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
@@ -247,6 +310,9 @@ def put_data(
   if nworld * mjd.nefc > njmax:
     raise ValueError("nworld * nefc > njmax")
 
+  d.ncon = mjd.ncon
+  d.nl = mjd.nl
+  d.nefc = wp.zeros(1, dtype=wp.int32)
   d.time = mjd.time
 
   # TODO(erikfrey): would it be better to tile on the gpu?
@@ -295,12 +361,15 @@ def put_data(
   d.site_xmat = wp.array(tile(mjd.site_xmat), dtype=wp.mat33, ndim=2)
   d.cinert = wp.array(tile(mjd.cinert), dtype=types.vec10, ndim=2)
   d.cdof = wp.array(tile(mjd.cdof), dtype=wp.spatial_vector, ndim=2)
-  d.actuator_moment = wp.array(tile(actuator_moment), dtype=wp.float32, ndim=3)
   d.crb = wp.array(tile(mjd.crb), dtype=types.vec10, ndim=2)
   d.qM = wp.array(tile(qM), dtype=wp.float32, ndim=3)
   d.qLD = wp.array(tile(qLD), dtype=wp.float32, ndim=3)
   d.qLDiagInv = wp.array(tile(mjd.qLDiagInv), dtype=wp.float32, ndim=2)
+  d.ctrl = wp.array(tile(mjd.ctrl), dtype=wp.float32, ndim=2)
   d.actuator_velocity = wp.array(tile(mjd.actuator_velocity), dtype=wp.float32, ndim=2)
+  d.actuator_force = wp.array(tile(mjd.actuator_force), dtype=wp.float32, ndim=2)
+  d.actuator_length = wp.array(tile(mjd.actuator_length), dtype=wp.float32, ndim=2)
+  d.actuator_moment = wp.array(tile(actuator_moment), dtype=wp.float32, ndim=3)
   d.cvel = wp.array(tile(mjd.cvel), dtype=wp.spatial_vector, ndim=2)
   d.cdof_dot = wp.array(tile(mjd.cdof_dot), dtype=wp.spatial_vector, ndim=2)
   d.qfrc_bias = wp.array(tile(mjd.qfrc_bias), dtype=wp.float32, ndim=2)
@@ -334,23 +403,49 @@ def put_data(
   efc_D_fill = np.concatenate(
     [np.repeat(mjd.efc_D, nworld, axis=0), np.zeros(nefc_fill)]
   )
+  efc_pos_fill = np.concatenate(
+    [np.repeat(mjd.efc_pos, nworld, axis=0), np.zeros(nefc_fill)]
+  )
   efc_aref_fill = np.concatenate(
     [np.repeat(mjd.efc_aref, nworld, axis=0), np.zeros(nefc_fill)]
   )
   efc_force_fill = np.concatenate(
     [np.repeat(mjd.efc_force, nworld, axis=0), np.zeros(nefc_fill)]
   )
+  efc_margin_fill = np.concatenate(
+    [np.repeat(mjd.efc_margin, nworld, axis=0), np.zeros(nefc_fill)]
+  )
 
   d.efc_J = wp.array(efc_J_fill, dtype=wp.float32, ndim=2)
   d.efc_D = wp.array(efc_D_fill, dtype=wp.float32, ndim=1)
+  d.efc_pos = wp.array(efc_pos_fill, dtype=wp.float32, ndim=1)
   d.efc_aref = wp.array(efc_aref_fill, dtype=wp.float32, ndim=1)
   d.efc_force = wp.array(efc_force_fill, dtype=wp.float32, ndim=1)
+  d.efc_margin = wp.array(efc_margin_fill, dtype=wp.float32, ndim=1)
   d.efc_worldid = wp.from_numpy(efc_worldid, dtype=wp.int32)
   d.world_efcadr = wp.from_numpy(world_efcadr, dtype=wp.int32)
   d.world_efcsize = wp.from_numpy(world_efcsize, dtype=wp.int32)
   d.act = wp.array(tile(mjd.act), dtype=wp.float32, ndim=2)
   d.act_dot = wp.array(tile(mjd.act_dot), dtype=wp.float32, ndim=2)
+  d.contact.dist = wp.array(tile(mjd.contact.dist), dtype=wp.float32, ndim=2)
+  d.contact.pos = wp.array(tile(mjd.contact.pos), dtype=wp.vec3f, ndim=2)
+  d.contact.frame = wp.array(tile(mjd.contact.frame), dtype=wp.mat33f, ndim=2)
+  d.contact.includemargin = wp.array(
+    tile(mjd.contact.includemargin), dtype=wp.float32, ndim=2
+  )
+  d.contact.friction = wp.array(tile(mjd.contact.friction), dtype=wp.float32, ndim=3)
+  d.contact.solref = wp.array(tile(mjd.contact.solref), dtype=wp.float32, ndim=3)
+  d.contact.solreffriction = wp.array(
+    tile(mjd.contact.solreffriction), dtype=wp.float32, ndim=3
+  )
+  d.contact.solimp = wp.array(tile(mjd.contact.solimp), dtype=wp.float32, ndim=3)
+  d.contact.dim = wp.array(tile(mjd.contact.dim), dtype=wp.int32, ndim=2)
+  d.contact.geom = wp.array(tile(mjd.contact.geom), dtype=wp.int32, ndim=3)
+  d.contact.efc_address = wp.array(
+    tile(mjd.contact.efc_address), dtype=wp.int32, ndim=2
+  )
 
+  d.xfrc_applied = wp.array(tile(mjd.xfrc_applied), dtype=wp.spatial_vector, ndim=2)
   # internal tmp arrays
   d.qfrc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qacc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)

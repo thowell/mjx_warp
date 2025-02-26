@@ -16,17 +16,22 @@
 from typing import Optional
 
 import warp as wp
+import mujoco
 
+from . import constraint
 from . import math
 from . import passive
 from . import smooth
 from . import solver
 
-from .types import array2df
+from .types import array2df, array3df
 from .types import Model
 from .types import Data
 from .types import MJ_MINVAL
-from .types import MJ_DSBL_EULERDAMP
+from .types import DisableBit
+from .types import JointType
+from .types import DynType
+from .support import xfrc_accumulate
 
 
 def _advance(
@@ -69,7 +74,7 @@ def _advance(
     dyn_prm = m.actuator_dynprm[actid][0]
 
     # advance the actuation
-    if dyn_type == 3:  # wp.static(WarpDynType.FILTEREXACT):
+    if dyn_type == wp.static(DynType.FILTEREXACT.value):
       tau = wp.select(dyn_prm < MJ_MINVAL, dyn_prm, MJ_MINVAL)
       act = act + act_dot * tau * (1.0 - wp.exp(-m.opt.timestep / tau))
     else:
@@ -95,7 +100,7 @@ def _advance(
     qpos = d.qpos[worldId]
     qvel = qvel_in[worldId]
 
-    if jnt_type == 0:  # free joint
+    if jnt_type == wp.static(JointType.FREE.value):
       qpos_pos = wp.vec3(qpos[qpos_adr], qpos[qpos_adr + 1], qpos[qpos_adr + 2])
       qvel_lin = wp.vec3(qvel[dof_adr], qvel[dof_adr + 1], qvel[dof_adr + 2])
 
@@ -119,7 +124,7 @@ def _advance(
       qpos[qpos_adr + 5] = qpos_quat_new[2]
       qpos[qpos_adr + 6] = qpos_quat_new[3]
 
-    elif jnt_type == 1:  # ball joint
+    elif jnt_type == wp.static(JointType.BALL.value):  # ball joint
       qpos_quat = wp.quat(
         qpos[qpos_adr],
         qpos[qpos_adr + 1],
@@ -192,7 +197,7 @@ def euler(m: Model, d: Data) -> Data:
         add_damping_sum_qfrc_kernel_dense, dim=(d.nworld, m.nv, m.nv), inputs=[m, d]
       )
 
-  if not m.opt.disableflags & MJ_DSBL_EULERDAMP:
+  if not m.opt.disableflags & DisableBit.EULERDAMP.value:
     add_damping_sum_qfrc(m, d, m.opt.is_sparse)
     smooth.factor_i(m, d, d.qM_integration, d.qLD_integration, d.qLDiagInv_integration)
     smooth.solve_LD(
@@ -218,8 +223,8 @@ def fwd_position(m: Model, d: Data):
   smooth.crb(m, d)
   smooth.factor_m(m, d)
   # TODO(team): collision_driver.collision
-  # TODO(team): constraint.make_constraint
-  # TODO(team): smooth.transmission
+  constraint.make_constraint(m, d)
+  smooth.transmission(m, d)
 
 
 def fwd_velocity(m: Model, d: Data):
@@ -242,23 +247,88 @@ def fwd_velocity(m: Model, d: Data):
   smooth.rne(m, d)
 
 
+def fwd_actuation(m: Model, d: Data):
+  """Actuation-dependent computations."""
+  if not m.nu:
+    return
+
+  # TODO support stateful actuators
+
+  @wp.kernel
+  def _force(
+    m: Model,
+    ctrl: array2df,
+    # outputs
+    force: array2df,
+  ):
+    worldid, dofid = wp.tid()
+    gain = m.actuator_gainprm[dofid, 0]
+    bias = m.actuator_biasprm[dofid, 0]
+    # TODO support gain types other than FIXED
+    c = ctrl[worldid, dofid]
+    if m.actuator_ctrllimited[dofid]:
+      r = m.actuator_ctrlrange[dofid]
+      c = wp.clamp(c, r[0], r[1])
+    f = gain * c + bias
+    if m.actuator_forcelimited[dofid]:
+      r = m.actuator_forcerange[dofid]
+      f = wp.clamp(f, r[0], r[1])
+    force[worldid, dofid] = f
+
+  wp.launch(
+    _force, dim=[d.nworld, m.nu], inputs=[m, d.ctrl], outputs=[d.actuator_force]
+  )
+
+  @wp.kernel
+  def _qfrc(m: Model, moment: array3df, force: array2df, qfrc: array2df):
+    worldid, vid = wp.tid()
+
+    s = float(0.0)
+    for uid in range(m.nu):
+      # TODO consider using Tile API or transpose moment for better access pattern
+      s += moment[worldid, uid, vid] * force[worldid, uid]
+    jntid = m.dof_jntid[vid]
+    if m.jnt_actfrclimited[jntid]:
+      r = m.jnt_actfrcrange[jntid]
+      s = wp.clamp(s, r[0], r[1])
+    qfrc[worldid, vid] = s
+
+  wp.launch(
+    _qfrc,
+    dim=(d.nworld, m.nv),
+    inputs=[m, d.actuator_moment, d.actuator_force],
+    outputs=[d.qfrc_actuator],
+  )
+
+  # TODO actuator-level gravity compensation, skip if added as passive force
+
+  return d
+
+
 def fwd_acceleration(m: Model, d: Data):
   """Add up all non-constraint forces, compute qacc_smooth."""
 
   qfrc_applied = d.qfrc_applied
-  # TODO(team) += support.xfrc_accumulate(m, d)
+  qfrc_accumulated = xfrc_accumulate(m, d)
 
   @wp.kernel
-  def _qfrc_smooth(d: Data, qfrc_applied: wp.array(ndim=2, dtype=wp.float32)):
+  def _qfrc_smooth(
+    d: Data,
+    qfrc_applied: wp.array(ndim=2, dtype=wp.float32),
+    qfrc_accumulated: wp.array(ndim=2, dtype=wp.float32),
+  ):
     worldid, dofid = wp.tid()
     d.qfrc_smooth[worldid, dofid] = (
       d.qfrc_passive[worldid, dofid]
       - d.qfrc_bias[worldid, dofid]
       + d.qfrc_actuator[worldid, dofid]
       + qfrc_applied[worldid, dofid]
+      + qfrc_accumulated[worldid, dofid]
     )
 
-  wp.launch(_qfrc_smooth, dim=(d.nworld, m.nv), inputs=[d, qfrc_applied])
+  wp.launch(
+    _qfrc_smooth, dim=(d.nworld, m.nv), inputs=[d, qfrc_applied, qfrc_accumulated]
+  )
 
   smooth.solve_m(m, d, d.qacc_smooth, d.qfrc_smooth)
 
@@ -270,7 +340,7 @@ def forward(m: Model, d: Data):
   # TODO(team): sensor.sensor_pos
   fwd_velocity(m, d)
   # TODO(team): sensor.sensor_vel
-  # TODO(team): fwd_actuation
+  fwd_actuation(m, d)
   fwd_acceleration(m, d)
   # TODO(team): sensor.sensor_acc
 
@@ -278,3 +348,19 @@ def forward(m: Model, d: Data):
     wp.copy(d.qacc, d.qacc_smooth)
   else:
     solver.solve(m, d)
+
+
+def step(m: Model, d: Data):
+  """Advance simulation."""
+  forward(m, d)
+
+  if m.opt.integrator == mujoco.mjtIntegrator.mjINT_EULER:
+    euler(m, d)
+  elif m.opt.integrator == mujoco.mjtIntegrator.mjINT_RK4:
+    # TODO(team): rungekutta4
+    raise NotImplementedError(f"integrator {m.opt.integrator} not implemented.")
+  elif m.opt.integrator == mujoco.mjtIntegrator.mjINT_IMPLICITFAST:
+    # TODO(team): implicit
+    raise NotImplementedError(f"integrator {m.opt.integrator} not implemented.")
+  else:
+    raise NotImplementedError(f"integrator {m.opt.integrator} not implemented.")

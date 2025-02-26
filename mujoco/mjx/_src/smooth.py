@@ -14,7 +14,6 @@
 # ==============================================================================
 
 import warp as wp
-
 from . import math
 
 from .types import Model
@@ -22,6 +21,7 @@ from .types import Data
 from .types import array2df
 from .types import array3df
 from .types import vec10
+from .types import JointType, TrnType
 
 
 def kinematics(m: Model, d: Data):
@@ -49,7 +49,7 @@ def kinematics(m: Model, d: Data):
       pid = m.body_parentid[bodyid]
       xpos = (d.xmat[worldid, pid] * m.body_pos[bodyid]) + d.xpos[worldid, pid]
       xquat = math.mul_quat(d.xquat[worldid, pid], m.body_quat[bodyid])
-    elif jntnum == 1 and m.jnt_type[jntadr] == 0:
+    elif jntnum == 1 and m.jnt_type[jntadr] == wp.static(JointType.FREE.value):
       # free joint
       qadr = m.jnt_qposadr[jntadr]
       # TODO(erikfrey): would it be better to use some kind of wp.copy here?
@@ -71,7 +71,7 @@ def kinematics(m: Model, d: Data):
         xanchor = math.rot_vec_quat(m.jnt_pos[jntadr], xquat) + xpos
         xaxis = math.rot_vec_quat(jnt_axis, xquat)
 
-        if jnt_type == 1:  # ball
+        if jnt_type == wp.static(JointType.BALL.value):
           qloc = wp.quat(
             qpos[qadr + 0],
             qpos[qadr + 1],
@@ -81,9 +81,9 @@ def kinematics(m: Model, d: Data):
           xquat = math.mul_quat(xquat, qloc)
           # correct for off-center rotation
           xpos = xanchor - math.rot_vec_quat(m.jnt_pos[jntadr], xquat)
-        elif jnt_type == 2:  # slide
+        elif jnt_type == wp.static(JointType.SLIDE.value):
           xpos += xaxis * (qpos[qadr] - m.qpos0[qadr])
-        elif jnt_type == 3:  # hinge
+        elif jnt_type == wp.static(JointType.HINGE.value):
           qpos0 = m.qpos0[qadr]
           qloc = math.axis_angle_to_quat(jnt_axis, qpos[qadr] - qpos0)
           xquat = math.mul_quat(xquat, qloc)
@@ -181,7 +181,7 @@ def com_pos(m: Model, d: Data):
     offset = d.subtree_com[worldid, m.body_rootid[bodyid]] - d.xanchor[worldid, jntid]
 
     res = d.cdof[worldid]
-    if jnt_type == 0:  # free
+    if jnt_type == wp.static(JointType.FREE.value):
       res[dofid + 0] = wp.spatial_vector(0.0, 0.0, 0.0, 1.0, 0.0, 0.0)
       res[dofid + 1] = wp.spatial_vector(0.0, 0.0, 0.0, 0.0, 1.0, 0.0)
       res[dofid + 2] = wp.spatial_vector(0.0, 0.0, 0.0, 0.0, 0.0, 1.0)
@@ -189,14 +189,14 @@ def com_pos(m: Model, d: Data):
       res[dofid + 3] = wp.spatial_vector(xmat[0], wp.cross(xmat[0], offset))
       res[dofid + 4] = wp.spatial_vector(xmat[1], wp.cross(xmat[1], offset))
       res[dofid + 5] = wp.spatial_vector(xmat[2], wp.cross(xmat[2], offset))
-    elif jnt_type == 1:  # ball
+    elif jnt_type == wp.static(JointType.BALL.value):  # ball
       # I_3 rotation in child frame (assume no subsequent rotations)
       res[dofid + 0] = wp.spatial_vector(xmat[0], wp.cross(xmat[0], offset))
       res[dofid + 1] = wp.spatial_vector(xmat[1], wp.cross(xmat[1], offset))
       res[dofid + 2] = wp.spatial_vector(xmat[2], wp.cross(xmat[2], offset))
-    elif jnt_type == 2:  # slide
+    elif jnt_type == wp.static(JointType.SLIDE.value):
       res[dofid] = wp.spatial_vector(wp.vec3(0.0), xaxis)
-    elif jnt_type == 3:  # hinge
+    elif jnt_type == wp.static(JointType.HINGE.value):  # hinge
       res[dofid] = wp.spatial_vector(xaxis, wp.cross(xaxis, offset))
 
   body_treeadr = m.body_treeadr.numpy()
@@ -433,6 +433,75 @@ def rne(m: Model, d: Data):
   wp.launch(qfrc_bias, dim=[d.nworld, m.nv], inputs=[m, d, cfrc])
 
 
+def transmission(m: Model, d: Data):
+  """Computes actuator/transmission lengths and moments."""
+  if not m.nu:
+    return d
+
+  @wp.kernel
+  def _transmission(
+    m: Model,
+    d: Data,
+    # outputs
+    length: array2df,
+    moment: array3df,
+  ):
+    worldid, actid = wp.tid()
+    qpos = d.qpos[worldid]
+    jntid = m.actuator_trnid[actid, 0]
+    jnt_typ = m.jnt_type[jntid]
+    qadr = m.jnt_qposadr[jntid]
+    vadr = m.jnt_dofadr[jntid]
+    trntype = m.actuator_trntype[actid]
+    gear = m.actuator_gear[actid]
+    if trntype == wp.static(TrnType.JOINT.value) or trntype == wp.static(
+      TrnType.JOINTINPARENT.value
+    ):
+      if jnt_typ == wp.static(JointType.FREE.value):
+        length[worldid, actid] = 0.0
+        if trntype == wp.static(TrnType.JOINTINPARENT.value):
+          quat_neg = math.quat_inv(
+            wp.quat(qpos[qadr + 3], qpos[qadr + 4], qpos[qadr + 5], qpos[qadr + 6])
+          )
+          gearaxis = math.rot_vec_quat(wp.spatial_bottom(gear), quat_neg)
+          moment[worldid, actid, vadr + 0] = gear[0]
+          moment[worldid, actid, vadr + 1] = gear[1]
+          moment[worldid, actid, vadr + 2] = gear[2]
+          moment[worldid, actid, vadr + 3] = gearaxis[0]
+          moment[worldid, actid, vadr + 4] = gearaxis[1]
+          moment[worldid, actid, vadr + 5] = gearaxis[2]
+        else:
+          for i in range(6):
+            moment[worldid, actid, vadr + i] = gear[i]
+      elif jnt_typ == wp.static(JointType.BALL.value):
+        q = wp.quat(qpos[qadr + 0], qpos[qadr + 1], qpos[qadr + 2], qpos[qadr + 3])
+        axis_angle = math.quat_to_vel(q)
+        gearaxis = wp.spatial_top(gear)  # [:3]
+        if trntype == wp.static(TrnType.JOINTINPARENT.value):
+          quat_neg = math.quat_inv(q)
+          gearaxis = math.rot_vec_quat(gearaxis, quat_neg)
+        length[worldid, actid] = wp.dot(axis_angle, gearaxis)
+        for i in range(3):
+          moment[worldid, actid, vadr + i] = gearaxis[i]
+      elif jnt_typ == wp.static(JointType.SLIDE.value) or jnt_typ == wp.static(
+        JointType.HINGE.value
+      ):
+        length[worldid, actid] = qpos[qadr] * gear[0]
+        moment[worldid, actid, vadr] = gear[0]
+      else:
+        wp.printf("unrecognized joint type")
+    else:
+      # TODO handle site, tendon transmission types
+      wp.printf("unhandled transmission type %d\n", trntype)
+
+  wp.launch(
+    _transmission,
+    dim=[d.nworld, m.nu],
+    inputs=[m, d],
+    outputs=[d.actuator_length, d.actuator_moment],
+  )
+
+
 def com_vel(m: Model, d: Data):
   """Computes cvel, cdof_dot."""
 
@@ -461,7 +530,7 @@ def com_vel(m: Model, d: Data):
     for j in range(jntid, jntid + jntnum):
       jnttype = m.jnt_type[j]
 
-      if jnttype == 0:  # free
+      if jnttype == wp.static(JointType.FREE.value):
         cvel += cdof[dofid + 0] * qvel[dofid + 0]
         cvel += cdof[dofid + 1] * qvel[dofid + 1]
         cvel += cdof[dofid + 2] * qvel[dofid + 2]
@@ -475,7 +544,7 @@ def com_vel(m: Model, d: Data):
         cvel += cdof[dofid + 5] * qvel[dofid + 5]
 
         dofid += 6
-      elif jnttype == 1:  # ball
+      elif jnttype == wp.static(JointType.BALL.value):
         d.cdof_dot[worldid, dofid + 0] = math.motion_cross(cvel, cdof[dofid + 0])
         d.cdof_dot[worldid, dofid + 1] = math.motion_cross(cvel, cdof[dofid + 1])
         d.cdof_dot[worldid, dofid + 2] = math.motion_cross(cvel, cdof[dofid + 2])

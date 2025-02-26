@@ -84,7 +84,7 @@ def _create_context(ctx: Context, m: types.Model, d: types.Data, grad: bool = Tr
   wp.launch(_jaref, dim=(d.njmax, m.nv), inputs=[ctx, m, d])
 
   # Ma = qM @ qacc
-  support.mul_m(m, d, d.qacc, ctx.Ma)
+  support.mul_m(m, d, ctx.Ma, d.qacc)
   # ctx.grad.zero_()
   # ctx.Mgrad.zero_()
   # ctx.search.zero_()
@@ -348,7 +348,7 @@ def _linesearch(m: types.Model, d: types.Data, ctx: Context):
   wp.launch(_gtol, dim=(d.nworld,), inputs=[ctx, m])
 
   # mv = qM @ search
-  support.mul_m(m, d, ctx.search, ctx.mv)
+  support.mul_m(m, d, ctx.mv, ctx.search)
 
   # jv = efc_J @ search
   ctx.jv.zero_()
