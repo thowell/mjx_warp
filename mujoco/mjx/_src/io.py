@@ -53,7 +53,18 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   # dof lower triangle row and column indices
   dof_tri_row, dof_tri_col = np.tril_indices(mjm.nv)
 
-  # indices for sparse qM
+  # indices for sparse qM full_m
+  is_, js = [], []
+  for i in range(mjm.nv):
+    j = i
+    while j > -1:
+      is_.append(i)
+      js.append(j)
+      j = mjm.dof_parentid[j]
+  qM_fullm_i = is_
+  qM_fullm_j = js
+
+  # indices for sparse qM mul_m
   is_, js, madr_ijs = [], [], []
   for i in range(mjm.nv):
     madr_ij, j = mjm.dof_Madr[i], i
@@ -64,7 +75,9 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
         break
       is_, js, madr_ijs = is_ + [i], js + [j], madr_ijs + [madr_ij]
 
-  qM_i, qM_j, qM_madr_ij = (np.array(x, dtype=np.int32) for x in (is_, js, madr_ijs))
+  qM_mulm_i, qM_mulm_j, qM_madr_ij = (
+    np.array(x, dtype=np.int32) for x in (is_, js, madr_ijs)
+  )
 
   jnt_limited_slide_hinge_adr = np.nonzero(
     mjm.jnt_limited
@@ -125,8 +138,10 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
     qLD_tileadr = np.cumsum(tile_off)[:-1]
     qLD_tilesize = np.array(sorted(tiles.keys()))
 
-  m.qM_i = wp.array(qM_i, dtype=wp.int32, ndim=1)
-  m.qM_j = wp.array(qM_j, dtype=wp.int32, ndim=1)
+  m.qM_fullm_i = wp.array(qM_fullm_i, dtype=wp.int32, ndim=1)
+  m.qM_fullm_j = wp.array(qM_fullm_j, dtype=wp.int32, ndim=1)
+  m.qM_mulm_i = wp.array(qM_mulm_i, dtype=wp.int32, ndim=1)
+  m.qM_mulm_j = wp.array(qM_mulm_j, dtype=wp.int32, ndim=1)
   m.qM_madr_ij = wp.array(qM_madr_ij, dtype=wp.int32, ndim=1)
   m.qLD_update_tree = wp.array(qLD_update_tree, dtype=wp.vec3i, ndim=1)
   m.qLD_update_treeadr = wp.array(
@@ -360,8 +375,10 @@ def put_data(
   if support.is_sparse(mjm):
     qM = np.expand_dims(mjd.qM, axis=0)
     qLD = np.expand_dims(mjd.qLD, axis=0)
-    # TODO(taylorhowell): sparse efc_J
     efc_J = np.zeros((mjd.nefc, mjm.nv))
+    mujoco.mju_sparse2dense(
+      efc_J, mjd.efc_J, mjd.efc_J_rownnz, mjd.efc_J_rowadr, mjd.efc_J_colind
+    )
   else:
     qM = np.zeros((mjm.nv, mjm.nv))
     mujoco.mj_fullM(mjm, qM, mjd.qM)
