@@ -133,19 +133,19 @@ def _create_lspoint(ls_pnt: LSPoint, m: types.Model, d: types.Data, ctx: Context
   wp.copy(ctx.quad_total, ctx.quad_gauss)
 
   @wp.kernel
-  def _quad(ctx: Context, d: types.Data):
+  def _quad(ls_pnt: LSPoint, ctx: Context, d: types.Data):
     efcid = wp.tid()
 
     if efcid >= d.nefc_total[0]:
       return
 
     worldid = d.efc_worldid[efcid]
-    x = ctx.Jaref[efcid] + ctx.alpha[worldid] * ctx.jv[efcid]
+    x = ctx.Jaref[efcid] + ls_pnt.alpha[worldid] * ctx.jv[efcid]
     # TODO(team): active and conditionally active constraints
     if x < 0.0:
       wp.atomic_add(ctx.quad_total, worldid, ctx.quad[efcid])
 
-  wp.launch(_quad, dim=(d.njmax,), inputs=[ctx, d])
+  wp.launch(_quad, dim=(d.njmax,), inputs=[ls_pnt, ctx, d])
 
   @wp.kernel
   def _cost_deriv01(ls_pnt: LSPoint, ctx: Context):
@@ -323,7 +323,7 @@ def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
       output_tile = wp.tile_cholesky_solve(fact_tile, input_tile)
       wp.tile_store(ctx.Mgrad[worldid], output_tile)
 
-    wp.launch_tiled(_cholesky, dim=(d.nworld,), inputs=[ctx], block_dim=256)
+    wp.launch_tiled(_cholesky, dim=(d.nworld,), inputs=[ctx], block_dim=32)
 
 
 @wp.func
