@@ -353,11 +353,11 @@ def put_data(
   # TODO(team): move to Model?
   if nconmax == -1:
     # TODO(team): heuristic for nconmax
-    nconmax = 512
+    nconmax = max(512, mjd.ncon * nworld)
   d.nconmax = nconmax
   if njmax == -1:
     # TODO(team): heuristic for njmax
-    njmax = 512
+    njmax = max(512, mjd.nefc * nworld)
   d.njmax = njmax
 
   if nworld * mjd.nefc > njmax:
