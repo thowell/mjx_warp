@@ -24,7 +24,6 @@ class Context:
   jv: wp.array(dtype=wp.float32, ndim=1)
   quad: wp.array(dtype=wp.vec3f, ndim=1)
   quad_gauss: wp.array(dtype=wp.vec3f, ndim=1)
-  quad_total: wp.array(dtype=wp.vec3f, ndim=1)
   h: wp.array(dtype=wp.float32, ndim=3)
   alpha: wp.array(dtype=wp.float32, ndim=1)
   prev_grad: wp.array(dtype=wp.float32, ndim=2)
@@ -54,7 +53,6 @@ def _context(m: types.Model, d: types.Data) -> Context:
   ctx.jv = wp.empty(shape=(d.njmax,), dtype=wp.float32)
   ctx.quad = wp.empty(shape=(d.njmax,), dtype=wp.vec3f)
   ctx.quad_gauss = wp.empty(shape=(d.nworld,), dtype=wp.vec3f)
-  ctx.quad_total = wp.empty(shape=(d.nworld,), dtype=wp.vec3f)
   ctx.h = wp.empty(shape=(d.nworld, m.nv, m.nv), dtype=wp.float32)
   ctx.alpha = wp.empty(shape=(d.nworld,), dtype=wp.float32)
   ctx.prev_grad = wp.empty(shape=(d.nworld, m.nv), dtype=wp.float32)
@@ -129,38 +127,46 @@ def _lspoint(d: types.Data) -> LSPoint:
   return ls_pnt
 
 
-def _create_lspoint(ls_pnt: LSPoint, m: types.Model, d: types.Data, ctx: Context):
-  wp.copy(ctx.quad_total, ctx.quad_gauss)
+def _eval_lspoint(ls_pnt: LSPoint, m: types.Model, d: types.Data, ctx: Context):
+  @wp.kernel
+  def _cost_deriv_gauss(ls_pnt: LSPoint, ctx: Context):
+    worldid = wp.tid()
+    alpha = ls_pnt.alpha[worldid]
+    alpha_sq = alpha * alpha
+    quad_total0 = ctx.quad_gauss[worldid][0]
+    quad_total1 = ctx.quad_gauss[worldid][1]
+    quad_total2 = ctx.quad_gauss[worldid][2]
+
+    ls_pnt.cost[worldid] = alpha_sq * quad_total2 + alpha * quad_total1 + quad_total0
+    ls_pnt.deriv_0[worldid] = 2.0 * alpha * quad_total2 + quad_total1
+    ls_pnt.deriv_1[worldid] = 2.0 * quad_total2
+
+  wp.launch(_cost_deriv_gauss, dim=(d.nworld,), inputs=[ls_pnt, ctx])
 
   @wp.kernel
-  def _quad(ls_pnt: LSPoint, ctx: Context, d: types.Data):
+  def _cost_deriv_quad(ls_pnt: LSPoint, ctx: Context, d: types.Data):
     efcid = wp.tid()
 
     if efcid >= d.nefc_total[0]:
       return
 
     worldid = d.efc_worldid[efcid]
-    x = ctx.Jaref[efcid] + ls_pnt.alpha[worldid] * ctx.jv[efcid]
+    alpha = ls_pnt.alpha[worldid]
+    x = ctx.Jaref[efcid] + alpha * ctx.jv[efcid]
     # TODO(team): active and conditionally active constraints
     if x < 0.0:
-      wp.atomic_add(ctx.quad_total, worldid, ctx.quad[efcid])
+      alpha_sq = alpha * alpha
+      quad_total0 = ctx.quad[efcid][0]
+      quad_total1 = ctx.quad[efcid][1]
+      quad_total2 = ctx.quad[efcid][2]
 
-  wp.launch(_quad, dim=(d.njmax,), inputs=[ls_pnt, ctx, d])
+      wp.atomic_add(
+        ls_pnt.cost, worldid, alpha_sq * quad_total2 + alpha * quad_total1 + quad_total0
+      )
+      wp.atomic_add(ls_pnt.deriv_0, worldid, 2.0 * alpha * quad_total2 + quad_total1)
+      wp.atomic_add(ls_pnt.deriv_1, worldid, 2.0 * quad_total2)
 
-  @wp.kernel
-  def _cost_deriv01(ls_pnt: LSPoint, ctx: Context):
-    worldid = wp.tid()
-    alpha = ls_pnt.alpha[worldid]
-    alpha_sq = alpha * alpha
-    quad_total0 = ctx.quad_total[worldid][0]
-    quad_total1 = ctx.quad_total[worldid][1]
-    quad_total2 = ctx.quad_total[worldid][2]
-
-    ls_pnt.cost[worldid] = alpha_sq * quad_total2 + alpha * quad_total1 + quad_total0
-    ls_pnt.deriv_0[worldid] = 2.0 * alpha * quad_total2 + quad_total1
-    ls_pnt.deriv_1[worldid] = 2.0 * quad_total2 + float(quad_total2 == 0.0) * mujoco.mjMINVAL
-
-  wp.launch(_cost_deriv01, dim=(d.nworld,), inputs=[ls_pnt, ctx])
+  wp.launch(_cost_deriv_quad, dim=(d.njmax,), inputs=[ls_pnt, ctx, d])
 
 
 @wp.struct
@@ -432,16 +438,18 @@ def _linesearch(m: types.Model, d: types.Data, ctx: Context):
   ls_ctx = _create_lscontext(m, d, ctx)
 
   ls_ctx.p0.alpha.zero_()
-  _create_lspoint(ls_ctx.p0, m, d, ctx)
+  _eval_lspoint(ls_ctx.p0, m, d, ctx)
 
   @wp.kernel
   def _lo_alpha(lo: LSPoint, p0: LSPoint, ctx: Context):
     worldid = wp.tid()
-    lo.alpha[worldid] = p0.alpha[worldid] - p0.deriv_0[worldid] / p0.deriv_1[worldid]
+    lo.alpha[worldid] = p0.alpha[worldid] - p0.deriv_0[worldid] / (
+      p0.deriv_1[worldid] + float(p0.deriv_1[worldid] == 0.0) * mujoco.mjMINVAL
+    )
 
   wp.launch(_lo_alpha, dim=(d.nworld,), inputs=[ls_ctx.lo, ls_ctx.p0, ctx])
 
-  _create_lspoint(ls_ctx.lo, m, d, ctx)
+  _eval_lspoint(ls_ctx.lo, m, d, ctx)
 
   @wp.kernel
   def _tree_map(ls_ctx: LSContext):
@@ -486,13 +494,17 @@ def _linesearch(m: types.Model, d: types.Data, ctx: Context):
     @wp.kernel
     def _alpha_lo_next_hi_next_mid(ls_ctx: LSContext):
       worldid = wp.tid()
-      ls_ctx.lo_next.alpha[worldid] = (
-        ls_ctx.lo.alpha[worldid]
-        - ls_ctx.lo.deriv_0[worldid] / ls_ctx.lo.deriv_1[worldid]
+      ls_ctx.lo_next.alpha[worldid] = ls_ctx.lo.alpha[worldid] - ls_ctx.lo.deriv_0[
+        worldid
+      ] / (
+        ls_ctx.lo.deriv_1[worldid]
+        + float(ls_ctx.lo.deriv_1[worldid] == 0.0) * mujoco.mjMINVAL
       )
-      ls_ctx.hi_next.alpha[worldid] = (
-        ls_ctx.hi.alpha[worldid]
-        - ls_ctx.hi.deriv_0[worldid] / ls_ctx.hi.deriv_1[worldid]
+      ls_ctx.hi_next.alpha[worldid] = ls_ctx.hi.alpha[worldid] - ls_ctx.hi.deriv_0[
+        worldid
+      ] / (
+        ls_ctx.hi.deriv_1[worldid]
+        + float(ls_ctx.hi.deriv_1[worldid] == 0.0) * mujoco.mjMINVAL
       )
       ls_ctx.mid.alpha[worldid] = 0.5 * (
         ls_ctx.lo.alpha[worldid] + ls_ctx.hi.alpha[worldid]
@@ -500,9 +512,9 @@ def _linesearch(m: types.Model, d: types.Data, ctx: Context):
 
     wp.launch(_alpha_lo_next_hi_next_mid, dim=(d.nworld,), inputs=[ls_ctx])
 
-    _create_lspoint(ls_ctx.lo_next, m, d, ctx)
-    _create_lspoint(ls_ctx.hi_next, m, d, ctx)
-    _create_lspoint(ls_ctx.mid, m, d, ctx)
+    _eval_lspoint(ls_ctx.lo_next, m, d, ctx)
+    _eval_lspoint(ls_ctx.hi_next, m, d, ctx)
+    _eval_lspoint(ls_ctx.mid, m, d, ctx)
 
     @wp.kernel
     def _swap_lo_hi(ls_ctx: LSContext):
