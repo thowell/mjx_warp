@@ -282,18 +282,40 @@ def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
   if m.opt.solver == 1:  # CG
     smooth.solve_m(m, d, ctx.grad, ctx.Mgrad)
   elif m.opt.solver == 2:  # Newton
-    # TODO(team): sparse version
     # h = qM + (efc_J.T * efc_D * active) @ efc_J
-    @wp.kernel
-    def _copy_lower_triangle(m: types.Model, d: types.Data, ctx: Context):
-      worldid, elementid = wp.tid()
-      rowid = m.dof_tri_row[elementid]
-      colid = m.dof_tri_col[elementid]
-      ctx.h[worldid, rowid, colid] = d.qM[worldid, rowid, colid]
+    if m.opt.is_sparse:
 
-    wp.launch(
-      _copy_lower_triangle, dim=(d.nworld, m.dof_tri_row.size), inputs=[m, d, ctx]
-    )
+      @wp.kernel
+      def _zero_h_lower(m: types.Model, ctx: Context):
+        worldid, elementid = wp.tid()
+        rowid = m.dof_tri_row[elementid]
+        colid = m.dof_tri_col[elementid]
+        ctx.h[worldid, rowid, colid] = 0.0
+
+      wp.launch(_zero_h_lower, dim=(d.nworld, m.dof_tri_row.size), inputs=[m, ctx])
+
+      @wp.kernel
+      def _set_h_qM_lower_sparse(m: types.Model, d: types.Data, ctx: Context):
+        worldid, elementid = wp.tid()
+        i = m.qM_fullm_i[elementid]
+        j = m.qM_fullm_j[elementid]
+        ctx.h[worldid, i, j] = d.qM[worldid, 0, elementid]
+
+      wp.launch(
+        _set_h_qM_lower_sparse, dim=(d.nworld, m.qM_fullm_i.size), inputs=[m, d, ctx]
+      )
+    else:
+
+      @wp.kernel
+      def _copy_lower_triangle(m: types.Model, d: types.Data, ctx: Context):
+        worldid, elementid = wp.tid()
+        rowid = m.dof_tri_row[elementid]
+        colid = m.dof_tri_col[elementid]
+        ctx.h[worldid, rowid, colid] = d.qM[worldid, rowid, colid]
+
+      wp.launch(
+        _copy_lower_triangle, dim=(d.nworld, m.dof_tri_row.size), inputs=[m, d, ctx]
+      )
 
     @wp.kernel
     def _JTDAJ(ctx: Context, m: types.Model, d: types.Data):
@@ -310,6 +332,7 @@ def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
         return
 
       worldid = d.efc_worldid[efcid]
+      # TODO(team): sparse efc_J
       wp.atomic_add(
         ctx.h[worldid, dofi],
         dofj,

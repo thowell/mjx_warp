@@ -31,6 +31,7 @@ from . import types
 def fixture(fname: str, keyframe: int = -1, sparse: bool = True):
   path = epath.resource_path("mujoco.mjx") / "test_data" / fname
   mjm = mujoco.MjModel.from_xml_path(path.as_posix())
+  mjm.opt.jacobian = sparse
   mjd = mujoco.MjData(mjm)
   if keyframe > -1:
     mujoco.mj_resetDataKeyframe(mjm, mjd, keyframe)
@@ -38,7 +39,6 @@ def fixture(fname: str, keyframe: int = -1, sparse: bool = True):
   mjd.qvel = np.random.uniform(-0.01, 0.01, mjm.nv)
   mujoco.mj_step(mjm, mjd, 3)  # let dynamics get state significantly non-zero
   mujoco.mj_forward(mjm, mjd)
-  mjm.opt.jacobian = sparse
   m = io.put_model(mjm)
   d = io.put_data(mjm, mjd)
   return mjm, mjd, m, d
@@ -72,7 +72,8 @@ def benchmark(
   wp.clear_kernel_cache()
   jit_beg = time.perf_counter()
   fn(mx, dx)
-  fn(mx, dx) # double warmup to work around issues with compilation during graph capture
+  # double warmup to work around issues with compilation during graph capture:
+  fn(mx, dx)
   jit_end = time.perf_counter()
   jit_duration = jit_end - jit_beg
   wp.synchronize()
