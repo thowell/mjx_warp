@@ -72,7 +72,9 @@ def benchmark(
   wp.clear_kernel_cache()
   jit_beg = time.perf_counter()
   fn(mx, dx)
-  fn(mx, dx) # double warmup to work around issues with compilation during graph capture
+  fn(
+    mx, dx
+  )  # double warmup to work around issues with compilation during graph capture
   jit_end = time.perf_counter()
   jit_duration = jit_end - jit_beg
   wp.synchronize()
