@@ -158,7 +158,7 @@ def _create_lspoint(ls_pnt: LSPoint, m: types.Model, d: types.Data, ctx: Context
 
     ls_pnt.cost[worldid] = alpha_sq * quad_total2 + alpha * quad_total1 + quad_total0
     ls_pnt.deriv_0[worldid] = 2.0 * alpha * quad_total2 + quad_total1
-    ls_pnt.deriv_1[worldid] = 2.0 * quad_total2 + float(quad_total2 == 0.0)
+    ls_pnt.deriv_1[worldid] = 2.0 * quad_total2 + float(quad_total2 == 0.0) * mujoco.mjMINVAL
 
   wp.launch(_cost_deriv01, dim=(d.nworld,), inputs=[ls_pnt, ctx])
 
