@@ -92,6 +92,36 @@ class DynType(enum.IntEnum):
   # unsupported: USER
 
 
+class GainType(enum.IntEnum):
+  """Type of actuator gain.
+
+  Members:
+    FIXED: fixed gain
+    AFFINE: const + kp*length + kv*velocity
+    MUSCLE: muscle FLV curve computed by muscle_gain
+  """
+
+  FIXED = mujoco.mjtGain.mjGAIN_FIXED
+  AFFINE = mujoco.mjtGain.mjGAIN_AFFINE
+  MUSCLE = mujoco.mjtGain.mjGAIN_MUSCLE
+  # unsupported: USER
+
+
+class BiasType(enum.IntEnum):
+  """Type of actuator bias.
+
+  Members:
+    NONE: no bias
+    AFFINE: const + kp*length + kv*velocity
+    MUSCLE: muscle passive force computed by muscle_bias
+  """
+
+  NONE = mujoco.mjtBias.mjBIAS_NONE
+  AFFINE = mujoco.mjtBias.mjBIAS_AFFINE
+  MUSCLE = mujoco.mjtBias.mjBIAS_MUSCLE
+  # unsupported: USER
+
+
 class JointType(enum.IntEnum):
   """Type of degree of freedom.
 
@@ -126,10 +156,15 @@ class ConeType(enum.IntEnum):
   ELLIPTIC = mujoco.mjtCone.mjCONE_ELLIPTIC
 
 
+class vec5f(wp.types.vector(length=5, dtype=wp.float32)):
+  pass
+
+
 class vec10f(wp.types.vector(length=10, dtype=wp.float32)):
   pass
 
 
+vec5 = vec5f
 vec10 = vec10f
 array2df = wp.array2d(dtype=wp.float32)
 array3df = wp.array3d(dtype=wp.float32)
@@ -175,8 +210,15 @@ class Model:
   qpos_spring: wp.array(dtype=wp.float32, ndim=1)
   body_tree: wp.array(dtype=wp.int32, ndim=1)  # warp only
   body_treeadr: wp.array(dtype=wp.int32, ndim=1)  # warp only
-  qM_i: wp.array(dtype=wp.int32, ndim=1)  # warp only
-  qM_j: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  qderiv_implicit_offset_nv: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  qderiv_implicit_offset_nu: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  qderiv_implicit_tileadr: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  qderiv_implicit_tilesize_nv: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  qderiv_implicit_tilesize_nu: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  qM_fullm_i: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  qM_fullm_j: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  qM_mulm_i: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  qM_mulm_j: wp.array(dtype=wp.int32, ndim=1)  # warp only
   qM_madr_ij: wp.array(dtype=wp.int32, ndim=1)  # warp only
   qLD_update_tree: wp.array(dtype=wp.vec3i, ndim=1)  # warp only
   qLD_update_treeadr: wp.array(dtype=wp.int32, ndim=1)  # warp only
@@ -201,8 +243,8 @@ class Model:
   jnt_bodyid: wp.array(dtype=wp.int32, ndim=1)
   jnt_limited: wp.array(dtype=wp.int32, ndim=1)
   jnt_limited_slide_hinge_adr: wp.array(dtype=wp.int32, ndim=1)  # warp only
-  jnt_solref: wp.array(dtype=wp.float32, ndim=2)
-  jnt_solimp: wp.array(dtype=wp.float32, ndim=2)
+  jnt_solref: wp.array(dtype=wp.vec2f, ndim=1)
+  jnt_solimp: wp.array(dtype=vec5, ndim=1)
   jnt_type: wp.array(dtype=wp.int32, ndim=1)
   jnt_qposadr: wp.array(dtype=wp.int32, ndim=1)
   jnt_dofadr: wp.array(dtype=wp.int32, ndim=1)
@@ -234,36 +276,41 @@ class Model:
   actuator_ctrlrange: wp.array(dtype=wp.vec2, ndim=1)
   actuator_forcelimited: wp.array(dtype=wp.bool, ndim=1)
   actuator_forcerange: wp.array(dtype=wp.vec2, ndim=1)
+  actuator_gaintype: wp.array(dtype=wp.int32, ndim=1)
   actuator_gainprm: wp.array(dtype=wp.float32, ndim=2)
   actuator_biasprm: wp.array(dtype=wp.float32, ndim=2)
   actuator_gear: wp.array(dtype=wp.spatial_vector, ndim=1)
   actuator_actlimited: wp.array(dtype=wp.bool, ndim=1)
   actuator_actrange: wp.array(dtype=wp.vec2, ndim=1)
   actuator_actadr: wp.array(dtype=wp.int32, ndim=1)
+  actuator_biastype: wp.array(dtype=wp.int32, ndim=1)
   actuator_dyntype: wp.array(dtype=wp.int32, ndim=1)
   actuator_dynprm: wp.array(dtype=vec10f, ndim=1)
-  opt: Option
+  actuator_affine_bias_gain: bool
 
 
 @wp.struct
 class Contact:
-  dist: wp.array(dtype=wp.float32, ndim=2)
-  pos: wp.array(dtype=wp.vec3f, ndim=2)
-  frame: wp.array(dtype=wp.mat33f, ndim=2)
-  includemargin: wp.array(dtype=wp.float32, ndim=2)
-  friction: wp.array(dtype=wp.float32, ndim=3)
-  solref: wp.array(dtype=wp.float32, ndim=3)
-  solreffriction: wp.array(dtype=wp.float32, ndim=3)
-  solimp: wp.array(dtype=wp.float32, ndim=3)
-  dim: wp.array(dtype=wp.int32, ndim=2)
-  geom: wp.array(dtype=wp.int32, ndim=3)
-  efc_address: wp.array(dtype=wp.int32, ndim=2)
+  dist: wp.array(dtype=wp.float32, ndim=1)
+  pos: wp.array(dtype=wp.vec3f, ndim=1)
+  frame: wp.array(dtype=wp.mat33f, ndim=1)
+  includemargin: wp.array(dtype=wp.float32, ndim=1)
+  friction: wp.array(dtype=vec5, ndim=1)
+  solref: wp.array(dtype=wp.vec2f, ndim=1)
+  solreffriction: wp.array(dtype=wp.vec2f, ndim=1)
+  solimp: wp.array(dtype=vec5, ndim=1)
+  dim: wp.array(dtype=wp.int32, ndim=1)
+  geom: wp.array(dtype=wp.vec2i, ndim=1)
+  efc_address: wp.array(dtype=wp.int32, ndim=1)
+  worldid: wp.array(dtype=wp.int32, ndim=1)
 
 
 @wp.struct
 class Data:
   nworld: int
+  ncon_total: wp.array(dtype=wp.int32, ndim=1)  # warp only
   nefc_total: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  nconmax: int
   njmax: int
   time: float
   qpos: wp.array(dtype=wp.float32, ndim=2)
@@ -326,6 +373,7 @@ class Data:
   # temp arrays
   qfrc_integration: wp.array(dtype=wp.float32, ndim=2)
   qacc_integration: wp.array(dtype=wp.float32, ndim=2)
+  act_vel_integration: wp.array(dtype=wp.float32, ndim=2)
 
   qM_integration: wp.array(dtype=wp.float32, ndim=3)
   qLD_integration: wp.array(dtype=wp.float32, ndim=3)

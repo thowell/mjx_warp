@@ -52,16 +52,16 @@ class SolverTest(parameterized.TestCase):
     return mjm, mjd, m, d
 
   @parameterized.parameters(
-    (mujoco.mjtCone.mjCONE_PYRAMIDAL, mujoco.mjtSolver.mjSOL_CG, 25, 5, False),
-    (mujoco.mjtCone.mjCONE_PYRAMIDAL, mujoco.mjtSolver.mjSOL_NEWTON, 2, 4, False),
-    (mujoco.mjtCone.mjCONE_PYRAMIDAL, mujoco.mjtSolver.mjSOL_NEWTON, 2, 4, True),
+    (mujoco.mjtCone.mjCONE_PYRAMIDAL, mujoco.mjtSolver.mjSOL_CG, 25, 5, False, False),
+    (mujoco.mjtCone.mjCONE_PYRAMIDAL, mujoco.mjtSolver.mjSOL_NEWTON, 2, 4, False, False),
+    (mujoco.mjtCone.mjCONE_PYRAMIDAL, mujoco.mjtSolver.mjSOL_NEWTON, 2, 4, True, True),
   )
-  def test_solve(self, cone, solver_, iterations, ls_iterations, ls_parallel):
+  def test_solve(self, cone, solver_, iterations, ls_iterations, sparse, ls_parallel):
     """Tests MJX solve."""
     for keyframe in range(3):
       mjm, mjd, m, d = self._load(
         "humanoid/humanoid.xml",
-        is_sparse=False,
+        is_sparse=sparse,
         cone=cone,
         solver_=solver_,
         iterations=iterations,
