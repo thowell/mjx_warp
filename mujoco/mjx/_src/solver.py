@@ -4,10 +4,10 @@ from . import smooth
 from . import support
 from . import types
 
-MAX_LS_ITER = 64
+MAX_LS_PARALLEL = 64
 
 
-class veclsf(wp.types.vector(length=MAX_LS_ITER, dtype=wp.float32)):
+class veclsf(wp.types.vector(length=MAX_LS_PARALLEL, dtype=wp.float32)):
   pass
 
 
@@ -73,9 +73,9 @@ def _context(m: types.Model, d: types.Data) -> Context:
   ctx.beta_num = wp.empty(shape=(d.nworld,), dtype=wp.float32)
   ctx.beta_den = wp.empty(shape=(d.nworld,), dtype=wp.float32)
   ctx.done = wp.empty(shape=(d.nworld,), dtype=wp.int32)
-  ctx.alpha_candidate = wp.empty(shape=(MAX_LS_ITER,), dtype=wp.float32)
+  ctx.alpha_candidate = wp.empty(shape=(MAX_LS_PARALLEL,), dtype=wp.float32)
   ctx.cost_candidate = wp.empty(shape=(d.nworld,), dtype=veclsf)
-  ctx.quad_total_candidate = wp.empty(shape=(d.nworld, MAX_LS_ITER), dtype=wp.vec3f)
+  ctx.quad_total_candidate = wp.empty(shape=(d.nworld, MAX_LS_PARALLEL), dtype=wp.vec3f)
 
   return ctx
 
@@ -262,6 +262,326 @@ def _rescale(m: types.Model, value: float) -> float:
   return value / (m.stat.meaninertia * float(wp.max(1, m.nv)))
 
 
+@wp.func
+def _in_bracket(x: float, y: float) -> bool:
+  return (x < y) and (y < 0.0) or (x > y) and (y > 0.0)
+
+
+def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
+  # initialize interval
+  ls_ctx = _create_lscontext(m, d, ctx)
+
+    if alphaid >= m.opt.ls_iterations:
+      return
+
+    ctx.quad_total_candidate[worldid, alphaid] = ctx.quad_gauss[worldid]
+
+  wp.launch(_quad_total, dim=(d.nworld, MAX_LS_ITER), inputs=[ctx, m])
+
+  @wp.kernel
+  def _quad_total_candidate(ctx: Context, m: types.Model, d: types.Data):
+    efcid, alphaid = wp.tid()
+
+    if alphaid >= m.opt.ls_iterations:
+      return
+
+    if efcid >= d.nefc_total[0]:
+      return
+
+    worldid = d.efc_worldid[efcid]
+    x = ctx.Jaref[efcid] + ctx.alpha_candidate[alphaid] * ctx.jv[efcid]
+    # TODO(team): active and conditionally active constraints
+    if x < 0.0:
+      wp.atomic_add(ctx.quad_total_candidate[worldid], alphaid, ctx.quad[efcid])
+
+  wp.launch(_quad_total_candidate, dim=(d.njmax, MAX_LS_ITER), inputs=[ctx, m, d])
+
+  @wp.kernel
+  def _cost_alpha(ctx: Context, m: types.Model):
+    worldid, alphaid = wp.tid()
+
+    if alphaid >= m.opt.ls_iterations:
+      ctx.cost_candidate[worldid][alphaid] = wp.inf
+      return
+
+    alpha = ctx.alpha_candidate[alphaid]
+    alpha_sq = alpha * alpha
+    quad_total0 = ctx.quad_total_candidate[worldid, alphaid][0]
+    quad_total1 = ctx.quad_total_candidate[worldid, alphaid][1]
+    quad_total2 = ctx.quad_total_candidate[worldid, alphaid][2]
+
+    ctx.cost_candidate[worldid][alphaid] = (
+      alpha_sq * quad_total2 + alpha * quad_total1 + quad_total0
+    )
+
+    ls_ctx.lo.alpha[worldid] = (
+      lesser * ls_ctx.lo.alpha[worldid] + not_lesser * ls_ctx.p0.alpha[worldid]
+    )
+    ls_ctx.lo.cost[worldid] = (
+      lesser * ls_ctx.lo.cost[worldid] + not_lesser * ls_ctx.p0.cost[worldid]
+    )
+    ls_ctx.lo.deriv_0[worldid] = (
+      lesser * ls_ctx.lo.deriv_0[worldid] + not_lesser * ls_ctx.p0.deriv_0[worldid]
+    )
+    ls_ctx.lo.deriv_1[worldid] = (
+      lesser * ls_ctx.lo.deriv_1[worldid] + not_lesser * ls_ctx.p0.deriv_1[worldid]
+    )
+
+  wp.launch(_tree_map, dim=(d.nworld,), inputs=[ls_ctx])
+
+  ls_ctx.swap.fill_(1)
+  ls_ctx.ls_iter.fill_(0)
+
+  @wp.kernel
+  def _gtol(ctx: Context, m: types.Model):
+    worldid = wp.tid()
+    smag = (
+      wp.math.sqrt(ctx.search_dot[worldid])
+      * m.stat.meaninertia
+      * float(wp.max(1, m.nv))
+    )
+    ctx.gtol[worldid] = m.opt.tolerance * m.opt.ls_tolerance * smag
+
+  wp.launch(_gtol, dim=(d.nworld,), inputs=[ctx, m])
+
+  for i in range(m.opt.ls_iterations):
+
+    @wp.kernel
+    def _alpha_lo_next_hi_next_mid(ls_ctx: LSContext):
+      worldid = wp.tid()
+      ls_ctx.lo_next.alpha[worldid] = (
+        ls_ctx.lo.alpha[worldid]
+        - ls_ctx.lo.deriv_0[worldid] / ls_ctx.lo.deriv_1[worldid]
+      )
+      ls_ctx.hi_next.alpha[worldid] = (
+        ls_ctx.hi.alpha[worldid]
+        - ls_ctx.hi.deriv_0[worldid] / ls_ctx.hi.deriv_1[worldid]
+      )
+      ls_ctx.mid.alpha[worldid] = 0.5 * (
+        ls_ctx.lo.alpha[worldid] + ls_ctx.hi.alpha[worldid]
+      )
+
+    wp.launch(_alpha_lo_next_hi_next_mid, dim=(d.nworld,), inputs=[ls_ctx])
+
+    _create_lspoint(ls_ctx.lo_next, m, d, ctx)
+    _create_lspoint(ls_ctx.hi_next, m, d, ctx)
+    _create_lspoint(ls_ctx.mid, m, d, ctx)
+
+    @wp.kernel
+    def _swap_lo_hi(ls_ctx: LSContext):
+      worldid = wp.tid()
+
+      ls_ctx.ls_iter[worldid] += 1
+
+      lo_alpha = ls_ctx.lo.alpha[worldid]
+      lo_cost = ls_ctx.lo.cost[worldid]
+      lo_deriv_0 = ls_ctx.lo.deriv_0[worldid]
+      lo_deriv_1 = ls_ctx.lo.deriv_1[worldid]
+
+      lo_next_alpha = ls_ctx.lo_next.alpha[worldid]
+      lo_next_cost = ls_ctx.lo_next.cost[worldid]
+      lo_next_deriv_0 = ls_ctx.lo_next.deriv_0[worldid]
+      lo_next_deriv_1 = ls_ctx.lo_next.deriv_1[worldid]
+
+      hi_alpha = ls_ctx.hi.alpha[worldid]
+      hi_cost = ls_ctx.hi.cost[worldid]
+      hi_deriv_0 = ls_ctx.hi.deriv_0[worldid]
+      hi_deriv_1 = ls_ctx.hi.deriv_1[worldid]
+
+      hi_next_alpha = ls_ctx.hi_next.alpha[worldid]
+      hi_next_cost = ls_ctx.hi_next.cost[worldid]
+      hi_next_deriv_0 = ls_ctx.hi_next.deriv_0[worldid]
+      hi_next_deriv_1 = ls_ctx.hi_next.deriv_1[worldid]
+
+      mid_alpha = ls_ctx.mid.alpha[worldid]
+      mid_cost = ls_ctx.mid.cost[worldid]
+      mid_deriv_0 = ls_ctx.mid.deriv_0[worldid]
+      mid_deriv_1 = ls_ctx.mid.deriv_1[worldid]
+
+      swap_lo_next = _in_bracket(lo_deriv_0, lo_next_deriv_0)
+      lo_alpha = (
+        float(swap_lo_next) * lo_next_alpha + (1.0 - float(swap_lo_next)) * lo_alpha
+      )
+      lo_cost = (
+        float(swap_lo_next) * lo_next_cost + (1.0 - float(swap_lo_next)) * lo_cost
+      )
+      lo_deriv_0 = (
+        float(swap_lo_next) * lo_next_deriv_0 + (1.0 - float(swap_lo_next)) * lo_deriv_0
+      )
+      lo_deriv_1 = (
+        float(swap_lo_next) * lo_next_deriv_1 + (1.0 - float(swap_lo_next)) * lo_deriv_1
+      )
+
+      swap_lo_mid = _in_bracket(lo_deriv_0, mid_deriv_0)
+      lo_alpha = float(swap_lo_mid) * mid_alpha + (1.0 - float(swap_lo_mid)) * lo_alpha
+      lo_cost = float(swap_lo_mid) * mid_cost + (1.0 - float(swap_lo_mid)) * lo_cost
+      lo_deriv_0 = (
+        float(swap_lo_mid) * mid_deriv_0 + (1.0 - float(swap_lo_mid)) * lo_deriv_0
+      )
+      lo_deriv_1 = (
+        float(swap_lo_mid) * mid_deriv_1 + (1.0 - float(swap_lo_mid)) * lo_deriv_1
+      )
+
+      swap_lo_hi_next = _in_bracket(lo_deriv_0, hi_next_deriv_0)
+      lo_alpha = (
+        float(swap_lo_hi_next) * hi_next_alpha
+        + (1.0 - float(swap_lo_hi_next)) * lo_alpha
+      )
+      lo_cost = (
+        float(swap_lo_hi_next) * hi_next_cost + (1.0 - float(swap_lo_hi_next)) * lo_cost
+      )
+      lo_deriv_0 = (
+        float(swap_lo_hi_next) * hi_next_deriv_0
+        + (1.0 - float(swap_lo_hi_next)) * lo_deriv_0
+      )
+      lo_deriv_1 = (
+        float(swap_lo_hi_next) * hi_next_deriv_1
+        + (1.0 - float(swap_lo_hi_next)) * lo_deriv_1
+      )
+
+      swap_hi_next = _in_bracket(hi_deriv_0, hi_next_deriv_0)
+      hi_alpha = (
+        float(swap_hi_next) * hi_next_alpha + (1.0 - float(swap_hi_next)) * hi_alpha
+      )
+      hi_cost = (
+        float(swap_hi_next) * hi_next_cost + (1.0 - float(swap_hi_next)) * hi_cost
+      )
+      hi_deriv_0 = (
+        float(swap_hi_next) * hi_next_deriv_0 + (1.0 - float(swap_hi_next)) * hi_deriv_0
+      )
+      hi_deriv_1 = (
+        float(swap_hi_next) * hi_next_deriv_1 + (1.0 - float(swap_hi_next)) * hi_deriv_1
+      )
+
+      swap_hi_mid = _in_bracket(hi_deriv_0, mid_deriv_0)
+      hi_alpha = float(swap_hi_mid) * mid_alpha + (1.0 - float(swap_hi_mid)) * hi_alpha
+      hi_cost = float(swap_hi_mid) * mid_cost + (1.0 - float(swap_hi_mid)) * hi_cost
+      hi_deriv_0 = (
+        float(swap_hi_mid) * mid_deriv_0 + (1.0 - float(swap_hi_mid)) * hi_deriv_0
+      )
+      hi_deriv_1 = (
+        float(swap_hi_mid) * mid_deriv_1 + (1.0 - float(swap_hi_mid)) * hi_deriv_1
+      )
+
+      swap_hi_lo_next = _in_bracket(hi_deriv_0, lo_next_deriv_0)
+      hi_alpha = (
+        float(swap_hi_lo_next) * lo_next_alpha
+        + (1.0 - float(swap_hi_lo_next)) * hi_alpha
+      )
+      hi_cost = (
+        float(swap_hi_lo_next) * lo_next_cost + (1.0 - float(swap_hi_lo_next)) * hi_cost
+      )
+      hi_deriv_0 = (
+        float(swap_hi_lo_next) * lo_next_deriv_0
+        + (1.0 - float(swap_hi_lo_next)) * hi_deriv_0
+      )
+      hi_deriv_1 = (
+        float(swap_hi_lo_next) * lo_next_deriv_1
+        + (1.0 - float(swap_hi_lo_next)) * hi_deriv_1
+      )
+
+      ls_ctx.lo.alpha[worldid] = lo_alpha
+      ls_ctx.lo.cost[worldid] = lo_cost
+      ls_ctx.lo.deriv_0[worldid] = lo_deriv_0
+      ls_ctx.lo.deriv_1[worldid] = lo_deriv_1
+
+      ls_ctx.hi.alpha[worldid] = hi_alpha
+      ls_ctx.hi.cost[worldid] = hi_cost
+      ls_ctx.hi.deriv_0[worldid] = hi_deriv_0
+      ls_ctx.hi.deriv_1[worldid] = hi_deriv_1
+
+      swap = swap_lo_next or swap_lo_mid or swap_lo_hi_next
+      swap = swap or swap_hi_next or swap_hi_mid or swap_hi_lo_next
+      ls_ctx.swap[worldid] = int(swap)
+
+    wp.launch(_swap_lo_hi, dim=(d.nworld,), inputs=[ls_ctx])
+
+    @wp.kernel
+    def _done(ls_ctx: LSContext, ctx: Context, m: types.Model, ls_iter: int):
+      worldid = wp.tid()
+      done = ls_iter >= m.opt.ls_iterations
+      done = done or (1 - ls_ctx.swap[worldid])
+      done = done or (
+        (ls_ctx.lo.deriv_0[worldid] < 0.0)
+        and (ls_ctx.lo.deriv_0[worldid] > -ctx.gtol[worldid])
+      )
+      done = done or (
+        (ls_ctx.hi.deriv_0[worldid] > 0.0)
+        and (ls_ctx.hi.deriv_0[worldid] < ctx.gtol[worldid])
+      )
+      ls_ctx.done[worldid] = int(done)
+
+    wp.launch(_done, dim=(d.nworld,), inputs=[ls_ctx, ctx, m, i])
+    # TODO(team): return if all done
+
+  @wp.kernel
+  def _best_alpha(ctx: Context):
+    worldid = wp.tid()
+    bestid = wp.argmin(ctx.cost_candidate[worldid])
+    ctx.alpha[worldid] = ctx.alpha_candidate[bestid]
+
+  wp.launch(_best_alpha, dim=(d.nworld), inputs=[ctx])
+
+
+def _linesearch_parallel(m: types.Model, d: types.Data, ctx: Context):
+  @wp.kernel
+  def _quad_total(ctx: Context, m: types.Model):
+    worldid, alphaid = wp.tid()
+
+    if alphaid >= m.opt.ls_iterations:
+      return
+
+    ctx.quad_total_candidate[worldid, alphaid] = ctx.quad_gauss[worldid]
+
+  wp.launch(_quad_total, dim=(d.nworld, MAX_LS_PARALLEL), inputs=[ctx, m])
+
+  @wp.kernel
+  def _quad_total_candidate(ctx: Context, m: types.Model, d: types.Data):
+    efcid, alphaid = wp.tid()
+
+    if alphaid >= m.opt.ls_iterations:
+      return
+
+    if efcid >= d.nefc_total[0]:
+      return
+
+    worldid = d.efc_worldid[efcid]
+    x = ctx.Jaref[efcid] + ctx.alpha_candidate[alphaid] * ctx.jv[efcid]
+    # TODO(team): active and conditionally active constraints
+    if x < 0.0:
+      wp.atomic_add(ctx.quad_total_candidate[worldid], alphaid, ctx.quad[efcid])
+
+  wp.launch(_quad_total_candidate, dim=(d.njmax, MAX_LS_PARALLEL), inputs=[ctx, m, d])
+
+  @wp.kernel
+  def _cost_alpha(ctx: Context, m: types.Model):
+    worldid, alphaid = wp.tid()
+
+    if alphaid >= m.opt.ls_iterations:
+      ctx.cost_candidate[worldid][alphaid] = wp.inf
+      return
+
+    alpha = ctx.alpha_candidate[alphaid]
+    alpha_sq = alpha * alpha
+    quad_total0 = ctx.quad_total_candidate[worldid, alphaid][0]
+    quad_total1 = ctx.quad_total_candidate[worldid, alphaid][1]
+    quad_total2 = ctx.quad_total_candidate[worldid, alphaid][2]
+
+    ctx.cost_candidate[worldid][alphaid] = (
+      alpha_sq * quad_total2 + alpha * quad_total1 + quad_total0
+    )
+
+  wp.launch(_cost_alpha, dim=(d.nworld, MAX_LS_PARALLEL), inputs=[ctx, m])
+
+  @wp.kernel
+  def _best_alpha(ctx: Context):
+    worldid = wp.tid()
+    bestid = wp.argmin(ctx.cost_candidate[worldid])
+    ctx.alpha[worldid] = ctx.alpha_candidate[bestid]
+
+  wp.launch(_best_alpha, dim=(d.nworld), inputs=[ctx])
+
+
 def _linesearch(m: types.Model, d: types.Data, ctx: Context):
   # mv = qM @ search
   support.mul_m(m, d, ctx.mv, ctx.search)
@@ -319,62 +639,10 @@ def _linesearch(m: types.Model, d: types.Data, ctx: Context):
 
   wp.launch(_quad, dim=(d.njmax), inputs=[ctx, d])
 
-  @wp.kernel
-  def _quad_total(ctx: Context, m: types.Model):
-    worldid, alphaid = wp.tid()
-
-    if alphaid >= m.opt.ls_iterations:
-      return
-
-    ctx.quad_total_candidate[worldid, alphaid] = ctx.quad_gauss[worldid]
-
-  wp.launch(_quad_total, dim=(d.nworld, MAX_LS_ITER), inputs=[ctx, m])
-
-  @wp.kernel
-  def _quad_total_candidate(ctx: Context, m: types.Model, d: types.Data):
-    efcid, alphaid = wp.tid()
-
-    if alphaid >= m.opt.ls_iterations:
-      return
-
-    if efcid >= d.nefc_total[0]:
-      return
-
-    worldid = d.efc_worldid[efcid]
-    x = ctx.Jaref[efcid] + ctx.alpha_candidate[alphaid] * ctx.jv[efcid]
-    # TODO(team): active and conditionally active constraints
-    if x < 0.0:
-      wp.atomic_add(ctx.quad_total_candidate[worldid], alphaid, ctx.quad[efcid])
-
-  wp.launch(_quad_total_candidate, dim=(d.njmax, MAX_LS_ITER), inputs=[ctx, m, d])
-
-  @wp.kernel
-  def _cost_alpha(ctx: Context, m: types.Model):
-    worldid, alphaid = wp.tid()
-
-    if alphaid >= m.opt.ls_iterations:
-      ctx.cost_candidate[worldid][alphaid] = wp.inf
-      return
-
-    alpha = ctx.alpha_candidate[alphaid]
-    alpha_sq = alpha * alpha
-    quad_total0 = ctx.quad_total_candidate[worldid, alphaid][0]
-    quad_total1 = ctx.quad_total_candidate[worldid, alphaid][1]
-    quad_total2 = ctx.quad_total_candidate[worldid, alphaid][2]
-
-    ctx.cost_candidate[worldid][alphaid] = (
-      alpha_sq * quad_total2 + alpha * quad_total1 + quad_total0
-    )
-
-  wp.launch(_cost_alpha, dim=(d.nworld, MAX_LS_ITER), inputs=[ctx, m])
-
-  @wp.kernel
-  def _best_alpha(ctx: Context):
-    worldid = wp.tid()
-    bestid = wp.argmin(ctx.cost_candidate[worldid])
-    ctx.alpha[worldid] = ctx.alpha_candidate[bestid]
-
-  wp.launch(_best_alpha, dim=(d.nworld), inputs=[ctx])
+  if m.opt.ls_parallel:
+    _linesearch_parallel(m, d, ctx)
+  else:
+    _linesearch_iterative(m, d, ctx)
 
   @wp.kernel
   def _qacc_ma(ctx: Context, d: types.Data):
@@ -408,16 +676,18 @@ def solve(m: types.Model, d: types.Data):
   _create_context(ctx, m, d, grad=True)
 
   # alpha candidates
-  @wp.kernel
-  def _alpha_candidate(ctx: Context, m: types.Model):
-    tid = wp.tid()
+  # TODO(team): preprocess candidate alphas
+  if m.opt.ls_parallel:
+    @wp.kernel
+    def _alpha_candidate(ctx: Context, m: types.Model):
+      tid = wp.tid()
 
-    if tid >= m.opt.ls_iterations:
-      return
+      if tid >= m.opt.ls_iterations:
+        return
 
-    ctx.alpha_candidate[tid] = float(tid) / float(wp.max(m.opt.ls_iterations - 1, 1))
+      ctx.alpha_candidate[tid] = float(tid) / float(wp.max(m.opt.ls_iterations - 1, 1))
 
-  wp.launch(_alpha_candidate, dim=(MAX_LS_ITER), inputs=[ctx, m])
+    wp.launch(_alpha_candidate, dim=(MAX_LS_PARALLEL), inputs=[ctx, m])
 
   for i in range(m.opt.iterations):
     _linesearch(m, d, ctx)
