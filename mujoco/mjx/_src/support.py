@@ -38,6 +38,7 @@ def mul_m(
   if not m.opt.is_sparse:
 
     def tile_mul(adr: int, size: int, tilesize: int):
+      # TODO(team): speed up kernel compile time (14s on 2023 Macbook Pro)
       @wp.kernel
       def mul(m: Model, d: Data, leveladr: int, vec: array3df, res: array3df):
         worldid, nodeid = wp.tid()
