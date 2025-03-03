@@ -34,6 +34,13 @@ class Context:
   done: wp.array(dtype=wp.int32, ndim=1)
 
 
+@wp.struct
+class LSPoint:
+  alpha: wp.float32
+  cost: wp.float32
+  deriv: wp.vec2
+
+
 def _context(m: types.Model, d: types.Data) -> Context:
   ctx = Context()
   ctx.Jaref = wp.empty(shape=(d.njmax,), dtype=wp.float32)
@@ -109,24 +116,6 @@ def _create_context(ctx: Context, m: types.Model, d: types.Data, grad: bool = Tr
     wp.launch(_search, dim=(d.nworld, m.nv), inputs=[ctx])
 
 
-@wp.struct
-class LSPoint:
-  alpha: wp.array(dtype=wp.float32, ndim=1)
-  cost: wp.array(dtype=wp.float32, ndim=1)
-  deriv_0: wp.array(dtype=wp.float32, ndim=1)
-  deriv_1: wp.array(dtype=wp.float32, ndim=1)
-
-
-def _lspoint(d: types.Data) -> LSPoint:
-  ls_pnt = LSPoint()
-  ls_pnt.alpha = wp.empty(shape=(d.nworld), dtype=wp.float32)
-  ls_pnt.cost = wp.empty(shape=(d.nworld), dtype=wp.float32)
-  ls_pnt.deriv_0 = wp.empty(shape=(d.nworld), dtype=wp.float32)
-  ls_pnt.deriv_1 = wp.empty(shape=(d.nworld), dtype=wp.float32)
-
-  return ls_pnt
-
-
 def _eval_lspoint(ls_pnt: LSPoint, m: types.Model, d: types.Data, ctx: Context):
   @wp.kernel
   def _cost_deriv_gauss(ls_pnt: LSPoint, ctx: Context):
@@ -180,23 +169,6 @@ class LSContext:
   swap: wp.array(ndim=1, dtype=wp.int32)
   ls_iter: wp.array(ndim=1, dtype=wp.int32)
   done: wp.array(ndim=1, dtype=wp.int32)
-
-
-def _create_lscontext(m: types.Model, d: types.Data, ctx: Context) -> LSContext:
-  ls_ctx = LSContext()
-
-  ls_ctx.p0 = _lspoint(d)
-  ls_ctx.lo = _lspoint(d)
-  ls_ctx.lo_next = _lspoint(d)
-  ls_ctx.hi = _lspoint(d)
-  ls_ctx.hi_next = _lspoint(d)
-  ls_ctx.mid = _lspoint(d)
-
-  ls_ctx.swap = wp.empty(shape=(d.nworld), dtype=wp.int32)
-  ls_ctx.ls_iter = wp.empty(shape=(d.nworld), dtype=wp.int32)
-  ls_ctx.done = wp.zeros((d.nworld), dtype=wp.int32)
-
-  return ls_ctx
 
 
 def _update_constraint(m: types.Model, d: types.Data, ctx: Context):
@@ -363,6 +335,78 @@ def _rescale(m: types.Model, value: float) -> float:
 @wp.func
 def _in_bracket(x: float, y: float) -> bool:
   return (x < y) and (y < 0.0) or (x > y) and (y > 0.0)
+
+
+def _iterative_linesearch(m: types.Model, d: types.Data, ctx: Context):
+  p0 = wp.empty(shape=(d.nworld,), dtype=LSPoint)
+  p1 = wp.empty(shape=(d.nworld,), dtype=LSPoint)
+  p2 = wp.empty(shape=(d.nworld,), dtype=LSPoint)
+  pmid = wp.empty(shape=(d.nworld,), dtype=LSPoint)
+  p1next = wp.empty(shape=(d.nworld,), dtype=LSPoint)
+  p2next = wp.empty(shape=(d.nworld,), dtype=LSPoint)
+
+  @wp.kernel
+  def _gtol(m: types.Model, ctx: Context):
+    worldid = wp.tid()
+    snorm = wp.math.sqrt(ctx.search_dot[worldid])
+    scale = wp.static(m.stat.meaninertia * max(1, m.nv))
+    ctx.gtol[worldid] = m.opt.tolerance * m.opt.ls_tolerance * snorm * scale
+
+  wp.launch(_gtol, dim=(d.nworld,), inputs=[m, ctx])
+
+  # mv = qM @ search
+  support.mul_m(m, d, ctx.mv, ctx.search)
+
+  # jv = efc_J @ search
+  ctx.jv.zero_()
+
+  @wp.kernel
+  def _jv(d: types.Data, ctx: Context):
+    efcid, dofid = wp.tid()
+
+    if efcid >= d.nefc_total[0]:
+      return
+
+    j = d.efc_J[efcid, dofid]
+    search = ctx.search[d.efc_worldid[efcid], dofid]
+    wp.atomic_add(ctx.jv, efcid, j * search)
+
+  wp.launch(_jv, dim=(d.njmax, m.nv), inputs=[ctx, d])
+
+  # prepare quadratics
+  # quad_gauss = [gauss, search.T @ Ma - search.T @ qfrc_smooth, 0.5 * search.T @ mv]
+  ctx.quad_gauss.zero_()
+
+  @wp.kernel
+  def _quad_gauss(ctx: Context, m: types.Model, d: types.Data):
+    worldid, dofid = wp.tid()
+    search = ctx.search[worldid, dofid]
+    quad_gauss = wp.vec3()
+    quad_gauss[0] = ctx.gauss[worldid] / float(m.nv)
+    quad_gauss[1] = search * (ctx.Ma[worldid, dofid] - d.qfrc_smooth[worldid, dofid])
+    quad_gauss[2] = 0.5 * search * ctx.mv[worldid, dofid]
+    wp.atomic_add(ctx.quad_gauss, worldid, quad_gauss)
+
+  wp.launch(_quad_gauss, dim=(d.nworld, m.nv), inputs=[ctx, m, d])
+
+  # quad = [0.5 * Jaref * Jaref * efc_D, jv * Jaref * efc_D, 0.5 * jv * jv * efc_D]
+  @wp.kernel
+  def _quad(ctx: Context, d: types.Data):
+    efcid = wp.tid()
+
+    if efcid >= d.nefc_total[0]:
+      return
+
+    Jaref = ctx.Jaref[efcid]
+    jv = ctx.jv[efcid]
+    efc_D = d.efc_D[efcid]
+    quad = wp.vec3()
+    quad[0] = 0.5 * Jaref * Jaref * efc_D
+    quad[1] = jv * Jaref * efc_D
+    quad[2] = 0.5 * jv * jv * efc_D
+    ctx.quad[efcid] = quad
+
+  wp.launch(_quad, dim=(d.njmax), inputs=[ctx, d])
 
 
 def _linesearch(m: types.Model, d: types.Data, ctx: Context):
