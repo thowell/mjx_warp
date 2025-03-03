@@ -18,6 +18,7 @@
 import numpy as np
 import warp as wp
 from absl.testing import absltest
+from absl.testing import parameterized
 from etils import epath
 
 import mujoco
@@ -142,6 +143,57 @@ class ForwardTest(absltest.TestCase):
     mjx.euler(m, d)
 
     np.testing.assert_allclose(d.qvel.numpy()[0], 1 + mjm.opt.timestep)
+
+
+class ImplicitIntegratorTest(parameterized.TestCase):
+  def _load(self, fname: str, disableFlags: int):
+    path = epath.resource_path("mujoco.mjx") / "test_data" / fname
+    mjm = mujoco.MjModel.from_xml_path(path.as_posix())
+    mjm.opt.jacobian = 0
+    mjm.opt.integrator = mujoco.mjtIntegrator.mjINT_IMPLICITFAST
+    mjm.opt.disableflags = mjm.opt.disableflags | disableFlags
+    mjm.actuator_gainprm[:, 2] = np.random.normal(
+      scale=10, size=mjm.actuator_gainprm[:, 2].shape
+    )
+
+    # change actuators to velocity/damper to cover all codepaths
+    mjm.actuator_gaintype[3] = mujoco.mjtGain.mjGAIN_AFFINE
+    mjm.actuator_gaintype[6] = mujoco.mjtGain.mjGAIN_AFFINE
+    mjm.actuator_biastype[0:3] = mujoco.mjtBias.mjBIAS_AFFINE
+    mjm.actuator_biastype[4:6] = mujoco.mjtBias.mjBIAS_AFFINE
+    mjm.actuator_biasprm[0:3, 2] = -1
+    mjm.actuator_biasprm[4:6, 2] = -1
+    mjm.actuator_ctrlrange[3:7] = 10.0
+    mjm.actuator_gear[:] = 1.0
+
+    mjd = mujoco.MjData(mjm)
+
+    mjd.qvel = np.random.uniform(low=-0.01, high=0.01, size=mjd.qvel.shape)
+    mjd.ctrl = np.random.normal(scale=10, size=mjd.ctrl.shape)
+    mjd.act = np.random.normal(scale=10, size=mjd.act.shape)
+    mujoco.mj_forward(mjm, mjd)
+
+    mjd.ctrl = np.random.normal(scale=10, size=mjd.ctrl.shape)
+    mjd.act = np.random.normal(scale=10, size=mjd.act.shape)
+    m = mjx.put_model(mjm)
+    d = mjx.put_data(mjm, mjd)
+    return mjm, mjd, m, d
+
+  @parameterized.parameters(
+    0,
+    mjx.DisableBit.PASSIVE.value,
+    mjx.DisableBit.ACTUATION.value,
+    mjx.DisableBit.PASSIVE.value & mjx.DisableBit.ACTUATION.value,
+  )
+  def test_implicit(self, disableFlags):
+    np.random.seed(0)
+    mjm, mjd, m, d = self._load("pendula.xml", disableFlags)
+
+    mjx.implicit(m, d)
+    mujoco.mj_implicit(mjm, mjd)
+
+    _assert_eq(d.qpos.numpy()[0], mjd.qpos, "qpos")
+    _assert_eq(d.act.numpy()[0], mjd.act, "act")
 
 
 if __name__ == "__main__":
