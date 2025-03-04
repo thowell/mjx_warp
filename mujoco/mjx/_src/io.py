@@ -213,6 +213,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.body_jntnum = wp.array(mjm.body_jntnum, dtype=wp.int32, ndim=1)
   m.body_parentid = wp.array(mjm.body_parentid, dtype=wp.int32, ndim=1)
   m.body_mocapid = wp.array(mjm.body_mocapid, dtype=wp.int32, ndim=1)
+  m.body_weldid = wp.array(mjm.body_weldid, dtype=wp.int32, ndim=1)
   m.body_pos = wp.array(mjm.body_pos, dtype=wp.vec3, ndim=1)
   m.body_quat = wp.array(mjm.body_quat, dtype=wp.quat, ndim=1)
   m.body_ipos = wp.array(mjm.body_ipos, dtype=wp.vec3, ndim=1)
@@ -239,8 +240,12 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.jnt_actfrclimited = wp.array(mjm.jnt_actfrclimited, dtype=wp.bool, ndim=1)
   m.jnt_actfrcrange = wp.array(mjm.jnt_actfrcrange, dtype=wp.vec2, ndim=1)
   m.geom_bodyid = wp.array(mjm.geom_bodyid, dtype=wp.int32, ndim=1)
+  m.geom_conaffinity = wp.array(mjm.geom_conaffinity, dtype=wp.int32, ndim=1)
+  m.geom_contype = wp.array(mjm.geom_contype, dtype=wp.int32, ndim=1)
   m.geom_pos = wp.array(mjm.geom_pos, dtype=wp.vec3, ndim=1)
   m.geom_quat = wp.array(mjm.geom_quat, dtype=wp.quat, ndim=1)
+  m.geom_type = wp.array(mjm.geom_type, dtype=wp.int32, ndim=1)
+  m.geom_rbound = wp.array(mjm.geom_rbound, dtype=wp.float32, ndim=1)
   m.site_pos = wp.array(mjm.site_pos, dtype=wp.vec3, ndim=1)
   m.site_quat = wp.array(mjm.site_quat, dtype=wp.quat, ndim=1)
   m.dof_bodyid = wp.array(mjm.dof_bodyid, dtype=wp.int32, ndim=1)
@@ -370,6 +375,13 @@ def make_data(
   d.efc_worldid = wp.zeros((njmax,), dtype=wp.int32)
 
   d.xfrc_applied = wp.zeros((nworld, mjm.nbody), dtype=wp.spatial_vector)
+
+  d.nbroadphase_total = wp.zeros((1,), dtype=wp.int32, ndim=1)
+  d.broadphase_geom1 = wp.zeros((nconmax,), dtype=wp.int32)
+  d.broadphase_geom2 = wp.zeros((nconmax,), dtype=wp.int32)
+  d.broadphase_type1 = wp.zeros((nconmax,), dtype=wp.int32)
+  d.broadphase_type2 = wp.zeros((nconmax,), dtype=wp.int32)
+  d.broadphase_worldid = wp.zeros((nconmax,), dtype=wp.int32)
 
   # internal tmp arrays
   d.qfrc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
@@ -595,6 +607,14 @@ def put_data(
   d.contact.worldid = wp.array(con_worldid, dtype=wp.int32, ndim=1)
 
   d.xfrc_applied = wp.array(tile(mjd.xfrc_applied), dtype=wp.spatial_vector, ndim=2)
+
+  d.nbroadphase_total = wp.zeros((1,), dtype=wp.int32)
+  d.broadphase_geom1 = wp.zeros((nconmax,), dtype=wp.int32)
+  d.broadphase_geom2 = wp.zeros((nconmax,), dtype=wp.int32)
+  d.broadphase_type1 = wp.zeros((nconmax,), dtype=wp.int32)
+  d.broadphase_type2 = wp.zeros((nconmax,), dtype=wp.int32)
+  d.broadphase_worldid = wp.zeros((nconmax,), dtype=wp.int32)
+
   # internal tmp arrays
   d.qfrc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qacc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)

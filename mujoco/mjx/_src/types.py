@@ -255,8 +255,12 @@ class Model:
   jnt_actfrclimited: wp.array(dtype=wp.bool, ndim=1)
   jnt_actfrcrange: wp.array(dtype=wp.vec2, ndim=1)
   geom_bodyid: wp.array(dtype=wp.int32, ndim=1)
+  geom_conaffinity: wp.array(dtype=wp.int32, ndim=1)
+  geom_contype: wp.array(dtype=wp.int32, ndim=1)
   geom_pos: wp.array(dtype=wp.vec3, ndim=1)
   geom_quat: wp.array(dtype=wp.quat, ndim=1)
+  geom_rbound: wp.array(dtype=wp.float32, ndim=1)
+  geom_type: wp.array(dtype=wp.int32, ndim=1)
   site_pos: wp.array(dtype=wp.vec3, ndim=1)
   site_quat: wp.array(dtype=wp.quat, ndim=1)
   site_bodyid: wp.array(dtype=wp.int32, ndim=1)
@@ -368,6 +372,12 @@ class Data:
   efc_worldid: wp.array(dtype=wp.int32, ndim=1)  # warp only
   xfrc_applied: wp.array(dtype=wp.spatial_vector, ndim=2)
   contact: Contact
+  nbroadphase_total: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  broadphase_geom1: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  broadphase_geom2: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  broadphase_type1: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  broadphase_type2: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  broadphase_worldid: wp.array(dtype=wp.int32, ndim=1) # warp only
 
   # temp arrays
   qfrc_integration: wp.array(dtype=wp.float32, ndim=2)

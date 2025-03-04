@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
+import mujoco
 import warp as wp
 
 from .types import Model
@@ -386,3 +387,79 @@ def broad_phase(m: Model, d: Data) -> Data:
   )
 
   return d
+
+
+def nxn_broadphase(m: Model, d: Data):
+  filterparent = not (m.opt.disableflags & mujoco.mjtDisableBit.mjDSBL_FILTERPARENT)
+
+  d.nbroadphase_total.zero_()
+
+  @wp.kernel
+  def _nxn_broadphase(m: Model, d: Data):
+    worldid, elementid = wp.tid()
+    geom1 = (
+      m.ngeom
+      - 2
+      - int(
+        wp.sqrt(float(-8 * elementid + 4 * m.ngeom * (m.ngeom - 1) - 7)) / 2.0 - 0.5
+      )
+    )
+    geom2 = (
+      elementid
+      + geom1
+      + 1
+      - m.ngeom * (m.ngeom - 1) // 2
+      + (m.ngeom - geom1) * ((m.ngeom - geom1) - 1) // 2
+    )
+
+    bodyid1 = m.geom_bodyid[geom1]
+    bodyid2 = m.geom_bodyid[geom2]
+    contype1 = m.geom_contype[geom1]
+    contype2 = m.geom_contype[geom2]
+    conaffinity1 = m.geom_conaffinity[geom1]
+    conaffinity2 = m.geom_conaffinity[geom2]
+    geomtype1 = m.geom_type[geom1]
+    geomtype2 = m.geom_type[geom2]
+    pos1 = d.geom_xpos[worldid, geom1]
+    pos2 = d.geom_xpos[worldid, geom2]
+    size1 = m.geom_rbound[geom1]
+    size2 = m.geom_rbound[geom2]
+    weldid1 = m.body_weldid[bodyid1]
+    weldid2 = m.body_weldid[bodyid2]
+    weld_parentid1 = m.body_weldid[m.body_parentid[weldid1]]
+    weld_parentid2 = m.body_weldid[m.body_parentid[weldid2]]
+
+    self_collision = (weldid1 == weldid2)
+    parent_child_collision = (
+      filterparent
+      and (weldid1 != 0)
+      and (weldid2 != 0)
+      and ((weldid1 == weld_parentid2) or (weldid2 == weld_parentid1))
+    )
+    mask = (contype1 and conaffinity2) or (contype2 and conaffinity1)
+
+    if (
+      (wp.norm_l2(pos2 - pos1) <= (size1 + size2))
+      and mask
+      and (not self_collision)
+      and (not parent_child_collision)
+    ):
+      pairid = wp.atomic_add(d.nbroadphase_total, 0, 1)
+
+      # order pairs by geom type
+      if geomtype1 > geomtype2:
+        d.broadphase_geom1[pairid] = geom2
+        d.broadphase_geom2[pairid] = geom1
+        d.broadphase_type1[pairid] = geomtype2
+        d.broadphase_type2[pairid] = geomtype1
+      else:
+        d.broadphase_geom1[pairid] = geom1
+        d.broadphase_geom2[pairid] = geom2
+        d.broadphase_type1[pairid] = geomtype1
+        d.broadphase_type2[pairid] = geomtype2
+
+      d.broadphase_worldid[pairid] = worldid
+
+  wp.launch(
+    _nxn_broadphase, dim=(d.nworld, m.ngeom * (m.ngeom - 1) // 2), inputs=[m, d]
+  )
