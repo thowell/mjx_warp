@@ -54,7 +54,7 @@ class ForwardTest(absltest.TestCase):
 
   def test_fwd_velocity(self):
     """Tests MJX fwd_velocity."""
-    _, mjd, m, d = self._load("humanoid/humanoid.xml")
+    _, mjd, m, d = self._load("humanoid/humanoid.xml", is_sparse=False)
 
     d.actuator_velocity.zero_()
     mjx.fwd_velocity(m, d)
