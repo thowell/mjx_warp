@@ -377,7 +377,7 @@ class Data:
   broadphase_geom2: wp.array(dtype=wp.int32, ndim=1)  # warp only
   broadphase_type1: wp.array(dtype=wp.int32, ndim=1)  # warp only
   broadphase_type2: wp.array(dtype=wp.int32, ndim=1)  # warp only
-  broadphase_worldid: wp.array(dtype=wp.int32, ndim=1) # warp only
+  broadphase_worldid: wp.array(dtype=wp.int32, ndim=1)  # warp only
 
   # temp arrays
   qfrc_integration: wp.array(dtype=wp.float32, ndim=2)

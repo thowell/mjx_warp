@@ -429,7 +429,7 @@ def nxn_broadphase(m: Model, d: Data):
     weld_parentid1 = m.body_weldid[m.body_parentid[weldid1]]
     weld_parentid2 = m.body_weldid[m.body_parentid[weldid2]]
 
-    self_collision = (weldid1 == weldid2)
+    self_collision = weldid1 == weldid2
     parent_child_collision = (
       filterparent
       and (weldid1 != 0)
