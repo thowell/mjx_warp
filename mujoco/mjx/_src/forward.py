@@ -37,12 +37,8 @@ from .support import xfrc_accumulate
 
 
 def _advance(
-  m: Model,
-  d: Data,
-  act_dot: wp.array,
-  qacc: wp.array,
-  qvel: Optional[wp.array] = None,
-) -> Data:
+  m: Model, d: Data, act_dot: wp.array, qacc: wp.array, qvel: Optional[wp.array] = None
+):
   """Advance state and time given activation derivatives and acceleration."""
 
   # TODO(team): can we assume static timesteps?
@@ -160,10 +156,9 @@ def _advance(
   wp.launch(integrate_joint_positions, dim=(d.nworld, m.njnt), inputs=[m, d, qvel_in])
 
   d.time = d.time + m.opt.timestep
-  return d
 
 
-def euler(m: Model, d: Data) -> Data:
+def euler(m: Model, d: Data):
   """Euler integrator, semi-implicit in velocity."""
   # integrate damping implicitly
 
@@ -210,12 +205,12 @@ def euler(m: Model, d: Data) -> Data:
       d.qacc_integration,
       d.qfrc_integration,
     )
-    return _advance(m, d, d.act_dot, d.qacc_integration)
+    _advance(m, d, d.act_dot, d.qacc_integration)
+  else:
+    _advance(m, d, d.act_dot, d.qacc)
 
-  return _advance(m, d, d.act_dot, d.qacc)
 
-
-def implicit(m: Model, d: Data) -> Data:
+def implicit(m: Model, d: Data):
   """Integrates fully implicit in velocity."""
 
   # optimization comments (AD)
@@ -371,9 +366,9 @@ def implicit(m: Model, d: Data) -> Data:
       m, d, d.qM_integration, d.qacc_integration, d.qfrc_integration
     )
 
-    return _advance(m, d, d.act_dot, d.qacc_integration)
-
-  return _advance(m, d, d.act_dot, d.qacc)
+    _advance(m, d, d.act_dot, d.qacc_integration)
+  else:
+    _advance(m, d, d.act_dot, d.qacc)
 
 
 def fwd_position(m: Model, d: Data):
@@ -465,8 +460,6 @@ def fwd_actuation(m: Model, d: Data):
 
   # TODO actuator-level gravity compensation, skip if added as passive force
 
-  return d
-
 
 def fwd_acceleration(m: Model, d: Data):
   """Add up all non-constraint forces, compute qacc_smooth."""
@@ -523,7 +516,6 @@ def step(m: Model, d: Data):
     # TODO(team): rungekutta4
     raise NotImplementedError(f"integrator {m.opt.integrator} not implemented.")
   elif m.opt.integrator == mujoco.mjtIntegrator.mjINT_IMPLICITFAST:
-    # TODO(team): implicit
-    raise NotImplementedError(f"integrator {m.opt.integrator} not implemented.")
+    implicit(m, d)
   else:
     raise NotImplementedError(f"integrator {m.opt.integrator} not implemented.")
