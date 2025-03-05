@@ -189,7 +189,7 @@ def _efc_contact_pyramidal(
     d.efc_J[efcid, i] = J
     Jqvel += J * d.qvel[worldid, i]
 
-  pos = d.contact.pos[conid]
+  pos = d.contact.dist[conid]
 
   _update_efc_row(
     m,
