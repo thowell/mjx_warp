@@ -34,13 +34,6 @@ class Context:
   done: wp.array(dtype=wp.int32, ndim=1)
 
 
-@wp.struct
-class LSPoint:
-  alpha: wp.float32
-  cost: wp.float32
-  deriv: wp.vec2
-
-
 def _context(m: types.Model, d: types.Data) -> Context:
   ctx = Context()
   ctx.Jaref = wp.empty(shape=(d.njmax,), dtype=wp.float32)
