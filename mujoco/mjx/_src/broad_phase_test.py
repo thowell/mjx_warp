@@ -346,7 +346,8 @@ class BroadPhaseTest(parameterized.TestCase):
     np.testing.assert_allclose(
       d5.broadphase_type2.numpy()[0], int(mujoco.mjtGeom.mjGEOM_CAPSULE)
     )
-    return
+
+    # TODO(team): test margin
 
   def test_broadphase_simple(self):
     """Tests the broadphase"""

@@ -498,6 +498,8 @@ def nxn_broadphase(m: Model, d: Data):
     conaffinity2 = m.geom_conaffinity[geom2]
     geomtype1 = m.geom_type[geom1]
     geomtype2 = m.geom_type[geom2]
+    margin1 = m.geom_margin[geom1]
+    margin2 = m.geom_margin[geom2]
     pos1 = d.geom_xpos[worldid, geom1]
     pos2 = d.geom_xpos[worldid, geom2]
     size1 = m.geom_rbound[geom1]
@@ -516,8 +518,11 @@ def nxn_broadphase(m: Model, d: Data):
     )
     mask = (contype1 and conaffinity2) or (contype2 and conaffinity1)
 
+    bound = size1 + size2 + wp.max(margin1, margin2)
+    dif = pos2 - pos1
+    
     if (
-      (wp.norm_l2(pos2 - pos1) <= (size1 + size2))
+      (wp.dot(dif, dif) <= bound * bound)
       and mask
       and (not self_collision)
       and (not parent_child_collision)
