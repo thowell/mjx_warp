@@ -153,59 +153,58 @@ def _efc_contact_pyramidal(
   if d.contact.dim[conid] != 3:
     return
 
-  pos = d.contact.dist[conid] - d.contact.includemargin[conid]
-  active = pos < 0
+  # do we need this atomic add now?
+  efcid = wp.atomic_add(d.nefc_total, 0, 1)
+  worldid = d.contact.worldid[conid]
+  d.efc_worldid[efcid] = worldid
 
-  if active:
-    efcid = wp.atomic_add(d.nefc_total, 0, 1)
-    worldid = d.contact.worldid[conid]
-    d.efc_worldid[efcid] = worldid
+  body1 = m.geom_bodyid[d.contact.geom[conid][0]]
+  body2 = m.geom_bodyid[d.contact.geom[conid][1]]
 
-    body1 = m.geom_bodyid[d.contact.geom[conid][0]]
-    body2 = m.geom_bodyid[d.contact.geom[conid][1]]
+  fri0 = d.contact.friction[conid][0]
 
-    fri0 = d.contact.friction[conid][0]
+  # pyramidal has common invweight across all edges
+  invweight = m.body_invweight0[body1, 0] + m.body_invweight0[body2, 0]
+  invweight = invweight + fri0 * fri0 * invweight
+  invweight = invweight * 2.0 * fri0 * fri0 / m.opt.impratio
 
-    # pyramidal has common invweight across all edges
-    invweight = m.body_invweight0[body1, 0] + m.body_invweight0[body2, 0]
-    invweight = invweight + fri0 * fri0 * invweight
-    invweight = invweight * 2.0 * fri0 * fri0 / m.opt.impratio
+  dimid2 = dimid / 2 + 1
 
-    dimid2 = dimid / 2 + 1
+  Jqvel = float(0.0)
+  for i in range(m.nv):
+    diff_0 = float(0.0)
+    diff_i = float(0.0)
+    for xyz in range(3):
+      con_pos = d.contact.pos[conid]
+      jac1p = _jac(m, d, con_pos, xyz, body1, i, worldid)
+      jac2p = _jac(m, d, con_pos, xyz, body2, i, worldid)
+      jac_dif = jac2p - jac1p
+      diff_0 += d.contact.frame[conid][0, xyz] * jac_dif
+      diff_i += d.contact.frame[conid][dimid2, xyz] * jac_dif
+    if dimid % 2 == 0:
+      J = diff_0 + diff_i * d.contact.friction[conid][dimid2 - 1]
+    else:
+      J = diff_0 - diff_i * d.contact.friction[conid][dimid2 - 1]
 
-    Jqvel = float(0.0)
-    for i in range(m.nv):
-      diff_0 = float(0.0)
-      diff_i = float(0.0)
-      for xyz in range(3):
-        con_pos = d.contact.pos[conid]
-        jac1p = _jac(m, d, con_pos, xyz, body1, i, worldid)
-        jac2p = _jac(m, d, con_pos, xyz, body2, i, worldid)
-        jac_dif = jac2p - jac1p
-        diff_0 += d.contact.frame[conid][0, xyz] * jac_dif
-        diff_i += d.contact.frame[conid][dimid2, xyz] * jac_dif
-      if dimid % 2 == 0:
-        J = diff_0 + diff_i * d.contact.friction[conid][dimid2 - 1]
-      else:
-        J = diff_0 - diff_i * d.contact.friction[conid][dimid2 - 1]
+    d.efc_J[efcid, i] = J
+    Jqvel += J * d.qvel[worldid, i]
 
-      d.efc_J[efcid, i] = J
-      Jqvel += J * d.qvel[worldid, i]
+  pos = d.contact.pos[conid]
 
-    _update_efc_row(
-      m,
-      d,
-      worldid,
-      efcid,
-      pos,
-      pos,
-      invweight,
-      d.contact.solref[conid],
-      d.contact.solimp[conid],
-      d.contact.includemargin[conid],
-      refsafe,
-      Jqvel,
-    )
+  _update_efc_row(
+    m,
+    d,
+    worldid,
+    efcid,
+    pos,
+    pos,
+    invweight,
+    d.contact.solref[conid],
+    d.contact.solimp[conid],
+    d.contact.includemargin[conid],
+    refsafe,
+    Jqvel,
+  )
 
 
 def make_constraint(m: types.Model, d: types.Data):

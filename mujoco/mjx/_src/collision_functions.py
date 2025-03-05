@@ -142,6 +142,16 @@ def get_info(t):
 
   return _get_info
 
+@wp.func
+def write_contact(d: Data, dist: float, pos: wp.vec3, frame: wp.mat33, includemargin: float, geoms: wp.vec2i, worldid: int):
+  active = (dist - includemargin) < 0
+  if active:
+    index = wp.atomic_add(d.ncon, 0, 1)
+    d.contact.dist[index] = dist
+    d.contact.pos[index] = pos
+    d.contact.frame[index] = frame
+    d.contact.geom[index] = geoms
+    d.contact.worldid[index] = worldid
 
 @wp.func
 def _plane_sphere(
@@ -153,18 +163,14 @@ def _plane_sphere(
 
 
 @wp.func
-def plane_sphere(plane: GeomPlane, sphere: GeomSphere, worldid: int, d: Data):
+def plane_sphere(plane: GeomPlane, sphere: GeomSphere, worldid: int, d: Data, includemargin: float, geom_indices: wp.vec2i):
   dist, pos = _plane_sphere(plane.normal, plane.pos, sphere.pos, sphere.radius)
 
-  index = wp.atomic_add(d.ncon, 0, 1)
-  d.contact.dist[index] = dist
-  d.contact.pos[index] = pos
-  d.contact.frame[index] = make_frame(plane.normal)
-  return index, 1
+  write_contact(d, dist, pos, make_frame(plane.normal), includemargin, geom_indices, worldid)
 
 
 @wp.func
-def sphere_sphere(sphere1: GeomSphere, sphere2: GeomSphere, worldid: int, d: Data):
+def sphere_sphere(sphere1: GeomSphere, sphere2: GeomSphere, worldid: int, d: Data, includemargin: float, geom_indices: wp.vec2i):
   dir = sphere1.pos - sphere2.pos
   dist = wp.length(dir)
   if dist == 0.0:
@@ -174,15 +180,11 @@ def sphere_sphere(sphere1: GeomSphere, sphere2: GeomSphere, worldid: int, d: Dat
   dist = dist - (sphere1.radius + sphere2.radius)
   pos = sphere1.pos + n * (sphere1.radius + 0.5 * dist)
 
-  index = wp.atomic_add(d.ncon, 0, 1)
-  d.contact.dist[index] = dist
-  d.contact.pos[index] = pos
-  d.contact.frame[index] = make_frame(n)
-  return index, 1
+  write_contact(d, dist, pos, make_frame(n), includemargin, geom_indices, worldid)
 
 
 @wp.func
-def plane_capsule(plane: GeomPlane, cap: GeomCapsule, worldid: int, d: Data):
+def plane_capsule(plane: GeomPlane, cap: GeomCapsule, worldid: int, d: Data, includemargin: float, geom_indices: wp.vec2i):
   """Calculates two contacts between a capsule and a plane."""
   n = plane.normal
   axis = wp.vec3(cap.rot[0, 2], cap.rot[1, 2], cap.rot[2, 2])
@@ -198,19 +200,11 @@ def plane_capsule(plane: GeomPlane, cap: GeomCapsule, worldid: int, d: Data):
   frame = mat33_from_cols(n, b, wp.cross(n, b))
   segment = axis * cap.halfsize
 
-  start_index = wp.atomic_add(d.ncon, 0, 2)
-  index = start_index
-  dist, pos = _plane_sphere(n, plane.pos, cap.pos + segment, cap.radius)
-  d.contact.dist[index] = dist
-  d.contact.pos[index] = pos
-  d.contact.frame[index] = frame
-  index += 1
+  dist1, pos1 = _plane_sphere(n, plane.pos, cap.pos + segment, cap.radius)
+  write_contact(d, dist1, pos1, frame, includemargin, geom_indices, worldid)
 
-  dist, pos = _plane_sphere(n, plane.pos, cap.pos - segment, cap.radius)
-  d.contact.dist[index] = dist
-  d.contact.pos[index] = pos
-  d.contact.frame[index] = frame
-  return start_index, 2
+  dist2, pos2 = _plane_sphere(n, plane.pos, cap.pos - segment, cap.radius)
+  write_contact(d, dist2, pos2, frame, includemargin, geom_indices, worldid)
 
 
 _collision_functions = {
@@ -252,12 +246,13 @@ def create_collision_function_kernel(type1, type2):
       d.geom_xmat[g2],
     )
 
-    index, ncon = wp.static(_collision_functions[(type1, type2)])(
-      geom1, geom2, worldid, d
+    margin = wp.max(m.geom_margin[g1], m.geom_margin[g2])
+    gap = wp.max(m.geom_gap[g1], m.geom_gap[g2])
+    includemargin = margin - gap
+
+    wp.static(_collision_functions[(type1, type2)])(
+      geom1, geom2, worldid, d, includemargin, geoms
     )
-    for i in range(ncon):
-      d.contact.worldid[index + i] = worldid
-      d.contact.geom[index + i] = geoms
 
   return _collision_function_kernel
 
