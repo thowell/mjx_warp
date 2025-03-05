@@ -153,7 +153,7 @@ def _efc_contact_pyramidal(
   if conid >= d.ncon[0]:
     return
 
-  if d.contact.dim[conid] != 3:
+  if d.contact.dim[conid] != 3: # shouldn't this be 4? Where is it initialized?
     return
 
   # todo: this needs an update if we have different condims.
