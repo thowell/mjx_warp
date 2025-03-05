@@ -418,7 +418,7 @@ def make_data(
   d.segment_indices = wp.array(segment_indices_list, dtype=int)
 
   # internal narrowphase tmp arrays
-  ngroups = types.NUM_GEOM_TYPES
+  ngroups = types.NUM_GEOM_TYPES * types.NUM_GEOM_TYPES
   d.narrowphase_candidate_worldid = wp.empty(
     (ngroups, d.ncon * nworld), dtype=wp.int32, ndim=2
   )
