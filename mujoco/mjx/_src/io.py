@@ -645,7 +645,7 @@ def put_data(
   d.dyn_geom_aabb = wp.zeros((nworld, mjm.ngeom, 2), dtype=wp.vec3)
 
   # internal narrowphase tmp arrays
-  ngroups = types.NUM_GEOM_TYPES
+  ngroups = types.NUM_GEOM_TYPES * types.NUM_GEOM_TYPES
   d.narrowphase_candidate_worldid = wp.empty(
     (ngroups, d.max_num_overlaps_per_world * nworld), dtype=wp.int32, ndim=2
   )
