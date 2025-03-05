@@ -71,9 +71,11 @@ def benchmark(
   d = io.put_data(mjm, mjd, nworld=batch_size, nconmax=nconmax, njmax=njmax)
 
   jit_beg = time.perf_counter()
+
   fn(m, d)
   # double warmup to work around issues with compilation during graph capture:
   fn(m, d)
+
   jit_end = time.perf_counter()
   jit_duration = jit_end - jit_beg
   wp.synchronize()

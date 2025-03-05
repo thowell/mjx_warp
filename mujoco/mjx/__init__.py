@@ -15,7 +15,8 @@
 
 """Public API for MJX."""
 
-from ._src.collision_driver import broad_phase as broad_phase
+from ._src.collision_driver import broadphase as broadphase
+from ._src.collision_driver import collision as collision
 from ._src.collision_driver import nxn_broadphase as nxn_broadphase
 from ._src.constraint import make_constraint as make_constraint
 from ._src.forward import euler as euler
