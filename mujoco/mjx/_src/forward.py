@@ -531,8 +531,8 @@ def fwd_actuation(m: Model, d: Data):
         actuator_force: array3df,
       ):
         worldid, nodeid = wp.tid()
-        offset_nu = m.qderiv_implicit_offset_nu[leveladr + nodeid]
-        offset_nv = m.qderiv_implicit_offset_nv[leveladr + nodeid]
+        offset_nu = m.actuator_moment_offset_nu[leveladr + nodeid]
+        offset_nv = m.actuator_moment_offset_nv[leveladr + nodeid]
 
         actuator_moment_tile = wp.tile_load(
           d.actuator_moment[worldid],
@@ -560,14 +560,14 @@ def fwd_actuation(m: Model, d: Data):
         block_dim=32,
       )
 
-    qderiv_tilesize_nu = m.qderiv_implicit_tilesize_nu.numpy()
-    qderiv_tilesize_nv = m.qderiv_implicit_tilesize_nv.numpy()
-    qderiv_tileadr = m.qderiv_implicit_tileadr.numpy()
+    qderiv_tilesize_nu = m.actuator_moment_tilesize_nu.numpy()
+    qderiv_tilesize_nv = m.actuator_moment_tilesize_nv.numpy()
+    qderiv_tileadr = m.actuator_moment_tileadr.numpy()
 
     for i in range(len(qderiv_tileadr)):
       beg = qderiv_tileadr[i]
       end = (
-        m.qderiv_implicit_tileadr.shape[0]
+        m.actuator_moment_tileadr.shape[0]
         if i == len(qderiv_tileadr) - 1
         else qderiv_tileadr[i + 1]
       )
