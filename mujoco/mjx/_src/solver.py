@@ -66,6 +66,17 @@ def _context(m: types.Model, d: types.Data) -> Context:
 
 
 def _create_context(ctx: Context, m: types.Model, d: types.Data, grad: bool = True):
+  @wp.kernel
+  def _init_context(ctx: Context):
+    worldid = wp.tid()
+    ctx.cost[worldid] = wp.inf
+    ctx.solver_niter[worldid] = 0
+    ctx.done[worldid] = 0
+    if grad:
+      ctx.search_dot[worldid] = 0.0
+
+  wp.launch(_init_context, dim=(d.nworld), inputs=[ctx])
+
   # jaref = d.efc_J @ d.qacc - d.efc_aref
   ctx.Jaref.zero_()
 
@@ -88,17 +99,11 @@ def _create_context(ctx: Context, m: types.Model, d: types.Data, grad: bool = Tr
   # Ma = qM @ qacc
   support.mul_m(m, d, ctx.Ma, d.qacc)
 
-  ctx.cost.fill_(wp.inf)
-  ctx.solver_niter.zero_()
-  ctx.done.zero_()
-
   _update_constraint(m, d, ctx)
   if grad:
     _update_gradient(m, d, ctx)
 
     # search = -Mgrad
-    ctx.search_dot.zero_()
-
     @wp.kernel
     def _search(ctx: Context):
       worldid, dofid = wp.tid()
@@ -110,8 +115,14 @@ def _create_context(ctx: Context, m: types.Model, d: types.Data, grad: bool = Tr
 
 
 def _update_constraint(m: types.Model, d: types.Data, ctx: Context):
-  wp.copy(ctx.prev_cost, ctx.cost)
-  ctx.cost.zero_()
+  @wp.kernel
+  def _init_cost(ctx: Context):
+    worldid = wp.tid()
+    ctx.prev_cost[worldid] = ctx.cost[worldid]
+    ctx.cost[worldid] = 0.0
+    ctx.gauss[worldid] = 0.0
+
+  wp.launch(_init_cost, dim=(d.nworld), inputs=[ctx])
 
   @wp.kernel
   def _efc_kernel(ctx: Context, d: types.Data):
@@ -128,11 +139,14 @@ def _update_constraint(m: types.Model, d: types.Data, ctx: Context):
     active = int(Jaref < 0.0)
     ctx.active[efcid] = active
 
-    # efc_force = -efc_D * Jaref * active
-    d.efc_force[efcid] = -1.0 * efc_D * Jaref * float(active)
+    if active:
+      # efc_force = -efc_D * Jaref * active
+      d.efc_force[efcid] = -1.0 * efc_D * Jaref
 
-    # cost = 0.5 * sum(efc_D * Jaref * Jaref * active))
-    wp.atomic_add(ctx.cost, worldid, 0.5 * efc_D * Jaref * Jaref * float(active))
+      # cost = 0.5 * sum(efc_D * Jaref * Jaref * active))
+      wp.atomic_add(ctx.cost, worldid, 0.5 * efc_D * Jaref * Jaref)
+    else:
+      d.efc_force[efcid] = 0.0
 
   wp.launch(_efc_kernel, dim=(d.njmax,), inputs=[ctx, d])
 
@@ -156,8 +170,6 @@ def _update_constraint(m: types.Model, d: types.Data, ctx: Context):
   wp.launch(_qfrc_constraint, dim=(m.nv, d.njmax), inputs=[d])
 
   # gauss = 0.5 * (Ma - qfrc_smooth).T @ (qacc - qacc_smooth)
-  ctx.gauss.zero_()
-
   @wp.kernel
   def _gauss(ctx: Context, d: types.Data):
     worldid, dofid = wp.tid()
@@ -189,9 +201,9 @@ def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
 
   wp.launch(_grad, dim=(d.nworld, m.nv), inputs=[ctx, d])
 
-  if m.opt.solver == 1:  # CG
+  if m.opt.solver == mujoco.mjtSolver.mjSOL_CG:
     smooth.solve_m(m, d, ctx.grad, ctx.Mgrad)
-  elif m.opt.solver == 2:  # Newton
+  elif m.opt.solver == mujoco.mjtSolver.mjSOL_NEWTON:
     # h = qM + (efc_J.T * efc_D * active) @ efc_J
     if m.opt.is_sparse:
 
@@ -230,11 +242,12 @@ def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
     @wp.kernel
     def _JTDAJ(ctx: Context, m: types.Model, d: types.Data):
       efcid, elementid = wp.tid()
-      dofi = m.dof_tri_row[elementid]
-      dofj = m.dof_tri_col[elementid]
 
       if efcid >= d.nefc_total[0]:
         return
+
+      dofi = m.dof_tri_row[elementid]
+      dofj = m.dof_tri_col[elementid]
 
       efc_D = d.efc_D[efcid]
       active = ctx.active[efcid]
@@ -246,7 +259,7 @@ def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
       wp.atomic_add(
         ctx.h[worldid, dofi],
         dofj,
-        d.efc_J[efcid, dofi] * d.efc_J[efcid, dofj] * efc_D * float(active),
+        d.efc_J[efcid, dofi] * d.efc_J[efcid, dofj] * efc_D,
       )
 
     wp.launch(_JTDAJ, dim=(d.njmax, m.dof_tri_row.size), inputs=[ctx, m, d])
@@ -289,7 +302,7 @@ def _safe_div(x: wp.float32, y: wp.float32) -> wp.float32:
   return x / wp.select(y == 0.0, y, types.MJ_MINVAL)
 
 
-def _iterative_linesearch(m: types.Model, d: types.Data, ctx: Context):
+def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
   @wp.kernel
   def _gtol(m: types.Model, ctx: Context):
     # TODO(team): static m?
@@ -605,8 +618,10 @@ def _iterative_linesearch(m: types.Model, d: types.Data, ctx: Context):
     # update alpha if we have an improvement
     pp0 = p0[worldid]
     alpha = 0.0
-    alpha = wp.select(plo[0] < pp0[0] and plo[0] < phi[0], alpha, plo_alpha)
-    alpha = wp.select(phi[0] < pp0[0] and plo[0] > phi[0], alpha, phi_alpha)
+    improved = plo[0] < pp0[0] or phi[0] < pp0[0]
+    plo_better = plo[0] < phi[0]
+    alpha = wp.select(improved and plo_better, alpha, plo_alpha)
+    alpha = wp.select(improved and not plo_better, alpha, phi_alpha)
     ctx.alpha[worldid] = alpha
 
   for _ in range(m.opt.ls_iterations):
@@ -656,26 +671,31 @@ def solve(m: types.Model, d: types.Data):
   _create_context(ctx, m, d, grad=True)
 
   for i in range(m.opt.iterations):
-    _iterative_linesearch(m, d, ctx)
-    wp.copy(ctx.prev_grad, ctx.grad)
-    wp.copy(ctx.prev_Mgrad, ctx.Mgrad)
+    _linesearch_iterative(m, d, ctx)
+
+    if m.opt.solver == mujoco.mjtSolver.mjSOL_CG:
+
+      @wp.kernel
+      def _prev_grad_Mgrad(ctx: Context):
+        worldid, dofid = wp.tid()
+        ctx.prev_grad[worldid, dofid] = ctx.grad[worldid, dofid]
+        ctx.prev_Mgrad[worldid, dofid] = ctx.Mgrad[worldid, dofid]
+
+      wp.launch(_prev_grad_Mgrad, dim=(d.nworld, m.nv), inputs=[ctx])
+
     _update_constraint(m, d, ctx)
     _update_gradient(m, d, ctx)
 
-    if m.opt.solver == 2:  # Newton
-      ctx.search_dot.zero_()
+    # polak-ribiere
+    if m.opt.solver == mujoco.mjtSolver.mjSOL_CG:
 
       @wp.kernel
-      def _search_newton(ctx: Context):
-        worldid, dofid = wp.tid()
-        search = -1.0 * ctx.Mgrad[worldid, dofid]
-        ctx.search[worldid, dofid] = search
-        wp.atomic_add(ctx.search_dot, worldid, search * search)
+      def _zero_beta_num_den(ctx: Context):
+        worldid = wp.tid()
+        ctx.beta_num[worldid] = 0.0
+        ctx.beta_den[worldid] = 0.0
 
-      wp.launch(_search_newton, dim=(d.nworld, m.nv), inputs=[ctx])
-    else:  # polak-ribiere
-      ctx.beta_num.zero_()
-      ctx.beta_den.zero_()
+      wp.launch(_zero_beta_num_den, dim=(d.nworld), inputs=[ctx])
 
       @wp.kernel
       def _beta_num_den(ctx: Context):
@@ -699,19 +719,25 @@ def solve(m: types.Model, d: types.Data):
 
       wp.launch(_beta, dim=(d.nworld,), inputs=[ctx])
 
-      ctx.search_dot.zero_()
+    @wp.kernel
+    def _zero_search_dot(ctx: Context):
+      worldid = wp.tid()
+      ctx.search_dot[worldid] = 0.0
 
-      @wp.kernel
-      def _search_cg(ctx: Context):
-        worldid, dofid = wp.tid()
-        search = (
-          -1.0 * ctx.Mgrad[worldid, dofid]
-          + ctx.beta[worldid] * ctx.search[worldid, dofid]
-        )
-        ctx.search[worldid, dofid] = search
-        wp.atomic_add(ctx.search_dot, worldid, search * search)
+    wp.launch(_zero_search_dot, dim=(d.nworld), inputs=[ctx])
 
-      wp.launch(_search_cg, dim=(d.nworld, m.nv), inputs=[ctx])
+    @wp.kernel
+    def _search_update(ctx: Context):
+      worldid, dofid = wp.tid()
+      search = -1.0 * ctx.Mgrad[worldid, dofid]
+
+      if wp.static(m.opt.solver == mujoco.mjtSolver.mjSOL_CG):
+        search += ctx.beta[worldid] * ctx.search[worldid, dofid]
+
+      ctx.search[worldid, dofid] = search
+      wp.atomic_add(ctx.search_dot, worldid, search * search)
+
+    wp.launch(_search_update, dim=(d.nworld, m.nv), inputs=[ctx])
 
     @wp.kernel
     def _done(ctx: Context, m: types.Model, solver_niter: int):
