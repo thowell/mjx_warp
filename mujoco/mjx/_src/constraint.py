@@ -147,14 +147,17 @@ def _efc_contact_pyramidal(
 ):
   conid, dimid = wp.tid()
 
+  if conid == 0 and dimid == 0:
+    d.nefc_total = d.ncon[0] * 4 # todo: make sure thus is adjusted with support for more condims
+
   if conid >= d.ncon[0]:
     return
 
   if d.contact.dim[conid] != 3:
     return
 
-  # do we need this atomic add now?
-  efcid = wp.atomic_add(d.nefc_total, 0, 1)
+  # todo: this needs an update if we have different condims.
+  efcid = conid * 4 + dimid
   worldid = d.contact.worldid[conid]
   d.efc_worldid[efcid] = worldid
 
@@ -216,6 +219,14 @@ def make_constraint(m: types.Model, d: types.Data):
 
     refsafe = not m.opt.disableflags & types.DisableBit.REFSAFE.value
 
+    # contacts first to avoid atomic add - we already know how many contacts we generated
+    if m.opt.cone == types.ConeType.PYRAMIDAL.value:
+      wp.launch(
+        _efc_contact_pyramidal,
+        dim=(d.nconmax, 4),
+        inputs=[m, d, refsafe],
+      )
+
     if not (m.opt.disableflags & types.DisableBit.LIMIT.value) and (
       m.jnt_limited_slide_hinge_adr.size != 0
     ):
@@ -225,9 +236,4 @@ def make_constraint(m: types.Model, d: types.Data):
         inputs=[m, d, refsafe],
       )
 
-    if m.opt.cone == types.ConeType.PYRAMIDAL.value:
-      wp.launch(
-        _efc_contact_pyramidal,
-        dim=(d.nconmax, 4),
-        inputs=[m, d, refsafe],
-      )
+    

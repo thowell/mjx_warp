@@ -147,11 +147,12 @@ def write_contact(d: Data, dist: float, pos: wp.vec3, frame: wp.mat33, includema
   active = (dist - includemargin) < 0
   if active:
     index = wp.atomic_add(d.ncon, 0, 1)
-    d.contact.dist[index] = dist
-    d.contact.pos[index] = pos
-    d.contact.frame[index] = frame
-    d.contact.geom[index] = geoms
-    d.contact.worldid[index] = worldid
+    if index < d.nconmax:
+      d.contact.dist[index] = dist
+      d.contact.pos[index] = pos
+      d.contact.frame[index] = frame
+      d.contact.geom[index] = geoms
+      d.contact.worldid[index] = worldid
 
 @wp.func
 def _plane_sphere(
