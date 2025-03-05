@@ -16,6 +16,7 @@
 import warp as wp
 
 from . import types
+from .support import where
 
 
 @wp.func
@@ -148,3 +149,39 @@ def quat_integrate(q: wp.quat, v: wp.vec3, dt: wp.float32) -> wp.quat:
   q_res = mul_quat(q, q_res)
 
   return wp.normalize(q_res)
+
+
+@wp.func
+def orthogonals(a: wp.vec3):
+  y = wp.vec3(0.0, 1.0, 0.0)
+  z = wp.vec3(0.0, 0.0, 1.0)
+  b = where((-0.5 < a[1]) and (a[1] < 0.5), y, z)
+  b = b - a * wp.dot(a, b)
+  b = wp.normalize(b)
+  if wp.length(a) == 0.0:
+    b = wp.vec3(0.0, 0.0, 0.0)
+  c = wp.cross(a, b)
+
+  return b, c
+
+
+@wp.func
+def make_frame(a: wp.vec3):
+  a = wp.normalize(a)
+  b, c = orthogonals(a)
+
+  # fmt: off
+  return wp.mat33(
+    a.x, a.y, a.z,
+    b.x, b.y, b.z,
+    c.x, c.y, c.z
+  )
+  # fmt: on
+
+
+@wp.func
+def normalize_with_norm(x: wp.vec3):
+  norm = wp.length(x)
+  if norm == 0.0:
+    return x, 0.0
+  return x / norm, norm

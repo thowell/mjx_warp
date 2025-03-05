@@ -21,8 +21,11 @@ from absl.testing import absltest
 from absl.testing import parameterized
 from etils import epath
 
+
 import mujoco
 from mujoco import mjx
+
+wp.config.verify_cuda = True
 
 wp.config.verify_cuda = True
 
