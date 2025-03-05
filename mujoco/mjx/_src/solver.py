@@ -450,7 +450,9 @@ def _iterative_linesearch(m: types.Model, d: types.Data, ctx: Context):
     hi_alpha: wp.array(dtype=wp.float32),
   ):
     worldid = wp.tid()
-    pp0, plo, plo_alpha = p0[worldid], lo[worldid], lo_alpha[worldid]
+    pp0 = p0[worldid]
+    plo = lo[worldid]
+    plo_alpha = lo_alpha[worldid]
     lo_less = plo[1] < pp0[1]
     lo[worldid] = wp.select(lo_less, pp0, plo)
     lo_alpha[worldid] = wp.select(lo_less, 0.0, plo_alpha)
