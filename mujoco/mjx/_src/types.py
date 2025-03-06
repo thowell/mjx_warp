@@ -239,11 +239,11 @@ class Model:
   qpos_spring: wp.array(dtype=wp.float32, ndim=1)
   body_tree: wp.array(dtype=wp.int32, ndim=1)  # warp only
   body_treeadr: wp.array(dtype=wp.int32, ndim=1)  # warp only
-  qderiv_implicit_offset_nv: wp.array(dtype=wp.int32, ndim=1)  # warp only
-  qderiv_implicit_offset_nu: wp.array(dtype=wp.int32, ndim=1)  # warp only
-  qderiv_implicit_tileadr: wp.array(dtype=wp.int32, ndim=1)  # warp only
-  qderiv_implicit_tilesize_nv: wp.array(dtype=wp.int32, ndim=1)  # warp only
-  qderiv_implicit_tilesize_nu: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  actuator_moment_offset_nv: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  actuator_moment_offset_nu: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  actuator_moment_tileadr: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  actuator_moment_tilesize_nv: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  actuator_moment_tilesize_nu: wp.array(dtype=wp.int32, ndim=1)  # warp only
   qM_fullm_i: wp.array(dtype=wp.int32, ndim=1)  # warp only
   qM_fullm_j: wp.array(dtype=wp.int32, ndim=1)  # warp only
   qM_mulm_i: wp.array(dtype=wp.int32, ndim=1)  # warp only

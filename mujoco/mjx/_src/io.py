@@ -139,12 +139,12 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
     qLD_tileadr = np.cumsum(tile_off)[:-1]
     qLD_tilesize = np.array(sorted(tiles.keys()))
 
-  # tiles for implicit integration - needs nu + nv tile size and offset
-  qderiv_implicit_offset_nv = np.empty(shape=(0,), dtype=int)
-  qderiv_implicit_offset_nu = np.empty(shape=(0,), dtype=int)
-  qderiv_implicit_tileadr = np.empty(shape=(0,), dtype=int)
-  qderiv_implicit_tilesize_nv = np.empty(shape=(0,), dtype=int)
-  qderiv_implicit_tilesize_nu = np.empty(shape=(0,), dtype=int)
+  # tiles for actuator_moment - needs nu + nv tile size and offset
+  actuator_moment_offset_nv = np.empty(shape=(0,), dtype=int)
+  actuator_moment_offset_nu = np.empty(shape=(0,), dtype=int)
+  actuator_moment_tileadr = np.empty(shape=(0,), dtype=int)
+  actuator_moment_tilesize_nv = np.empty(shape=(0,), dtype=int)
+  actuator_moment_tilesize_nu = np.empty(shape=(0,), dtype=int)
 
   if not support.is_sparse(mjm):
     # how many actuators for each tree
@@ -166,18 +166,18 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
       act_beg += act_num
 
     sorted_keys = sorted(tiles.keys())
-    qderiv_implicit_offset_nv = [
+    actuator_moment_offset_nv = [
       t[0] for key in sorted_keys for t in tiles.get(key, [])
     ]
-    qderiv_implicit_offset_nu = [
+    actuator_moment_offset_nu = [
       t[1] for key in sorted_keys for t in tiles.get(key, [])
     ]
     tile_off = [0] + [len(tiles[sz]) for sz in sorted(tiles.keys())]
-    qderiv_implicit_tileadr = np.cumsum(tile_off)[:-1]  # offset
-    qderiv_implicit_tilesize_nv = np.array(
+    actuator_moment_tileadr = np.cumsum(tile_off)[:-1]  # offset
+    actuator_moment_tilesize_nv = np.array(
       [a[0] for a in sorted_keys]
     )  # for this level
-    qderiv_implicit_tilesize_nu = np.array(
+    actuator_moment_tilesize_nu = np.array(
       [int(a[1]) for a in sorted_keys]
     )  # for this level
 
@@ -193,20 +193,20 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.qLD_tile = wp.array(qLD_tile, dtype=wp.int32, ndim=1)
   m.qLD_tileadr = wp.array(qLD_tileadr, dtype=wp.int32, ndim=1, device="cpu")
   m.qLD_tilesize = wp.array(qLD_tilesize, dtype=wp.int32, ndim=1, device="cpu")
-  m.qderiv_implicit_offset_nv = wp.array(
-    qderiv_implicit_offset_nv, dtype=wp.int32, ndim=1
+  m.actuator_moment_offset_nv = wp.array(
+    actuator_moment_offset_nv, dtype=wp.int32, ndim=1
   )
-  m.qderiv_implicit_offset_nu = wp.array(
-    qderiv_implicit_offset_nu, dtype=wp.int32, ndim=1
+  m.actuator_moment_offset_nu = wp.array(
+    actuator_moment_offset_nu, dtype=wp.int32, ndim=1
   )
-  m.qderiv_implicit_tileadr = wp.array(
-    qderiv_implicit_tileadr, dtype=wp.int32, ndim=1, device="cpu"
+  m.actuator_moment_tileadr = wp.array(
+    actuator_moment_tileadr, dtype=wp.int32, ndim=1, device="cpu"
   )
-  m.qderiv_implicit_tilesize_nv = wp.array(
-    qderiv_implicit_tilesize_nv, dtype=wp.int32, ndim=1, device="cpu"
+  m.actuator_moment_tilesize_nv = wp.array(
+    actuator_moment_tilesize_nv, dtype=wp.int32, ndim=1, device="cpu"
   )
-  m.qderiv_implicit_tilesize_nu = wp.array(
-    qderiv_implicit_tilesize_nu, dtype=wp.int32, ndim=1, device="cpu"
+  m.actuator_moment_tilesize_nu = wp.array(
+    actuator_moment_tilesize_nu, dtype=wp.int32, ndim=1, device="cpu"
   )
   m.body_dofadr = wp.array(mjm.body_dofadr, dtype=wp.int32, ndim=1)
   m.body_dofnum = wp.array(mjm.body_dofnum, dtype=wp.int32, ndim=1)
@@ -418,12 +418,12 @@ def make_data(
   d.segment_indices = wp.array(segment_indices_list, dtype=int)
 
   # internal narrowphase tmp arrays
-  ngroups = types.NUM_GEOM_TYPES
+  ngroups = types.NUM_GEOM_TYPES * types.NUM_GEOM_TYPES
   d.narrowphase_candidate_worldid = wp.empty(
-    (ngroups, d.ncon * nworld), dtype=wp.int32, ndim=2
+    (ngroups, d.max_num_overlaps_per_world * nworld), dtype=wp.int32, ndim=2
   )
   d.narrowphase_candidate_geom = wp.empty(
-    (ngroups, d.ncon * nworld), dtype=wp.vec2i, ndim=2
+    (ngroups, d.max_num_overlaps_per_world * nworld), dtype=wp.vec2i, ndim=2
   )
   d.narrowphase_candidate_group_count = wp.zeros(ngroups, dtype=wp.int32, ndim=1)
 
@@ -645,7 +645,7 @@ def put_data(
   d.dyn_geom_aabb = wp.zeros((nworld, mjm.ngeom, 2), dtype=wp.vec3)
 
   # internal narrowphase tmp arrays
-  ngroups = types.NUM_GEOM_TYPES
+  ngroups = types.NUM_GEOM_TYPES * types.NUM_GEOM_TYPES
   d.narrowphase_candidate_worldid = wp.empty(
     (ngroups, d.max_num_overlaps_per_world * nworld), dtype=wp.int32, ndim=2
   )
