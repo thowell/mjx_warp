@@ -217,14 +217,6 @@ def make_constraint(m: types.Model, d: types.Data):
 
     refsafe = not m.opt.disableflags & types.DisableBit.REFSAFE.value
 
-    # contacts first to avoid atomic add - we already know how many contacts we generated
-    if m.opt.cone == types.ConeType.PYRAMIDAL.value:
-      wp.launch(
-        _efc_contact_pyramidal,
-        dim=(d.nconmax, 4),
-        inputs=[m, d, refsafe],
-      )
-
     if not (m.opt.disableflags & types.DisableBit.LIMIT.value) and (
       m.jnt_limited_slide_hinge_adr.size != 0
     ):
@@ -234,4 +226,9 @@ def make_constraint(m: types.Model, d: types.Data):
         inputs=[m, d, refsafe],
       )
 
-    
+    if m.opt.cone == types.ConeType.PYRAMIDAL.value:
+      wp.launch(
+        _efc_contact_pyramidal,
+        dim=(d.nconmax, 4),
+        inputs=[m, d, refsafe],
+      )
