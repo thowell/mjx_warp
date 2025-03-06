@@ -338,7 +338,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
   ctx.quad_gauss.zero_()
 
   @wp.kernel
-  def _init_quad_gauss(ctx: Context, m: types.Model, d: types.Data):
+  def _init_quad_gauss(m: types.Model, d: types.Data, ctx: Context):
     worldid, dofid = wp.tid()
     search = ctx.search[worldid, dofid]
     quad_gauss = wp.vec3()
@@ -347,7 +347,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
     quad_gauss[2] = 0.5 * search * ctx.mv[worldid, dofid]
     wp.atomic_add(ctx.quad_gauss, worldid, quad_gauss)
 
-  wp.launch(_init_quad_gauss, dim=(d.nworld, m.nv), inputs=[ctx, m, d])
+  wp.launch(_init_quad_gauss, dim=(d.nworld, m.nv), inputs=[m, d, ctx])
 
   # quad = [0.5 * Jaref * Jaref * efc_D, jv * Jaref * efc_D, 0.5 * jv * jv * efc_D]
   @wp.kernel
