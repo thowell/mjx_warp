@@ -21,6 +21,8 @@ from .types import array2df
 from .types import NUM_GEOM_TYPES
 from typing import Any
 from .types import array3df
+from . import USE_SEPARATE_MODULES
+from . import kernel
 
 
 def is_sparse(m: mujoco.MjModel):
@@ -40,8 +42,13 @@ def mul_m(
   if not m.opt.is_sparse:
 
     def tile_mul(adr: int, size: int, tilesize: int):
+      if USE_SEPARATE_MODULES:
+        module = wp.context.Module(f"support.mul_m_dense_{tilesize}", loader=None)
+      else:
+        module = None
+
       # TODO(team): speed up kernel compile time (14s on 2023 Macbook Pro)
-      @wp.kernel
+      @kernel(module=module)
       def mul(m: Model, d: Data, leveladr: int, res: array3df, vec: array3df):
         worldid, nodeid = wp.tid()
         dofid = m.qLD_tile[leveladr + nodeid]
@@ -75,8 +82,12 @@ def mul_m(
       tile_mul(beg, end - beg, int(qLD_tilesize[i]))
 
   else:
+    if USE_SEPARATE_MODULES:
+      module = wp.context.Module(f"support.mul_m_sparse", loader=None)
+    else:
+      module = None
 
-    @wp.kernel
+    @kernel(module=module)
     def _mul_m_sparse_diag(
       m: Model,
       d: Data,
@@ -86,9 +97,7 @@ def mul_m(
       worldid, dofid = wp.tid()
       res[worldid, dofid] = d.qM[worldid, 0, m.dof_Madr[dofid]] * vec[worldid, dofid]
 
-    wp.launch(_mul_m_sparse_diag, dim=(d.nworld, m.nv), inputs=[m, d, res, vec])
-
-    @wp.kernel
+    @kernel(module=module)
     def _mul_m_sparse_ij(
       m: Model,
       d: Data,
@@ -104,6 +113,8 @@ def mul_m(
 
       wp.atomic_add(res[worldid], i, qM * vec[worldid, j])
       wp.atomic_add(res[worldid], j, qM * vec[worldid, i])
+
+    wp.launch(_mul_m_sparse_diag, dim=(d.nworld, m.nv), inputs=[m, d, res, vec])
 
     wp.launch(
       _mul_m_sparse_ij, dim=(d.nworld, m.qM_madr_ij.size), inputs=[m, d, res, vec]
