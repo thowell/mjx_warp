@@ -349,9 +349,10 @@ def implicit(m: Model, d: Data):
       end = (
         m.qLD_tile.shape[0] if i == len(qderiv_tileadr) - 1 else qderiv_tileadr[i + 1]
       )
-      qderiv_actuator_damping_tiled(
-        beg, end - beg, int(qderiv_tilesize_nv[i]), int(qderiv_tilesize_nu[i])
-      )
+      if qderiv_tilesize_nv[i] != 0:
+        qderiv_actuator_damping_tiled(
+          beg, end - beg, int(qderiv_tilesize_nv[i]), int(qderiv_tilesize_nu[i])
+        )
 
   if passive_enabled or actuation_enabled:
     if actuation_enabled:
@@ -452,12 +453,13 @@ def fwd_velocity(m: Model, d: Data):
         if i == len(actuator_moment_tileadr) - 1
         else actuator_moment_tileadr[i + 1]
       )
-      actuator_velocity(
-        beg,
-        end - beg,
-        int(actuator_moment_tilesize_nu[i]),
-        int(actuator_moment_tilesize_nv[i]),
-      )
+      if actuator_moment_tilesize_nu[i] != 0 and actuator_moment_tilesize_nv[i] != 0:
+        actuator_velocity(
+          beg,
+          end - beg,
+          int(actuator_moment_tilesize_nu[i]),
+          int(actuator_moment_tilesize_nv[i]),
+        )
 
   smooth.com_vel(m, d)
   passive.passive(m, d)
@@ -571,9 +573,10 @@ def fwd_actuation(m: Model, d: Data):
         if i == len(qderiv_tileadr) - 1
         else qderiv_tileadr[i + 1]
       )
-      qfrc_actuator(
-        beg, end - beg, int(qderiv_tilesize_nu[i]), int(qderiv_tilesize_nv[i])
-      )
+      if qderiv_tilesize_nu[i] != 0 and qderiv_tilesize_nv[i] != 0:
+        qfrc_actuator(
+          beg, end - beg, int(qderiv_tilesize_nu[i]), int(qderiv_tilesize_nv[i])
+        )
 
     @wp.kernel
     def _qfrc_limited(m: Model, d: Data):
