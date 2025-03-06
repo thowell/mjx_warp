@@ -195,8 +195,8 @@ def euler(m: Model, d: Data):
         add_damping_sum_qfrc_kernel_dense, dim=(d.nworld, m.nv, m.nv), inputs=[m, d]
       )
 
-  if not m.opt.disableflags & DisableBit.EULERDAMP.value:
-    add_damping_sum_qfrc(m, d, m.opt.is_sparse)
+  def eulerdamp_fused_sparse(m: Model, d: Data):
+    add_damping_sum_qfrc(m, d, True)
     smooth.factor_solve_i(
       m,
       d,
@@ -206,6 +206,47 @@ def euler(m: Model, d: Data):
       d.qacc_integration,
       d.qfrc_integration,
     )
+
+  def eulerdamp_fused_dense(m: Model, d: Data):
+
+    def tile_eulerdamp(adr: int, size: int, tilesize: int):
+      @wp.kernel
+      def eulerdamp(m: Model, d: Data, damping: wp.array(dtype=wp.float32), leveladr: int):
+        worldid, nodeid = wp.tid()
+        dofid = m.qLD_tile[leveladr + nodeid]
+        M_tile = wp.tile_load(
+          d.qM[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid)
+        )
+        damping_tile = wp.tile_load(damping, shape=(tilesize), offset=(dofid))
+        damping_scaled = wp.mul(damping_tile, m.opt.timestep)
+        qm_integration_tile = wp.tile_diag_add(M_tile, damping_scaled)
+
+        qfrc_smooth_tile = wp.tile_load(d.qfrc_smooth[worldid], shape=(tilesize,), offset=(dofid,))
+        qfrc_constraint_tile = wp.tile_load(d.qfrc_constraint[worldid], shape=(tilesize,), offset=(dofid,))
+
+        qfrc_tile = wp.add(qfrc_smooth_tile, qfrc_constraint_tile)
+
+        L_tile = wp.tile_cholesky(qm_integration_tile)
+        qacc_tile = wp.tile_cholesky_solve(L_tile, qfrc_tile)
+        wp.tile_store(d.qacc_integration[worldid], qacc_tile, offset=(dofid))
+
+      wp.launch_tiled(
+        eulerdamp, dim=(d.nworld, size), inputs=[m, d, m.dof_damping, adr], block_dim=32
+      )
+
+    qLD_tileadr, qLD_tilesize = m.qLD_tileadr.numpy(), m.qLD_tilesize.numpy()
+
+    for i in range(len(qLD_tileadr)):
+      beg = qLD_tileadr[i]
+      end = m.qLD_tile.shape[0] if i == len(qLD_tileadr) - 1 else qLD_tileadr[i + 1]
+      tile_eulerdamp(beg, end - beg, int(qLD_tilesize[i]))
+
+  if not m.opt.disableflags & DisableBit.EULERDAMP.value:
+    if (m.opt.is_sparse):
+      eulerdamp_fused_sparse(m, d)
+    else:
+      eulerdamp_fused_dense(m, d)
+    
     _advance(m, d, d.act_dot, d.qacc_integration)
   else:
     _advance(m, d, d.act_dot, d.qacc)
