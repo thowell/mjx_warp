@@ -51,7 +51,7 @@ def _geom_filter(m: Model, geom1: int, geom2: int, filterparent: bool) -> bool:
 
 
 @wp.func
-def _geom_pair(m: Model, geom1: int, geom2: int):
+def _geom_pair(m: Model, geom1: int, geom2: int) -> wp.vec2i:
   if m.geom_type[geom1] > m.geom_type[geom2]:
     return wp.vec2i(geom2, geom1)
   else:
