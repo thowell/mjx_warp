@@ -294,7 +294,6 @@ class Model:
   geom_contype: wp.array(dtype=wp.int32, ndim=1)
   geom_pos: wp.array(dtype=wp.vec3, ndim=1)
   geom_quat: wp.array(dtype=wp.quat, ndim=1)
-  geom_type: wp.array(dtype=wp.int32, ndim=1)
   geom_size: wp.array(dtype=wp.vec3, ndim=1)
   geom_priority: wp.array(dtype=wp.int32, ndim=1)
   geom_solmix: wp.array(dtype=wp.float32, ndim=1)
@@ -367,7 +366,6 @@ class Data:
   qpos: wp.array(dtype=wp.float32, ndim=2)
   qvel: wp.array(dtype=wp.float32, ndim=2)
   qacc_warmstart: wp.array(dtype=wp.float32, ndim=2)
-  qfrc_applied: wp.array(dtype=wp.float32, ndim=2)
   ncon: wp.array(dtype=wp.int32, ndim=1)
   nl: int
   nefc: wp.array(dtype=wp.int32, ndim=1)
@@ -410,7 +408,6 @@ class Data:
   qfrc_actuator: wp.array(dtype=wp.float32, ndim=2)
   qfrc_smooth: wp.array(dtype=wp.float32, ndim=2)
   qacc_smooth: wp.array(dtype=wp.float32, ndim=2)
-  qfrc_constraint: wp.array(dtype=wp.float32, ndim=2)
   efc_J: wp.array(dtype=wp.float32, ndim=2)
   efc_D: wp.array(dtype=wp.float32, ndim=1)
   efc_pos: wp.array(dtype=wp.float32, ndim=1)

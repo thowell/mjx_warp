@@ -250,7 +250,6 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.geom_contype = wp.array(mjm.geom_contype, dtype=wp.int32, ndim=1)
   m.geom_pos = wp.array(mjm.geom_pos, dtype=wp.vec3, ndim=1)
   m.geom_quat = wp.array(mjm.geom_quat, dtype=wp.quat, ndim=1)
-  m.geom_type = wp.array(mjm.geom_type, dtype=wp.int32, ndim=1)
   m.geom_size = wp.array(mjm.geom_size, dtype=wp.vec3, ndim=1)
   m.geom_priority = wp.array(mjm.geom_priority, dtype=wp.int32, ndim=1)
   m.geom_solmix = wp.array(mjm.geom_solmix, dtype=wp.float32, ndim=1)
@@ -529,7 +528,6 @@ def put_data(
   d.qfrc_smooth = wp.array(tile(mjd.qfrc_smooth), dtype=wp.float32, ndim=2)
   d.qfrc_constraint = wp.array(tile(mjd.qfrc_constraint), dtype=wp.float32, ndim=2)
   d.qacc_smooth = wp.array(tile(mjd.qacc_smooth), dtype=wp.float32, ndim=2)
-  d.qfrc_constraint = wp.array(tile(mjd.qfrc_constraint), dtype=wp.float32, ndim=2)
   d.act = wp.array(tile(mjd.act), dtype=wp.float32, ndim=2)
   d.act_dot = wp.array(tile(mjd.act_dot), dtype=wp.float32, ndim=2)
 
