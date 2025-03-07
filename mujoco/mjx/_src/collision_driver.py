@@ -13,7 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-import mujoco
 import warp as wp
 
 from .types import Model
@@ -464,7 +463,7 @@ def broadphase_sweep_and_prune(m: Model, d: Data):
 
 
 def nxn_broadphase(m: Model, d: Data):
-  filterparent = not (m.opt.disableflags & mujoco.mjtDisableBit.mjDSBL_FILTERPARENT)
+  filterparent = not (m.opt.disableflags & DisableBit.FILTERPARENT.value)
 
   d.broadphase_result_count.zero_()
 
@@ -512,8 +511,8 @@ def nxn_broadphase(m: Model, d: Data):
 
 
 def broadphase(m: Model, d: Data):
-  # broadphase collision 
-  
+  # broadphase collision
+
   # TODO(team): determine ngeom to switch from n^2 to sap
   if m.ngeom <= 100:
     nxn_broadphase(m, d)
