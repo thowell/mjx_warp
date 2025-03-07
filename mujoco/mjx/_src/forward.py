@@ -192,13 +192,13 @@ def euler(m: Model, d: Data):
 
     def tile_eulerdamp(adr: int, size: int, tilesize: int):
       @wp.kernel
-      def eulerdamp(m: Model, d: Data, damping: wp.array(dtype=wp.float32), leveladr: int):
+      def eulerdamp(m: Model, d: Data, leveladr: int):
         worldid, nodeid = wp.tid()
         dofid = m.qLD_tile[leveladr + nodeid]
         M_tile = wp.tile_load(
           d.qM[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid)
         )
-        damping_tile = wp.tile_load(damping, shape=(tilesize), offset=(dofid))
+        damping_tile = wp.tile_load(m.dof_damping, shape=(tilesize,), offset=(dofid,))
         damping_scaled = wp.mul(damping_tile, m.opt.timestep)
         qm_integration_tile = wp.tile_diag_add(M_tile, damping_scaled)
 
@@ -212,7 +212,7 @@ def euler(m: Model, d: Data):
         wp.tile_store(d.qacc_integration[worldid], qacc_tile, offset=(dofid))
 
       wp.launch_tiled(
-        eulerdamp, dim=(d.nworld, size), inputs=[m, d, m.dof_damping, adr], block_dim=32
+        eulerdamp, dim=(d.nworld, size), inputs=[m, d, adr], block_dim=32
       )
 
     qLD_tileadr, qLD_tilesize = m.qLD_tileadr.numpy(), m.qLD_tilesize.numpy()
