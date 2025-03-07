@@ -420,12 +420,6 @@ class Data:
   efc_worldid: wp.array(dtype=wp.int32, ndim=1)  # warp only
   xfrc_applied: wp.array(dtype=wp.spatial_vector, ndim=2)
   contact: Contact
-  nbroadphase_total: wp.array(dtype=wp.int32, ndim=1)  # warp only
-  broadphase_geom1: wp.array(dtype=wp.int32, ndim=1)  # warp only
-  broadphase_geom2: wp.array(dtype=wp.int32, ndim=1)  # warp only
-  broadphase_type1: wp.array(dtype=wp.int32, ndim=1)  # warp only
-  broadphase_type2: wp.array(dtype=wp.int32, ndim=1)  # warp only
-  broadphase_worldid: wp.array(dtype=wp.int32, ndim=1)  # warp only
 
   # temp arrays
   qfrc_integration: wp.array(dtype=wp.float32, ndim=2)

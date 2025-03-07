@@ -231,53 +231,25 @@ class BroadPhaseTest(parameterized.TestCase):
     # one world and zero collisions
     mjm, _, m, d0 = test_util.fixture("broadphase.xml", keyframe=0)
     collision_driver.nxn_broadphase(m, d0)
-    np.testing.assert_allclose(d0.nbroadphase_total.numpy()[0], 0)
+    np.testing.assert_allclose(d0.broadphase_result_count.numpy()[0], 0)
 
     # one world and one collision
     _, mjd1, _, d1 = test_util.fixture("broadphase.xml", keyframe=1)
     collision_driver.nxn_broadphase(m, d1)
-    np.testing.assert_allclose(d1.nbroadphase_total.numpy()[0], 1)
-    np.testing.assert_allclose(d1.broadphase_geom1.numpy()[0], 0)
-    np.testing.assert_allclose(d1.broadphase_geom2.numpy()[0], 1)
-    np.testing.assert_allclose(
-      d1.broadphase_type1.numpy()[0], int(mujoco.mjtGeom.mjGEOM_SPHERE)
-    )
-    np.testing.assert_allclose(
-      d1.broadphase_type2.numpy()[0], int(mujoco.mjtGeom.mjGEOM_SPHERE)
-    )
-    np.testing.assert_allclose(d1.broadphase_worldid.numpy()[0], 0)
+    np.testing.assert_allclose(d1.broadphase_result_count.numpy()[0], 1)
+    np.testing.assert_allclose(d1.broadphase_pairs.numpy()[0, 0][0], 0)
+    np.testing.assert_allclose(d1.broadphase_pairs.numpy()[0, 0][1], 1)
 
     # one world and three collisions
     _, mjd2, _, d2 = test_util.fixture("broadphase.xml", keyframe=2)
     collision_driver.nxn_broadphase(m, d2)
-    np.testing.assert_allclose(d2.nbroadphase_total.numpy()[0], 3)
-    np.testing.assert_allclose(d2.broadphase_geom1.numpy()[0], 0)
-    np.testing.assert_allclose(d2.broadphase_geom2.numpy()[0], 1)
-    np.testing.assert_allclose(
-      d2.broadphase_type1.numpy()[0], int(mujoco.mjtGeom.mjGEOM_SPHERE)
-    )
-    np.testing.assert_allclose(
-      d2.broadphase_type2.numpy()[0], int(mujoco.mjtGeom.mjGEOM_SPHERE)
-    )
-    np.testing.assert_allclose(d2.broadphase_worldid.numpy()[0], 0)
-    np.testing.assert_allclose(d2.broadphase_geom1.numpy()[1], 0)
-    np.testing.assert_allclose(d2.broadphase_geom2.numpy()[1], 2)
-    np.testing.assert_allclose(
-      d2.broadphase_type1.numpy()[1], int(mujoco.mjtGeom.mjGEOM_SPHERE)
-    )
-    np.testing.assert_allclose(
-      d2.broadphase_type2.numpy()[1], int(mujoco.mjtGeom.mjGEOM_CAPSULE)
-    )
-    np.testing.assert_allclose(d2.broadphase_worldid.numpy()[1], 0)
-    np.testing.assert_allclose(d2.broadphase_geom1.numpy()[2], 1)
-    np.testing.assert_allclose(d2.broadphase_geom2.numpy()[2], 2)
-    np.testing.assert_allclose(
-      d2.broadphase_type1.numpy()[2], int(mujoco.mjtGeom.mjGEOM_SPHERE)
-    )
-    np.testing.assert_allclose(
-      d2.broadphase_type2.numpy()[2], int(mujoco.mjtGeom.mjGEOM_CAPSULE)
-    )
-    np.testing.assert_allclose(d2.broadphase_worldid.numpy()[2], 0)
+    np.testing.assert_allclose(d2.broadphase_result_count.numpy()[0], 3)
+    np.testing.assert_allclose(d2.broadphase_pairs.numpy()[0, 0][0], 0)
+    np.testing.assert_allclose(d2.broadphase_pairs.numpy()[0, 0][1], 1)
+    np.testing.assert_allclose(d2.broadphase_pairs.numpy()[0, 1][0], 0)
+    np.testing.assert_allclose(d2.broadphase_pairs.numpy()[0, 1][1], 2)
+    np.testing.assert_allclose(d2.broadphase_pairs.numpy()[0, 2][0], 1)
+    np.testing.assert_allclose(d2.broadphase_pairs.numpy()[0, 2][1], 2)
 
     # two worlds and four collisions
     d3 = mjx.make_data(mjm, nworld=2)
@@ -289,63 +261,29 @@ class BroadPhaseTest(parameterized.TestCase):
     )
 
     collision_driver.nxn_broadphase(m, d3)
-    np.testing.assert_allclose(d3.nbroadphase_total.numpy()[0], 4)
-    np.testing.assert_allclose(d3.broadphase_geom1.numpy()[0], 0)
-    np.testing.assert_allclose(d3.broadphase_geom2.numpy()[0], 1)
-    np.testing.assert_allclose(
-      d3.broadphase_type1.numpy()[0], int(mujoco.mjtGeom.mjGEOM_SPHERE)
-    )
-    np.testing.assert_allclose(
-      d3.broadphase_type2.numpy()[0], int(mujoco.mjtGeom.mjGEOM_SPHERE)
-    )
-    np.testing.assert_allclose(d3.broadphase_worldid.numpy()[0], 0)
-    np.testing.assert_allclose(d3.broadphase_geom1.numpy()[1], 0)
-    np.testing.assert_allclose(d3.broadphase_geom2.numpy()[1], 1)
-    np.testing.assert_allclose(
-      d3.broadphase_type1.numpy()[1], int(mujoco.mjtGeom.mjGEOM_SPHERE)
-    )
-    np.testing.assert_allclose(
-      d3.broadphase_type2.numpy()[1], int(mujoco.mjtGeom.mjGEOM_SPHERE)
-    )
-    np.testing.assert_allclose(d3.broadphase_worldid.numpy()[1], 1)
-    np.testing.assert_allclose(d3.broadphase_geom1.numpy()[2], 0)
-    np.testing.assert_allclose(d3.broadphase_geom2.numpy()[2], 2)
-    np.testing.assert_allclose(
-      d3.broadphase_type1.numpy()[2], int(mujoco.mjtGeom.mjGEOM_SPHERE)
-    )
-    np.testing.assert_allclose(
-      d3.broadphase_type2.numpy()[2], int(mujoco.mjtGeom.mjGEOM_CAPSULE)
-    )
-    np.testing.assert_allclose(d3.broadphase_worldid.numpy()[2], 1)
-    np.testing.assert_allclose(d3.broadphase_geom1.numpy()[3], 1)
-    np.testing.assert_allclose(d3.broadphase_geom2.numpy()[3], 2)
-    np.testing.assert_allclose(
-      d3.broadphase_type1.numpy()[3], int(mujoco.mjtGeom.mjGEOM_SPHERE)
-    )
-    np.testing.assert_allclose(
-      d3.broadphase_type2.numpy()[3], int(mujoco.mjtGeom.mjGEOM_CAPSULE)
-    )
-    np.testing.assert_allclose(d3.broadphase_worldid.numpy()[3], 1)
+    np.testing.assert_allclose(d3.broadphase_result_count.numpy()[0], 4)
+    np.testing.assert_allclose(d3.broadphase_pairs.numpy()[0, 0][0], 0)
+    np.testing.assert_allclose(d3.broadphase_pairs.numpy()[0, 0][1], 1)
+    np.testing.assert_allclose(d3.broadphase_pairs.numpy()[1, 1][0], 0)
+    np.testing.assert_allclose(d3.broadphase_pairs.numpy()[1, 1][1], 1)
+    np.testing.assert_allclose(d3.broadphase_pairs.numpy()[1, 2][0], 0)
+    np.testing.assert_allclose(d3.broadphase_pairs.numpy()[1, 2][1], 2)
+    np.testing.assert_allclose(d3.broadphase_pairs.numpy()[1, 3][0], 1)
+    np.testing.assert_allclose(d3.broadphase_pairs.numpy()[1, 3][1], 2)
 
     # one world and zero collisions: contype and conaffinity incompatibility
     _, _, m4, d4 = test_util.fixture("broadphase.xml", keyframe=1)
     m4.geom_contype = wp.array(np.array([0, 0, 0]), dtype=wp.int32)
     m4.geom_conaffinity = wp.array(np.array([1, 1, 1]), dtype=wp.int32)
     collision_driver.nxn_broadphase(m4, d4)
-    np.testing.assert_allclose(d4.nbroadphase_total.numpy()[0], 0)
+    np.testing.assert_allclose(d4.broadphase_result_count.numpy()[0], 0)
 
     # one world and one collision: geomtype ordering
     _, _, _, d5 = test_util.fixture("broadphase.xml", keyframe=3)
     collision_driver.nxn_broadphase(m, d5)
-    np.testing.assert_allclose(d5.nbroadphase_total.numpy()[0], 1)
-    np.testing.assert_allclose(d5.broadphase_geom1.numpy()[0], 3)
-    np.testing.assert_allclose(d5.broadphase_geom2.numpy()[0], 2)
-    np.testing.assert_allclose(
-      d5.broadphase_type1.numpy()[0], int(mujoco.mjtGeom.mjGEOM_SPHERE)
-    )
-    np.testing.assert_allclose(
-      d5.broadphase_type2.numpy()[0], int(mujoco.mjtGeom.mjGEOM_CAPSULE)
-    )
+    np.testing.assert_allclose(d5.broadphase_result_count.numpy()[0], 1)
+    np.testing.assert_allclose(d5.broadphase_pairs.numpy()[0, 0][0], 3)
+    np.testing.assert_allclose(d5.broadphase_pairs.numpy()[0, 0][1], 2)
 
     # TODO(team): test margin
 

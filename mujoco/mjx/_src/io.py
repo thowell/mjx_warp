@@ -395,13 +395,6 @@ def make_data(
 
   d.xfrc_applied = wp.zeros((nworld, mjm.nbody), dtype=wp.spatial_vector)
 
-  d.nbroadphase_total = wp.zeros((1,), dtype=wp.int32, ndim=1)
-  d.broadphase_geom1 = wp.zeros((nconmax,), dtype=wp.int32)
-  d.broadphase_geom2 = wp.zeros((nconmax,), dtype=wp.int32)
-  d.broadphase_type1 = wp.zeros((nconmax,), dtype=wp.int32)
-  d.broadphase_type2 = wp.zeros((nconmax,), dtype=wp.int32)
-  d.broadphase_worldid = wp.zeros((nconmax,), dtype=wp.int32)
-
   # internal tmp arrays
   d.qfrc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qacc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
@@ -630,13 +623,6 @@ def put_data(
   d.contact.worldid = wp.array(con_worldid, dtype=wp.int32, ndim=1)
 
   d.xfrc_applied = wp.array(tile(mjd.xfrc_applied), dtype=wp.spatial_vector, ndim=2)
-
-  d.nbroadphase_total = wp.zeros((1,), dtype=wp.int32)
-  d.broadphase_geom1 = wp.zeros((nconmax,), dtype=wp.int32)
-  d.broadphase_geom2 = wp.zeros((nconmax,), dtype=wp.int32)
-  d.broadphase_type1 = wp.zeros((nconmax,), dtype=wp.int32)
-  d.broadphase_type2 = wp.zeros((nconmax,), dtype=wp.int32)
-  d.broadphase_worldid = wp.zeros((nconmax,), dtype=wp.int32)
 
   # internal tmp arrays
   d.qfrc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)

@@ -470,7 +470,7 @@ def broadphase_sweep_and_prune(m: Model, d: Data):
 def nxn_broadphase(m: Model, d: Data):
   filterparent = not (m.opt.disableflags & mujoco.mjtDisableBit.mjDSBL_FILTERPARENT)
 
-  d.nbroadphase_total.zero_()
+  d.broadphase_result_count.zero_()
 
   @wp.kernel
   def _nxn_broadphase(m: Model, d: Data):
@@ -527,21 +527,15 @@ def nxn_broadphase(m: Model, d: Data):
       and (not self_collision)
       and (not parent_child_collision)
     ):
-      pairid = wp.atomic_add(d.nbroadphase_total, 0, 1)
+      pairid = wp.atomic_add(d.broadphase_result_count, 0, 1)
 
       # order pairs by geom type
       if geomtype1 > geomtype2:
-        d.broadphase_geom1[pairid] = geom2
-        d.broadphase_geom2[pairid] = geom1
-        d.broadphase_type1[pairid] = geomtype2
-        d.broadphase_type2[pairid] = geomtype1
+        pair = wp.vec2i(geom2, geom1)
       else:
-        d.broadphase_geom1[pairid] = geom1
-        d.broadphase_geom2[pairid] = geom2
-        d.broadphase_type1[pairid] = geomtype1
-        d.broadphase_type2[pairid] = geomtype2
-
-      d.broadphase_worldid[pairid] = worldid
+        pair = wp.vec2i(geom1, geom2)
+      
+      d.broadphase_pairs[worldid, pairid] = pair
 
   wp.launch(
     _nxn_broadphase, dim=(d.nworld, m.ngeom * (m.ngeom - 1) // 2), inputs=[m, d]
