@@ -139,8 +139,8 @@ def kinematics(m: Model, d: Data):
   if m.ngeom:
     wp.launch(geom_local_to_global, dim=(d.nworld, m.ngeom), inputs=[m, d])
 
-  if m.site:
-    wp.launch(site_local_to_global, dim=(d.nworld, m.ngeom), inputs=[m, d])
+  if m.nsite:
+    wp.launch(site_local_to_global, dim=(d.nworld, m.nsite), inputs=[m, d])
 
 
 @event_scope
