@@ -199,13 +199,13 @@ def euler(m: Model, d: Data):
           d.qM[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid)
         )
         damping_tile = wp.tile_load(m.dof_damping, shape=(tilesize,), offset=(dofid,))
-        damping_scaled = wp.mul(damping_tile, m.opt.timestep)
+        damping_scaled = damping_tile * wp.static(m.opt.timestep)
         qm_integration_tile = wp.tile_diag_add(M_tile, damping_scaled)
 
         qfrc_smooth_tile = wp.tile_load(d.qfrc_smooth[worldid], shape=(tilesize,), offset=(dofid,))
         qfrc_constraint_tile = wp.tile_load(d.qfrc_constraint[worldid], shape=(tilesize,), offset=(dofid,))
 
-        qfrc_tile = wp.add(qfrc_smooth_tile, qfrc_constraint_tile)
+        qfrc_tile = qfrc_smooth_tile + qfrc_constraint_tile
 
         L_tile = wp.tile_cholesky(qm_integration_tile)
         qacc_tile = wp.tile_cholesky_solve(L_tile, qfrc_tile)
