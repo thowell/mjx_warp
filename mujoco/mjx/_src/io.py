@@ -225,7 +225,6 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.body_invweight0 = wp.array(mjm.body_invweight0, dtype=wp.float32, ndim=2)
   m.body_geomnum = wp.array(mjm.body_geomnum, dtype=wp.int32, ndim=1)
   m.body_geomadr = wp.array(mjm.body_geomadr, dtype=wp.int32, ndim=1)
-  m.body_weldid = wp.array(mjm.body_weldid, dtype=wp.int32, ndim=1)
   m.body_contype = wp.array(mjm.body_contype, dtype=wp.int32, ndim=1)
   m.body_conaffinity = wp.array(mjm.body_conaffinity, dtype=wp.int32, ndim=1)
   m.jnt_bodyid = wp.array(mjm.jnt_bodyid, dtype=wp.int32, ndim=1)
