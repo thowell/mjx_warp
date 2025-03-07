@@ -270,49 +270,7 @@ def broadphase_sweep_and_prune_kernel(
     idx1 = d.box_sorting_indexer[worldId, i]
     idx2 = d.box_sorting_indexer[worldId, j]
 
-    # body index
-    body1 = m.geom_bodyid[idx1]
-    body2 = m.geom_bodyid[idx2]
-
-    # swap for consistent ordering downstream
-    if body2 < body1:
-      tmp = body1
-      body1 = body2
-      body2 = tmp
-
-    # Collision filtering start
-    # self collisions
-    if body1 == body2:
-      threadId += num_threads
-      continue
-
-    # contype/affinity filtering
-    contype1 = m.body_contype[body1]
-    contype2 = m.body_contype[body2]
-    conaffinity1 = m.body_conaffinity[body1]
-    conaffinity2 = m.body_conaffinity[body2]
-
-    compatible = (contype1 & conaffinity2) or (contype2 & conaffinity1)
-    if not compatible:
-      threadId += num_threads
-      continue
-
-    # parent-child
-    body1_p = m.body_weldid[m.body_parentid[body1]]
-    body2_p = m.body_weldid[m.body_parentid[body2]]
-    if (
-      filter_parent
-      and body1 != 0
-      and body2 != 0
-      and (body1 == body2_p or body2 == body1_p)
-    ):
-      threadId += num_threads
-      continue
-
-    # welded bodies
-    w1 = m.body_weldid[body1]
-    w2 = m.body_weldid[body2]
-    if w1 == w2:
+    if not _geom_filter(m, idx1, idx2, filter_parent):
       threadId += num_threads
       continue
 
@@ -333,12 +291,10 @@ def broadphase_sweep_and_prune_kernel(
     """
     # Check if the boxes overlap
     if overlap(worldId, i, j, d.boxes_sorted):
-      pair = wp.vec2i(wp.min(idx1, idx2), wp.max(idx1, idx2))
-
       id = wp.atomic_add(d.broadphase_result_count, worldId, 1)
 
       if id < d.max_num_overlaps_per_world:
-        d.broadphase_pairs[worldId, id] = pair
+        d.broadphase_pairs[worldId, id] = _geom_pair(m, idx1, idx2)
 
     threadId += num_threads
 
@@ -406,6 +362,13 @@ def group_contacts_by_type_kernel(
 
 def broadphase_sweep_and_prune(m: Model, d: Data):
   """Broad-phase collision detection via sweep-and-prune."""
+
+  # generate geom AABBs
+  wp.launch(
+    kernel=get_dyn_geom_aabb,
+    dim=(d.nworld, m.ngeom),
+    inputs=[m, d],
+  )
 
   wp.launch(
     kernel=broadphase_project_boxes_onto_sweep_direction_kernel,
@@ -549,16 +512,13 @@ def nxn_broadphase(m: Model, d: Data):
 
 
 def broadphase(m: Model, d: Data):
-  # broadphase collision detection
-
-  # generate geom AABBs
-  wp.launch(
-    kernel=get_dyn_geom_aabb,
-    dim=(d.nworld, m.ngeom),
-    inputs=[m, d],
-  )
-
-  broadphase_sweep_and_prune(m, d)
+  # broadphase collision 
+  
+  # TODO(team): determine ngeom to switch from n^2 to sap
+  if m.ngeom <= 100:
+    nxn_broadphase(m, d)
+  else:
+    broadphase_sweep_and_prune(m, d)
 
 
 def group_contacts_by_type(m: Model, d: Data):

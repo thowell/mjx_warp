@@ -182,7 +182,7 @@ class BroadPhaseTest(parameterized.TestCase):
     mx = mjx.put_model(m)
     dx = mjx.put_data(m, d)
 
-    mjx.broadphase(mx, dx)
+    mjx.broadphase_sweep_and_prune(mx, dx)
 
     m = mx
     d = dx
@@ -198,7 +198,7 @@ class BroadPhaseTest(parameterized.TestCase):
       d.nworld, m.ngeom, aabbs, pos, rot, m.geom_bodyid.numpy()
     )
 
-    mjx.broadphase(m, d)
+    mjx.broadphase_sweep_and_prune(m, d)
 
     result = d.broadphase_pairs
     broadphase_result_count = d.broadphase_result_count
@@ -221,7 +221,11 @@ class BroadPhaseTest(parameterized.TestCase):
         pair = result_np[world_idx][i]
 
         # Convert pair to tuple for comparison
-        pair_tuple = (int(pair[0]), int(pair[1]))
+        # TODO(team): confirm ordering is correct
+        if pair[0] > pair[1]:
+          pair_tuple = (int(pair[1]), int(pair[0]))
+        else:
+          pair_tuple = (int(pair[0]), int(pair[1]))
         assert pair_tuple in list, (
           f"Collision pair {pair_tuple} not found in brute force results"
         )
@@ -334,7 +338,7 @@ class BroadPhaseTest(parameterized.TestCase):
     mx = mjx.put_model(m)
     dx = mjx.put_data(m, d)
 
-    mjx.broadphase(mx, dx)
+    mjx.broadphase_sweep_and_prune(mx, dx)
 
     assert dx.broadphase_result_count.numpy()[0] == 8
 
