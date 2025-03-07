@@ -15,7 +15,6 @@
 
 import warp as wp
 from . import math
-from . import kernel
 
 from .types import Model
 from .types import Data
@@ -23,8 +22,11 @@ from .types import array2df
 from .types import array3df
 from .types import vec10
 from .types import JointType, TrnType
+from .warp_util import event_scope
+from .warp_util import kernel
 
 
+@event_scope
 def kinematics(m: Model, d: Data):
   """Forward kinematics."""
 
@@ -108,6 +110,7 @@ def kinematics(m: Model, d: Data):
     wp.launch(_level, dim=(d.nworld, end - beg), inputs=[m, d, beg])
 
 
+@event_scope
 def com_pos(m: Model, d: Data):
   """Map inertias and motion dofs to global frame centered at subtree-CoM."""
 
@@ -219,6 +222,7 @@ def com_pos(m: Model, d: Data):
   wp.launch(cdof, dim=(d.nworld, m.njnt), inputs=[m, d])
 
 
+@event_scope
 def crb(m: Model, d: Data):
   """Composite rigid body inertia algorithm."""
 
@@ -357,11 +361,13 @@ def factor_i(m: Model, d: Data, M, L, D=None):
     _factor_i_dense(m, d, M, L)
 
 
+@event_scope
 def factor_m(m: Model, d: Data):
   """Factorizaton of inertia-like matrix M, assumed spd."""
   factor_i(m, d, d.qM, d.qLD, d.qLDiagInv)
 
 
+@event_scope
 def rne(m: Model, d: Data):
   """Computes inverse dynamics using Newton-Euler algorithm."""
 
@@ -435,6 +441,7 @@ def rne(m: Model, d: Data):
   wp.launch(qfrc_bias, dim=[d.nworld, m.nv], inputs=[m, d, cfrc])
 
 
+@event_scope
 def transmission(m: Model, d: Data):
   """Computes actuator/transmission lengths and moments."""
   if not m.nu:
@@ -504,6 +511,7 @@ def transmission(m: Model, d: Data):
   )
 
 
+@event_scope
 def com_vel(m: Model, d: Data):
   """Computes cvel, cdof_dot."""
 
@@ -659,6 +667,7 @@ def solve_LD(m: Model, d: Data, L: array3df, D: array2df, x: array2df, y: array2
     _solve_LD_dense(m, d, L, x, y)
 
 
+@event_scope
 def solve_m(m: Model, d: Data, x: array2df, y: array2df):
   """Computes backsubstitution: x = qLD * y."""
   solve_LD(m, d, d.qLD, d.qLDiagInv, x, y)

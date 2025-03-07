@@ -3,7 +3,8 @@ import mujoco
 from . import smooth
 from . import support
 from . import types
-from . import kernel
+from .warp_util import event_scope
+from .warp_util import kernel
 
 
 @wp.struct
@@ -188,9 +189,6 @@ def _update_constraint(m: types.Model, d: types.Data, ctx: Context):
 
 def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
   TILE = m.nv
-  # add TILE to the module name to prevent recompilation of the same module
-  # for different tile sizes
-  module = wp.context.Module(f"solver._update_gradient_{TILE}_{m.opt.is_sparse}")
 
   @kernel
   def _grad(ctx: Context, d: types.Data):
@@ -251,7 +249,7 @@ def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
       d.efc_J[efcid, dofi] * d.efc_J[efcid, dofj] * efc_D,
     )
 
-  @kernel
+  @kernel(module="unique")
   def _cholesky(ctx: Context):
     worldid = wp.tid()
     mat_tile = wp.tile_load(ctx.h[worldid], shape=(TILE, TILE))
@@ -259,6 +257,27 @@ def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
     input_tile = wp.tile_load(ctx.grad[worldid], shape=TILE)
     output_tile = wp.tile_cholesky_solve(fact_tile, input_tile)
     wp.tile_store(ctx.Mgrad[worldid], output_tile)
+
+  @kernel
+  def _JTDAJ(ctx: Context, m: types.Model, d: types.Data):
+    efcid, elementid = wp.tid()
+
+    if efcid >= d.nefc_total[0]:
+      return
+
+    dofi = m.dof_tri_row[elementid]
+    dofj = m.dof_tri_col[elementid]
+
+    efc_D = d.efc_D[efcid]
+    active = ctx.active[efcid]
+    if efc_D == 0.0 or active == 0:
+      return
+
+    worldid = d.efc_worldid[efcid]
+    # TODO(team): sparse efc_J
+    # h[worldid, dofi, dofj] += J[efcid, dofi] * J[efcid, dofj] * D[efcid]
+    res = d.efc_J[efcid, dofi] * d.efc_J[efcid, dofj] * efc_D
+    wp.atomic_add(ctx.h[worldid, dofi], dofj, res)
 
   # grad = Ma - qfrc_smooth - qfrc_constraint
   ctx.grad_dot.zero_()
@@ -309,6 +328,7 @@ def _safe_div(x: wp.float32, y: wp.float32) -> wp.float32:
   return x / wp.select(y == 0.0, y, types.MJ_MINVAL)
 
 
+@event_scope
 def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
   @kernel
   def _gtol(m: types.Model, ctx: Context):

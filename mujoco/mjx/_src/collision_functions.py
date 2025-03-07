@@ -19,6 +19,7 @@ from .types import Model
 from .types import Data
 from .types import GeomType
 from .math import make_frame
+from .math import closest_segment_to_segment_points
 from .math import normalize_with_norm
 from .support import group_key
 from .support import mat33_from_cols
@@ -144,6 +145,27 @@ def get_info(t):
 
 
 @wp.func
+def write_contact(
+  d: Data,
+  dist: float,
+  pos: wp.vec3,
+  frame: wp.mat33,
+  margin: float,
+  geoms: wp.vec2i,
+  worldid: int,
+):
+  active = (dist - margin) < 0
+  if active:
+    index = wp.atomic_add(d.ncon, 0, 1)
+    if index < d.nconmax:
+      d.contact.dist[index] = dist
+      d.contact.pos[index] = pos
+      d.contact.frame[index] = frame
+      d.contact.geom[index] = geoms
+      d.contact.worldid[index] = worldid
+
+
+@wp.func
 def _plane_sphere(
   plane_normal: wp.vec3, plane_pos: wp.vec3, sphere_pos: wp.vec3, sphere_radius: float
 ):
@@ -153,36 +175,98 @@ def _plane_sphere(
 
 
 @wp.func
-def plane_sphere(plane: GeomPlane, sphere: GeomSphere, worldid: int, d: Data):
+def plane_sphere(
+  plane: GeomPlane,
+  sphere: GeomSphere,
+  worldid: int,
+  d: Data,
+  margin: float,
+  geom_indices: wp.vec2i,
+):
   dist, pos = _plane_sphere(plane.normal, plane.pos, sphere.pos, sphere.radius)
 
-  index = wp.atomic_add(d.ncon, 0, 1)
-  d.contact.dist[index] = dist
-  d.contact.pos[index] = pos
-  d.contact.frame[index] = make_frame(plane.normal)
-  return index, 1
+  write_contact(d, dist, pos, make_frame(plane.normal), margin, geom_indices, worldid)
 
 
 @wp.func
-def sphere_sphere(sphere1: GeomSphere, sphere2: GeomSphere, worldid: int, d: Data):
-  dir = sphere1.pos - sphere2.pos
+def _sphere_sphere(
+  pos1: wp.vec3,
+  radius1: float,
+  pos2: wp.vec3,
+  radius2: float,
+  worldid: int,
+  d: Data,
+  margin: float,
+  geom_indices: wp.vec2i,
+):
+  dir = pos2 - pos1
   dist = wp.length(dir)
   if dist == 0.0:
     n = wp.vec3(1.0, 0.0, 0.0)
   else:
     n = dir / dist
-  dist = dist - (sphere1.radius + sphere2.radius)
-  pos = sphere1.pos + n * (sphere1.radius + 0.5 * dist)
+  dist = dist - (radius1 + radius2)
+  pos = pos1 + n * (radius1 + 0.5 * dist)
 
-  index = wp.atomic_add(d.ncon, 0, 1)
-  d.contact.dist[index] = dist
-  d.contact.pos[index] = pos
-  d.contact.frame[index] = make_frame(n)
-  return index, 1
+  write_contact(d, dist, pos, make_frame(n), margin, geom_indices, worldid)
 
 
 @wp.func
-def plane_capsule(plane: GeomPlane, cap: GeomCapsule, worldid: int, d: Data):
+def sphere_sphere(
+  sphere1: GeomSphere,
+  sphere2: GeomSphere,
+  worldid: int,
+  d: Data,
+  margin: float,
+  geom_indices: wp.vec2i,
+):
+  _sphere_sphere(
+    sphere1.pos,
+    sphere1.radius,
+    sphere2.pos,
+    sphere2.radius,
+    worldid,
+    d,
+    margin,
+    geom_indices,
+  )
+
+
+@wp.func
+def capsule_capsule(
+  cap1: GeomCapsule,
+  cap2: GeomCapsule,
+  worldid: int,
+  d: Data,
+  margin: float,
+  geom_indices: wp.vec2i,
+):
+  axis1 = wp.vec3(cap1.rot[0, 2], cap1.rot[1, 2], cap1.rot[2, 2])
+  axis2 = wp.vec3(cap2.rot[0, 2], cap2.rot[1, 2], cap2.rot[2, 2])
+  length1 = cap1.halfsize
+  length2 = cap2.halfsize
+  seg1 = axis1 * length1
+  seg2 = axis2 * length2
+
+  pt1, pt2 = closest_segment_to_segment_points(
+    cap1.pos - seg1,
+    cap1.pos + seg1,
+    cap2.pos - seg2,
+    cap2.pos + seg2,
+  )
+
+  _sphere_sphere(pt1, cap1.radius, pt2, cap2.radius, worldid, d, margin, geom_indices)
+
+
+@wp.func
+def plane_capsule(
+  plane: GeomPlane,
+  cap: GeomCapsule,
+  worldid: int,
+  d: Data,
+  margin: float,
+  geom_indices: wp.vec2i,
+):
   """Calculates two contacts between a capsule and a plane."""
   n = plane.normal
   axis = wp.vec3(cap.rot[0, 2], cap.rot[1, 2], cap.rot[2, 2])
@@ -198,25 +282,18 @@ def plane_capsule(plane: GeomPlane, cap: GeomCapsule, worldid: int, d: Data):
   frame = mat33_from_cols(n, b, wp.cross(n, b))
   segment = axis * cap.halfsize
 
-  start_index = wp.atomic_add(d.ncon, 0, 2)
-  index = start_index
-  dist, pos = _plane_sphere(n, plane.pos, cap.pos + segment, cap.radius)
-  d.contact.dist[index] = dist
-  d.contact.pos[index] = pos
-  d.contact.frame[index] = frame
-  index += 1
+  dist1, pos1 = _plane_sphere(n, plane.pos, cap.pos + segment, cap.radius)
+  write_contact(d, dist1, pos1, frame, margin, geom_indices, worldid)
 
-  dist, pos = _plane_sphere(n, plane.pos, cap.pos - segment, cap.radius)
-  d.contact.dist[index] = dist
-  d.contact.pos[index] = pos
-  d.contact.frame[index] = frame
-  return start_index, 2
+  dist2, pos2 = _plane_sphere(n, plane.pos, cap.pos - segment, cap.radius)
+  write_contact(d, dist2, pos2, frame, margin, geom_indices, worldid)
 
 
 _collision_functions = {
   (GeomType.PLANE.value, GeomType.SPHERE.value): plane_sphere,
   (GeomType.SPHERE.value, GeomType.SPHERE.value): sphere_sphere,
   (GeomType.PLANE.value, GeomType.CAPSULE.value): plane_capsule,
+  (GeomType.CAPSULE.value, GeomType.CAPSULE.value): capsule_capsule,
 }
 
 
@@ -252,12 +329,11 @@ def create_collision_function_kernel(type1, type2):
       d.geom_xmat[worldid],
     )
 
-    index, ncon = wp.static(_collision_functions[(type1, type2)])(
-      geom1, geom2, worldid, d
+    margin = wp.max(m.geom_margin[g1], m.geom_margin[g2])
+
+    wp.static(_collision_functions[(type1, type2)])(
+      geom1, geom2, worldid, d, margin, geoms
     )
-    for i in range(ncon):
-      d.contact.worldid[index + i] = worldid
-      d.contact.geom[index + i] = geoms
 
   return _collision_function_kernel
 

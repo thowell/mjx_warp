@@ -21,7 +21,8 @@ from .types import array2df
 from .types import NUM_GEOM_TYPES
 from typing import Any
 from .types import array3df
-from . import kernel
+from .warp_util import event_scope
+from .warp_util import kernel
 
 
 def is_sparse(m: mujoco.MjModel):
@@ -30,6 +31,7 @@ def is_sparse(m: mujoco.MjModel):
   return m.opt.jacobian == mujoco.mjtJacobian.mjJAC_SPARSE
 
 
+@event_scope
 def mul_m(
   m: Model,
   d: Data,
@@ -159,6 +161,7 @@ def compute_qfrc(
   qfrc_total[worldid, dofid] = accumul
 
 
+@event_scope
 def xfrc_accumulate(m: Model, d: Data) -> array2df:
   body_treeadr_np = m.body_treeadr.numpy()
   mask = wp.zeros((m.nv, m.nbody), dtype=wp.bool)
