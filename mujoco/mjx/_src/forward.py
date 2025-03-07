@@ -36,6 +36,7 @@ from .types import BiasType
 from .types import GainType
 from .support import xfrc_accumulate
 from .warp_util import event_scope
+from .warp_util import kernel
 
 
 def _advance(
@@ -45,7 +46,7 @@ def _advance(
 
   # TODO(team): can we assume static timesteps?
 
-  @wp.kernel
+  @kernel
   def next_activation(
     m: Model,
     d: Data,
@@ -85,12 +86,12 @@ def _advance(
 
     acts[act_adr] = act
 
-  @wp.kernel
+  @kernel
   def advance_velocities(m: Model, d: Data, qacc: array2df):
     worldId, tid = wp.tid()
     d.qvel[worldId, tid] = d.qvel[worldId, tid] + qacc[worldId, tid] * m.opt.timestep
 
-  @wp.kernel
+  @kernel
   def integrate_joint_positions(m: Model, d: Data, qvel_in: array2df):
     worldId, jntid = wp.tid()
 
@@ -163,19 +164,20 @@ def _advance(
 @event_scope
 def euler(m: Model, d: Data):
   """Euler integrator, semi-implicit in velocity."""
+
   # integrate damping implicitly
 
   def eulerdamp_sparse(m: Model, d: Data):
-    @wp.kernel
+    @kernel
     def add_damping_sum_qfrc_kernel_sparse(m: Model, d: Data):
       worldId, tid = wp.tid()
 
-      dof_Madr = m.dof_Madr[tid]
-      d.qM_integration[worldId, 0, dof_Madr] += m.opt.timestep * m.dof_damping[dof_Madr]
+    dof_Madr = m.dof_Madr[tid]
+    d.qM_integration[worldId, 0, dof_Madr] += m.opt.timestep * m.dof_damping[dof_Madr]
 
-      d.qfrc_integration[worldId, tid] = (
-        d.qfrc_smooth[worldId, tid] + d.qfrc_constraint[worldId, tid]
-      )
+    d.qfrc_integration[worldId, tid] = (
+      d.qfrc_smooth[worldId, tid] + d.qfrc_constraint[worldId, tid]
+    )
 
     wp.copy(d.qM_integration, d.qM)
     wp.launch(add_damping_sum_qfrc_kernel_sparse, dim=(d.nworld, m.nv), inputs=[m, d])
@@ -191,7 +193,7 @@ def euler(m: Model, d: Data):
 
   def eulerdamp_fused_dense(m: Model, d: Data):
     def tile_eulerdamp(adr: int, size: int, tilesize: int):
-      @wp.kernel
+      @kernel
       def eulerdamp(
         m: Model, d: Data, damping: wp.array(dtype=wp.float32), leveladr: int
       ):
@@ -271,7 +273,7 @@ def implicit(m: Model, d: Data):
     not m.opt.disableflags & DisableBit.ACTUATION.value
   ) and m.actuator_affine_bias_gain
 
-  @wp.kernel
+  @kernel
   def actuator_bias_gain_vel(m: Model, d: Data):
     worldid, actid = wp.tid()
 
@@ -310,7 +312,7 @@ def implicit(m: Model, d: Data):
     def qderiv_actuator_damping_tiled(
       adr: int, size: int, tilesize_nv: int, tilesize_nu: int
     ):
-      @wp.kernel
+      @kernel(module="unique")
       def qderiv_actuator_fused_kernel(
         m: Model, d: Data, damping: wp.array(dtype=wp.float32), leveladr: int
       ):
@@ -424,7 +426,7 @@ def fwd_velocity(m: Model, d: Data):
     # TODO(team): sparse version
     d.actuator_velocity.zero_()
 
-    @wp.kernel
+    @kernel
     def _actuator_velocity(d: Data):
       worldid, actid, dofid = wp.tid()
       moment = d.actuator_moment[worldid, actid]
@@ -440,7 +442,7 @@ def fwd_velocity(m: Model, d: Data):
       tilesize_nu: int,
       tilesize_nv: int,
     ):
-      @wp.kernel
+      @kernel(module="unique")
       def _actuator_velocity(
         m: Model, d: Data, leveladr: int, velocity: array3df, qvel: array3df
       ):
@@ -503,7 +505,7 @@ def fwd_actuation(m: Model, d: Data):
 
   # TODO support stateful actuators
 
-  @wp.kernel
+  @kernel
   def _force(
     m: Model,
     ctrl: array2df,
@@ -524,13 +526,20 @@ def fwd_actuation(m: Model, d: Data):
       f = wp.clamp(f, r[0], r[1])
     force[worldid, dofid] = f
 
-  wp.launch(
-    _force, dim=[d.nworld, m.nu], inputs=[m, d.ctrl], outputs=[d.actuator_force]
-  )
+  @kernel
+  def _qfrc_limited(m: Model, d: Data):
+    worldid, dofid = wp.tid()
+    jntid = m.dof_jntid[dofid]
+    if m.jnt_actfrclimited[jntid]:
+      d.qfrc_actuator[worldid, dofid] = wp.clamp(
+        d.qfrc_actuator[worldid, dofid],
+        m.jnt_actfrcrange[jntid][0],
+        m.jnt_actfrcrange[jntid][1],
+      )
 
   if m.opt.is_sparse:
     # TODO(team): sparse version
-    @wp.kernel
+    @kernel
     def _qfrc(m: Model, moment: array3df, force: array2df, qfrc: array2df):
       worldid, vid = wp.tid()
 
@@ -544,6 +553,13 @@ def fwd_actuation(m: Model, d: Data):
         s = wp.clamp(s, r[0], r[1])
       qfrc[worldid, vid] = s
 
+  wp.launch(
+    _force, dim=[d.nworld, m.nu], inputs=[m, d.ctrl], outputs=[d.actuator_force]
+  )
+
+  if m.opt.is_sparse:
+    # TODO(team): sparse version
+
     wp.launch(
       _qfrc,
       dim=(d.nworld, m.nv),
@@ -554,7 +570,7 @@ def fwd_actuation(m: Model, d: Data):
   else:
 
     def qfrc_actuator(adr: int, size: int, tilesize_nu: int, tilesize_nv: int):
-      @wp.kernel
+      @kernel(module="unique")
       def qfrc_actuator_kernel(
         m: Model,
         d: Data,
@@ -607,17 +623,6 @@ def fwd_actuation(m: Model, d: Data):
         beg, end - beg, int(qderiv_tilesize_nu[i]), int(qderiv_tilesize_nv[i])
       )
 
-    @wp.kernel
-    def _qfrc_limited(m: Model, d: Data):
-      worldid, dofid = wp.tid()
-      jntid = m.dof_jntid[dofid]
-      if m.jnt_actfrclimited[jntid]:
-        d.qfrc_actuator[worldid, dofid] = wp.clamp(
-          d.qfrc_actuator[worldid, dofid],
-          m.jnt_actfrcrange[jntid][0],
-          m.jnt_actfrcrange[jntid][1],
-        )
-
     wp.launch(_qfrc_limited, dim=(d.nworld, m.nv), inputs=[m, d])
 
   # TODO actuator-level gravity compensation, skip if added as passive force
@@ -630,7 +635,7 @@ def fwd_acceleration(m: Model, d: Data):
   qfrc_applied = d.qfrc_applied
   qfrc_accumulated = xfrc_accumulate(m, d)
 
-  @wp.kernel
+  @kernel
   def _qfrc_smooth(
     d: Data,
     qfrc_applied: wp.array(ndim=2, dtype=wp.float32),
