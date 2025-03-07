@@ -18,8 +18,11 @@
 import mujoco
 from mujoco import mjx
 import warp as wp
+import numpy as np
 from absl.testing import absltest, parameterized
 
+from . import test_util
+from . import collision_driver
 from .collision_driver import AABB
 
 
@@ -131,8 +134,8 @@ class MultiIndexList:
 
 
 class BroadPhaseTest(parameterized.TestCase):
-  def test_broad_phase(self):
-    """Tests broad phase."""
+  def test_broadphase_sweep_and_prune(self):
+    """Tests broadphase_sweep_and_prune."""
 
     _MODEL = """
      <mujoco>
@@ -177,7 +180,11 @@ class BroadPhaseTest(parameterized.TestCase):
     mx = mjx.put_model(m)
     dx = mjx.put_data(m, d)
 
-    mjx.broadphase(mx, dx)
+    mjx.broadphase_sweep_and_prune(mx, dx)
+
+    np.testing.assert_equal(
+      dx.broadphase_result_count.numpy()[0], 8, "broadphase_result_count"
+    )
 
     m = mx
     d = dx
@@ -193,7 +200,7 @@ class BroadPhaseTest(parameterized.TestCase):
       d.nworld, m.ngeom, aabbs, pos, rot, m.geom_bodyid.numpy()
     )
 
-    mjx.broadphase(m, d)
+    mjx.broadphase_sweep_and_prune(m, d)
 
     result = d.broadphase_pairs
     broadphase_result_count = d.broadphase_result_count
@@ -209,70 +216,84 @@ class BroadPhaseTest(parameterized.TestCase):
       print(f"Number of collisions for world {world_idx}: {num_collisions}")
 
       list = brute_force_overlaps[world_idx]
-      assert len(list) == num_collisions, "Number of collisions does not match"
+      np.testing.assert_equal(len(list), num_collisions, "num_collisions")
 
       # Print each collision pair
       for i in range(num_collisions):
         pair = result_np[world_idx][i]
 
         # Convert pair to tuple for comparison
-        pair_tuple = (int(pair[0]), int(pair[1]))
-        assert pair_tuple in list, (
-          f"Collision pair {pair_tuple} not found in brute force results"
+        # TODO(team): confirm ordering is correct
+        if pair[0] > pair[1]:
+          pair_tuple = (int(pair[1]), int(pair[0]))
+        else:
+          pair_tuple = (int(pair[0]), int(pair[1]))
+        np.testing.assert_equal(
+          pair_tuple in list,
+          True,
+          f"Collision pair {pair_tuple} not found in brute force results",
         )
 
-    return
+  def test_nxn_broadphase(self):
+    """Tests nxn_broadphase."""
+    # one world and zero collisions
+    mjm, _, m, d0 = test_util.fixture("broadphase.xml", keyframe=0)
+    collision_driver.nxn_broadphase(m, d0)
+    np.testing.assert_allclose(d0.broadphase_result_count.numpy()[0], 0)
 
-  def test_broadphase_simple(self):
-    """Tests the broadphase"""
+    # one world and one collision
+    _, mjd1, _, d1 = test_util.fixture("broadphase.xml", keyframe=1)
+    collision_driver.nxn_broadphase(m, d1)
+    np.testing.assert_allclose(d1.broadphase_result_count.numpy()[0], 1)
+    np.testing.assert_allclose(d1.broadphase_pairs.numpy()[0, 0][0], 0)
+    np.testing.assert_allclose(d1.broadphase_pairs.numpy()[0, 0][1], 1)
 
-    # create a model with a few intersecting bodies
-    _MODEL = """
-    <mujoco>
-      <worldbody>
-        <geom size="40 40 40" type="plane"/>   <!- (0) intersects with nothing -->
-        <body pos="0 0 0.7">
-          <freejoint/>
-          <geom size="0.5 0.5 0.5" type="box"/> <!- (1) intersects with 2, 6, 7 -->
-        </body>
-        <body pos="0.1 0 0.7">
-          <freejoint/>
-          <geom size="0.5 0.5 0.5" type="box"/> <!- (2) intersects with 1, 6, 7 -->
-        </body>
+    # one world and three collisions
+    _, mjd2, _, d2 = test_util.fixture("broadphase.xml", keyframe=2)
+    collision_driver.nxn_broadphase(m, d2)
+    np.testing.assert_allclose(d2.broadphase_result_count.numpy()[0], 3)
+    np.testing.assert_allclose(d2.broadphase_pairs.numpy()[0, 0][0], 0)
+    np.testing.assert_allclose(d2.broadphase_pairs.numpy()[0, 0][1], 1)
+    np.testing.assert_allclose(d2.broadphase_pairs.numpy()[0, 1][0], 0)
+    np.testing.assert_allclose(d2.broadphase_pairs.numpy()[0, 1][1], 2)
+    np.testing.assert_allclose(d2.broadphase_pairs.numpy()[0, 2][0], 1)
+    np.testing.assert_allclose(d2.broadphase_pairs.numpy()[0, 2][1], 2)
 
-        <body pos="1.8 0 0.7">
-          <freejoint/>
-          <geom size="0.5 0.5 0.5" type="box"/> <!- (3) intersects with 4  -->
-        </body>
-        <body pos="1.6 0 0.7">
-          <freejoint/>
-          <geom size="0.5 0.5 0.5" type="box"/> <!- (4) intersects with 3 -->
-        </body>
+    # two worlds and four collisions
+    d3 = mjx.make_data(mjm, nworld=2)
+    d3.geom_xpos = wp.array(
+      np.vstack(
+        [np.expand_dims(mjd1.geom_xpos, axis=0), np.expand_dims(mjd2.geom_xpos, axis=0)]
+      ),
+      dtype=wp.vec3,
+    )
 
-        <body pos="0 0 1.8">
-          <freejoint/>
-          <geom size="0.5 0.5 0.5" type="box"/> <!- (5) intersects with 7 -->
-          <geom size="0.5 0.5 0.5" type="box" pos="0 0 -1"/> <!- (6) intersects with 2, 1, 7 -->
-        </body>
-        <body pos="0 0.5 1.2">
-          <freejoint/>
-          <geom size="0.5 0.5 0.5" type="box"/> <!- (7) intersects with 5, 6 -->
-        </body>
-        
-      </worldbody>
-    </mujoco>
-    """
+    collision_driver.nxn_broadphase(m, d3)
+    np.testing.assert_allclose(d3.broadphase_result_count.numpy()[0], 4)
+    np.testing.assert_allclose(d3.broadphase_pairs.numpy()[0, 0][0], 0)
+    np.testing.assert_allclose(d3.broadphase_pairs.numpy()[0, 0][1], 1)
+    np.testing.assert_allclose(d3.broadphase_pairs.numpy()[1, 1][0], 0)
+    np.testing.assert_allclose(d3.broadphase_pairs.numpy()[1, 1][1], 1)
+    np.testing.assert_allclose(d3.broadphase_pairs.numpy()[1, 2][0], 0)
+    np.testing.assert_allclose(d3.broadphase_pairs.numpy()[1, 2][1], 2)
+    np.testing.assert_allclose(d3.broadphase_pairs.numpy()[1, 3][0], 1)
+    np.testing.assert_allclose(d3.broadphase_pairs.numpy()[1, 3][1], 2)
 
-    m = mujoco.MjModel.from_xml_string(_MODEL)
-    d = mujoco.MjData(m)
-    mujoco.mj_forward(m, d)
+    # one world and zero collisions: contype and conaffinity incompatibility
+    _, _, m4, d4 = test_util.fixture("broadphase.xml", keyframe=1)
+    m4.geom_contype = wp.array(np.array([0, 0, 0]), dtype=wp.int32)
+    m4.geom_conaffinity = wp.array(np.array([1, 1, 1]), dtype=wp.int32)
+    collision_driver.nxn_broadphase(m4, d4)
+    np.testing.assert_allclose(d4.broadphase_result_count.numpy()[0], 0)
 
-    mx = mjx.put_model(m)
-    dx = mjx.put_data(m, d)
+    # one world and one collision: geomtype ordering
+    _, _, _, d5 = test_util.fixture("broadphase.xml", keyframe=3)
+    collision_driver.nxn_broadphase(m, d5)
+    np.testing.assert_allclose(d5.broadphase_result_count.numpy()[0], 1)
+    np.testing.assert_allclose(d5.broadphase_pairs.numpy()[0, 0][0], 3)
+    np.testing.assert_allclose(d5.broadphase_pairs.numpy()[0, 0][1], 2)
 
-    mjx.broadphase(mx, dx)
-
-    assert dx.broadphase_result_count.numpy()[0] == 8
+    # TODO(team): test margin
 
 
 if __name__ == "__main__":

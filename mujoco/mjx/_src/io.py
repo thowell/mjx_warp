@@ -214,6 +214,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.body_jntnum = wp.array(mjm.body_jntnum, dtype=wp.int32, ndim=1)
   m.body_parentid = wp.array(mjm.body_parentid, dtype=wp.int32, ndim=1)
   m.body_mocapid = wp.array(mjm.body_mocapid, dtype=wp.int32, ndim=1)
+  m.body_weldid = wp.array(mjm.body_weldid, dtype=wp.int32, ndim=1)
   m.body_pos = wp.array(mjm.body_pos, dtype=wp.vec3, ndim=1)
   m.body_quat = wp.array(mjm.body_quat, dtype=wp.quat, ndim=1)
   m.body_ipos = wp.array(mjm.body_ipos, dtype=wp.vec3, ndim=1)
@@ -224,7 +225,6 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.body_invweight0 = wp.array(mjm.body_invweight0, dtype=wp.float32, ndim=2)
   m.body_geomnum = wp.array(mjm.body_geomnum, dtype=wp.int32, ndim=1)
   m.body_geomadr = wp.array(mjm.body_geomadr, dtype=wp.int32, ndim=1)
-  m.body_weldid = wp.array(mjm.body_weldid, dtype=wp.int32, ndim=1)
   m.body_contype = wp.array(mjm.body_contype, dtype=wp.int32, ndim=1)
   m.body_conaffinity = wp.array(mjm.body_conaffinity, dtype=wp.int32, ndim=1)
   m.jnt_bodyid = wp.array(mjm.jnt_bodyid, dtype=wp.int32, ndim=1)
@@ -246,6 +246,8 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.jnt_actfrcrange = wp.array(mjm.jnt_actfrcrange, dtype=wp.vec2, ndim=1)
   m.geom_type = wp.array(mjm.geom_type, dtype=wp.int32, ndim=1)
   m.geom_bodyid = wp.array(mjm.geom_bodyid, dtype=wp.int32, ndim=1)
+  m.geom_conaffinity = wp.array(mjm.geom_conaffinity, dtype=wp.int32, ndim=1)
+  m.geom_contype = wp.array(mjm.geom_contype, dtype=wp.int32, ndim=1)
   m.geom_pos = wp.array(mjm.geom_pos, dtype=wp.vec3, ndim=1)
   m.geom_quat = wp.array(mjm.geom_quat, dtype=wp.quat, ndim=1)
   m.geom_size = wp.array(mjm.geom_size, dtype=wp.vec3, ndim=1)
@@ -527,7 +529,6 @@ def put_data(
   d.qfrc_smooth = wp.array(tile(mjd.qfrc_smooth), dtype=wp.float32, ndim=2)
   d.qfrc_constraint = wp.array(tile(mjd.qfrc_constraint), dtype=wp.float32, ndim=2)
   d.qacc_smooth = wp.array(tile(mjd.qacc_smooth), dtype=wp.float32, ndim=2)
-  d.qfrc_constraint = wp.array(tile(mjd.qfrc_constraint), dtype=wp.float32, ndim=2)
   d.act = wp.array(tile(mjd.act), dtype=wp.float32, ndim=2)
   d.act_dot = wp.array(tile(mjd.act_dot), dtype=wp.float32, ndim=2)
 
@@ -621,6 +622,7 @@ def put_data(
   d.contact.worldid = wp.array(con_worldid, dtype=wp.int32, ndim=1)
 
   d.xfrc_applied = wp.array(tile(mjd.xfrc_applied), dtype=wp.spatial_vector, ndim=2)
+
   # internal tmp arrays
   d.qfrc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qacc_integration = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
