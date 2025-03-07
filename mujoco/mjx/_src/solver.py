@@ -802,7 +802,7 @@ def solve(m: types.Model, d: types.Data):
       if tid >= m.opt.ls_iterations:
         return
 
-      ctx.alpha_candidate[tid] = float(tid) / float(wp.max(m.opt.ls_iterations - 1, 1))
+      ctx.alpha_candidate[tid] = float(tid) / float(wp.maximum(wp.min(m.opt.ls_iterations, MAX_LS_PARALLEL) - 1, 1))
 
     wp.launch(_alpha_candidate, dim=(MAX_LS_PARALLEL), inputs=[ctx, m])
 
