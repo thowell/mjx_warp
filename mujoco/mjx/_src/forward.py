@@ -35,6 +35,7 @@ from .types import DynType
 from .types import BiasType
 from .types import GainType
 from .support import xfrc_accumulate
+from .warp_util import event_scope
 
 
 def _advance(
@@ -159,6 +160,7 @@ def _advance(
   d.time = d.time + m.opt.timestep
 
 
+@event_scope
 def euler(m: Model, d: Data):
   """Euler integrator, semi-implicit in velocity."""
   # integrate damping implicitly
@@ -233,6 +235,7 @@ def euler(m: Model, d: Data):
     _advance(m, d, d.act_dot, d.qacc)
 
 
+@event_scope
 def implicit(m: Model, d: Data):
   """Integrates fully implicit in velocity."""
 
@@ -394,6 +397,7 @@ def implicit(m: Model, d: Data):
     _advance(m, d, d.act_dot, d.qacc)
 
 
+@event_scope
 def fwd_position(m: Model, d: Data):
   """Position-dependent computations."""
 
@@ -408,6 +412,7 @@ def fwd_position(m: Model, d: Data):
   smooth.transmission(m, d)
 
 
+@event_scope
 def fwd_velocity(m: Model, d: Data):
   """Velocity-dependent computations."""
 
@@ -486,6 +491,7 @@ def fwd_velocity(m: Model, d: Data):
   smooth.rne(m, d)
 
 
+@event_scope
 def fwd_actuation(m: Model, d: Data):
   """Actuation-dependent computations."""
   if not m.nu:
@@ -613,6 +619,7 @@ def fwd_actuation(m: Model, d: Data):
   # TODO actuator-level gravity compensation, skip if added as passive force
 
 
+@event_scope
 def fwd_acceleration(m: Model, d: Data):
   """Add up all non-constraint forces, compute qacc_smooth."""
 
@@ -641,6 +648,7 @@ def fwd_acceleration(m: Model, d: Data):
   smooth.solve_m(m, d, d.qacc_smooth, d.qfrc_smooth)
 
 
+@event_scope
 def forward(m: Model, d: Data):
   """Forward dynamics."""
 
@@ -658,6 +666,7 @@ def forward(m: Model, d: Data):
     solver.solve(m, d)
 
 
+@event_scope
 def step(m: Model, d: Data):
   """Advance simulation."""
   forward(m, d)
