@@ -172,12 +172,12 @@ def euler(m: Model, d: Data):
     def add_damping_sum_qfrc_kernel_sparse(m: Model, d: Data):
       worldId, tid = wp.tid()
 
-    dof_Madr = m.dof_Madr[tid]
-    d.qM_integration[worldId, 0, dof_Madr] += m.opt.timestep * m.dof_damping[dof_Madr]
+      dof_Madr = m.dof_Madr[tid]
+      d.qM_integration[worldId, 0, dof_Madr] += m.opt.timestep * m.dof_damping[dof_Madr]
 
-    d.qfrc_integration[worldId, tid] = (
-      d.qfrc_smooth[worldId, tid] + d.qfrc_constraint[worldId, tid]
-    )
+      d.qfrc_integration[worldId, tid] = (
+        d.qfrc_smooth[worldId, tid] + d.qfrc_constraint[worldId, tid]
+      )
 
     wp.copy(d.qM_integration, d.qM)
     wp.launch(add_damping_sum_qfrc_kernel_sparse, dim=(d.nworld, m.nv), inputs=[m, d])
