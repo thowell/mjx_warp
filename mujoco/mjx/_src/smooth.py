@@ -328,7 +328,6 @@ def _factor_i_dense(m: Model, d: Data, M: wp.array, L: wp.array):
   block_dim = 32
 
   def tile_cholesky(adr: int, size: int, tilesize: int):
-
     @kernel(module="unique")
     def cholesky(m: Model, leveladr: int, M: array3df, L: array3df):
       worldid, nodeid = wp.tid()
@@ -586,7 +585,6 @@ def _solve_LD_sparse(
 ):
   """Computes sparse backsubstitution: x = inv(L'*D*L)*y"""
 
-
   @kernel
   def x_acc_up(m: Model, L: array3df, x: array2df, leveladr: int):
     worldid, nodeid = wp.tid()
@@ -629,7 +627,6 @@ def _solve_LD_sparse(
 
 def _solve_LD_dense(m: Model, d: Data, L: array3df, x: array2df, y: array2df):
   """Computes dense backsubstitution: x = inv(L'*L)*y"""
-
 
   # TODO(team): develop heuristic for block dim, or make configurable
   block_dim = 32
@@ -678,7 +675,6 @@ def _factor_solve_i_dense(m: Model, d: Data, M: array3df, x: array2df, y: array2
   block_dim = 32
 
   def tile_cholesky(adr: int, size: int, tilesize: int):
-
     @kernel(module="unique")
     def cholesky(m: Model, leveladr: int, M: array3df, x: array2df, y: array2df):
       worldid, nodeid = wp.tid()
