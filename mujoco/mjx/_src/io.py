@@ -266,6 +266,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.mesh_vert = wp.array(mjm.mesh_vert, dtype=wp.vec3, ndim=1)
   m.site_pos = wp.array(mjm.site_pos, dtype=wp.vec3, ndim=1)
   m.site_quat = wp.array(mjm.site_quat, dtype=wp.quat, ndim=1)
+  m.site_bodyid = wp.array(mjm.site_bodyid, dtype=wp.int32, ndim=1)
   m.dof_bodyid = wp.array(mjm.dof_bodyid, dtype=wp.int32, ndim=1)
   m.dof_jntid = wp.array(mjm.dof_jntid, dtype=wp.int32, ndim=1)
   m.dof_parentid = wp.array(mjm.dof_parentid, dtype=wp.int32, ndim=1)
@@ -456,7 +457,7 @@ def put_data(
   if nworld * mjd.nefc > njmax:
     raise ValueError("nworld * nefc > njmax")
 
-  d.ncon = wp.array([mjd.ncon], dtype=wp.int32, ndim=1)
+  d.ncon = wp.array([mjd.ncon * nworld], dtype=wp.int32, ndim=1)
   d.nl = mjd.nl
   d.nefc = wp.zeros(1, dtype=wp.int32)
   d.time = mjd.time

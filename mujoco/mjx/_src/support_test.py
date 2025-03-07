@@ -23,7 +23,7 @@ import numpy as np
 import warp as wp
 from . import test_util
 from .support import xfrc_accumulate
-from .io import make_data, put_data
+from .io import make_data
 
 wp.config.verify_cuda = True
 
@@ -83,12 +83,12 @@ class SupportTest(parameterized.TestCase):
     md = make_data(mjm)
 
     # same number of fields
-    assert len(d.__dict__) == len(md.__dict__)
+    self.assertEqual(len(d.__dict__), len(md.__dict__))
 
     # test shapes for all arrays
     for attr, val in md.__dict__.items():
-      if type(val) == wp.array:
-        assert val.shape == getattr(d, attr).shape
+      if isinstance(val, wp.array):
+        self.assertEqual(val.shape, getattr(d, attr).shape)
 
 
 if __name__ == "__main__":
