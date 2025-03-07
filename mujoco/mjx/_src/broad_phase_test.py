@@ -25,8 +25,6 @@ from . import test_util
 from . import collision_driver
 from .collision_driver import AABB
 
-BoxType = wp.types.matrix(shape=(2, 3), dtype=wp.float32)
-
 
 def transform_aabb(aabb_pos, aabb_size, pos: wp.vec3, ori: wp.mat33) -> AABB:
   aabb = AABB()
@@ -136,8 +134,8 @@ class MultiIndexList:
 
 
 class BroadPhaseTest(parameterized.TestCase):
-  def test_broad_phase(self):
-    """Tests broad phase."""
+  def test_broadphase_sweep_and_prune(self):
+    """Tests broadphase_sweep_and_prune."""
 
     _MODEL = """
      <mujoco>
@@ -184,6 +182,10 @@ class BroadPhaseTest(parameterized.TestCase):
 
     mjx.broadphase_sweep_and_prune(mx, dx)
 
+    np.testing.assert_equal(
+      dx.broadphase_result_count.numpy()[0], 8, "broadphase_result_count"
+    )
+
     m = mx
     d = dx
     aabbs = m.geom_aabb.numpy()
@@ -214,7 +216,7 @@ class BroadPhaseTest(parameterized.TestCase):
       print(f"Number of collisions for world {world_idx}: {num_collisions}")
 
       list = brute_force_overlaps[world_idx]
-      assert len(list) == num_collisions, "Number of collisions does not match"
+      np.testing.assert_equal(len(list), num_collisions, "num_collisions")
 
       # Print each collision pair
       for i in range(num_collisions):
@@ -226,8 +228,10 @@ class BroadPhaseTest(parameterized.TestCase):
           pair_tuple = (int(pair[1]), int(pair[0]))
         else:
           pair_tuple = (int(pair[0]), int(pair[1]))
-        assert pair_tuple in list, (
-          f"Collision pair {pair_tuple} not found in brute force results"
+        np.testing.assert_equal(
+          pair_tuple in list,
+          True,
+          f"Collision pair {pair_tuple} not found in brute force results",
         )
 
   def test_nxn_broadphase(self):
@@ -290,57 +294,6 @@ class BroadPhaseTest(parameterized.TestCase):
     np.testing.assert_allclose(d5.broadphase_pairs.numpy()[0, 0][1], 2)
 
     # TODO(team): test margin
-
-  def test_broadphase_simple(self):
-    """Tests the broadphase"""
-
-    # create a model with a few intersecting bodies
-    _MODEL = """
-    <mujoco>
-      <worldbody>
-        <geom size="40 40 40" type="plane"/>   <!- (0) intersects with nothing -->
-        <body pos="0 0 0.7">
-          <freejoint/>
-          <geom size="0.5 0.5 0.5" type="box"/> <!- (1) intersects with 2, 6, 7 -->
-        </body>
-        <body pos="0.1 0 0.7">
-          <freejoint/>
-          <geom size="0.5 0.5 0.5" type="box"/> <!- (2) intersects with 1, 6, 7 -->
-        </body>
-
-        <body pos="1.8 0 0.7">
-          <freejoint/>
-          <geom size="0.5 0.5 0.5" type="box"/> <!- (3) intersects with 4  -->
-        </body>
-        <body pos="1.6 0 0.7">
-          <freejoint/>
-          <geom size="0.5 0.5 0.5" type="box"/> <!- (4) intersects with 3 -->
-        </body>
-
-        <body pos="0 0 1.8">
-          <freejoint/>
-          <geom size="0.5 0.5 0.5" type="box"/> <!- (5) intersects with 7 -->
-          <geom size="0.5 0.5 0.5" type="box" pos="0 0 -1"/> <!- (6) intersects with 2, 1, 7 -->
-        </body>
-        <body pos="0 0.5 1.2">
-          <freejoint/>
-          <geom size="0.5 0.5 0.5" type="box"/> <!- (7) intersects with 5, 6 -->
-        </body>
-        
-      </worldbody>
-    </mujoco>
-    """
-
-    m = mujoco.MjModel.from_xml_string(_MODEL)
-    d = mujoco.MjData(m)
-    mujoco.mj_forward(m, d)
-
-    mx = mjx.put_model(m)
-    dx = mjx.put_data(m, d)
-
-    mjx.broadphase_sweep_and_prune(mx, dx)
-
-    assert dx.broadphase_result_count.numpy()[0] == 8
 
 
 if __name__ == "__main__":
