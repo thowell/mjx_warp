@@ -25,6 +25,39 @@ from .support import where
 from .support import group_key
 
 
+@wp.func
+def _geom_filter(m: Model, geom1: int, geom2: int, filterparent: bool) -> bool:
+  bodyid1 = m.geom_bodyid[geom1]
+  bodyid2 = m.geom_bodyid[geom2]
+  contype1 = m.geom_contype[geom1]
+  contype2 = m.geom_contype[geom2]
+  conaffinity1 = m.geom_conaffinity[geom1]
+  conaffinity2 = m.geom_conaffinity[geom2]
+  weldid1 = m.body_weldid[bodyid1]
+  weldid2 = m.body_weldid[bodyid2]
+  weld_parentid1 = m.body_weldid[m.body_parentid[weldid1]]
+  weld_parentid2 = m.body_weldid[m.body_parentid[weldid2]]
+
+  self_collision = weldid1 == weldid2
+  parent_child_collision = (
+    filterparent
+    and (weldid1 != 0)
+    and (weldid2 != 0)
+    and ((weldid1 == weld_parentid2) or (weldid2 == weld_parentid1))
+  )
+  mask = (contype1 and conaffinity2) or (contype2 and conaffinity1)
+
+  return mask and (not self_collision) and (not parent_child_collision)
+
+
+@wp.func
+def _geom_pair(m: Model, geom1: int, geom2: int):
+  if m.geom_type[geom1] > m.geom_type[geom2]:
+    return wp.vec2i(geom2, geom1)
+  else:
+    return wp.vec2i(geom1, geom2)
+
+
 @wp.struct
 class AABB:
   min: wp.vec3
@@ -490,12 +523,6 @@ def nxn_broadphase(m: Model, d: Data):
       + (m.ngeom - geom1) * ((m.ngeom - geom1) - 1) // 2
     )
 
-    bodyid1 = m.geom_bodyid[geom1]
-    bodyid2 = m.geom_bodyid[geom2]
-    contype1 = m.geom_contype[geom1]
-    contype2 = m.geom_contype[geom2]
-    conaffinity1 = m.geom_conaffinity[geom1]
-    conaffinity2 = m.geom_conaffinity[geom2]
     geomtype1 = m.geom_type[geom1]
     geomtype2 = m.geom_type[geom2]
     margin1 = m.geom_margin[geom1]
@@ -504,38 +531,16 @@ def nxn_broadphase(m: Model, d: Data):
     pos2 = d.geom_xpos[worldid, geom2]
     size1 = m.geom_rbound[geom1]
     size2 = m.geom_rbound[geom2]
-    weldid1 = m.body_weldid[bodyid1]
-    weldid2 = m.body_weldid[bodyid2]
-    weld_parentid1 = m.body_weldid[m.body_parentid[weldid1]]
-    weld_parentid2 = m.body_weldid[m.body_parentid[weldid2]]
-
-    self_collision = weldid1 == weldid2
-    parent_child_collision = (
-      filterparent
-      and (weldid1 != 0)
-      and (weldid2 != 0)
-      and ((weldid1 == weld_parentid2) or (weldid2 == weld_parentid1))
-    )
-    mask = (contype1 and conaffinity2) or (contype2 and conaffinity1)
 
     bound = size1 + size2 + wp.max(margin1, margin2)
     dif = pos2 - pos1
-    
-    if (
-      (wp.dot(dif, dif) <= bound * bound)
-      and mask
-      and (not self_collision)
-      and (not parent_child_collision)
-    ):
-      pairid = wp.atomic_add(d.broadphase_result_count, 0, 1)
+    sphere_filter = wp.dot(dif, dif) <= bound * bound
 
-      # order pairs by geom type
-      if geomtype1 > geomtype2:
-        pair = wp.vec2i(geom2, geom1)
-      else:
-        pair = wp.vec2i(geom1, geom2)
-      
-      d.broadphase_pairs[worldid, pairid] = pair
+    geom_filter = _geom_filter(m, geom1, geom2, filterparent)
+
+    if sphere_filter and geom_filter:
+      pairid = wp.atomic_add(d.broadphase_result_count, 0, 1)
+      d.broadphase_pairs[worldid, pairid] = _geom_pair(m, geom1, geom2)
 
   wp.launch(
     _nxn_broadphase, dim=(d.nworld, m.ngeom * (m.ngeom - 1) // 2), inputs=[m, d]
