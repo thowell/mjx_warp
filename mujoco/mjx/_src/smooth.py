@@ -98,8 +98,35 @@ def kinematics(m: Model, d: Data):
         jntadr += 1
 
     d.xpos[worldid, bodyid] = xpos
-    d.xquat[worldid, bodyid] = wp.normalize(xquat)
+    xquat = wp.normalize(xquat)
+    d.xquat[worldid, bodyid] = xquat
     d.xmat[worldid, bodyid] = math.quat_to_mat(xquat)
+    d.xipos[worldid, bodyid] = xpos + math.rot_vec_quat(m.body_ipos[bodyid], xquat)
+    d.ximat[worldid, bodyid] = math.quat_to_mat(
+      math.mul_quat(xquat, m.body_iquat[bodyid])
+    )
+
+  @kernel
+  def geom_local_to_global(m: Model, d: Data):
+    worldid, geomid = wp.tid()
+    bodyid = m.geom_bodyid[geomid]
+    xpos = d.xpos[worldid, bodyid]
+    xquat = d.xquat[worldid, bodyid]
+    d.geom_xpos[worldid, geomid] = xpos + math.rot_vec_quat(m.geom_pos[geomid], xquat)
+    d.geom_xmat[worldid, geomid] = math.quat_to_mat(
+      math.mul_quat(xquat, m.geom_quat[geomid])
+    )
+
+  @kernel
+  def site_local_to_global(m: Model, d: Data):
+    worldid, siteid = wp.tid()
+    bodyid = m.site_bodyid[siteid]
+    xpos = d.xpos[worldid, bodyid]
+    xquat = d.xquat[worldid, bodyid]
+    d.site_xpos[worldid, siteid] = xpos + math.rot_vec_quat(m.site_pos[siteid], xquat)
+    d.site_xmat[worldid, siteid] = math.quat_to_mat(
+      math.mul_quat(xquat, m.site_quat[siteid])
+    )
 
   wp.launch(_root, dim=(d.nworld), inputs=[m, d])
 
@@ -108,6 +135,12 @@ def kinematics(m: Model, d: Data):
     beg = body_treeadr[i]
     end = m.nbody if i == len(body_treeadr) - 1 else body_treeadr[i + 1]
     wp.launch(_level, dim=(d.nworld, end - beg), inputs=[m, d, beg])
+
+  if m.ngeom:
+    wp.launch(geom_local_to_global, dim=(d.nworld, m.ngeom), inputs=[m, d])
+
+  if m.site:
+    wp.launch(site_local_to_global, dim=(d.nworld, m.ngeom), inputs=[m, d])
 
 
 @event_scope
