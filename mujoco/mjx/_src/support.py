@@ -21,7 +21,6 @@ from .types import array2df
 from .types import NUM_GEOM_TYPES
 from typing import Any
 from .types import array3df
-from . import USE_SEPARATE_MODULES
 from . import kernel
 
 
@@ -42,13 +41,8 @@ def mul_m(
   if not m.opt.is_sparse:
 
     def tile_mul(adr: int, size: int, tilesize: int):
-      if USE_SEPARATE_MODULES:
-        module = wp.context.Module(f"support.mul_m_dense_{tilesize}", loader=None)
-      else:
-        module = None
-
       # TODO(team): speed up kernel compile time (14s on 2023 Macbook Pro)
-      @kernel(module=module)
+      @kernel(module="unique")
       def mul(m: Model, d: Data, leveladr: int, res: array3df, vec: array3df):
         worldid, nodeid = wp.tid()
         dofid = m.qLD_tile[leveladr + nodeid]
@@ -82,12 +76,8 @@ def mul_m(
       tile_mul(beg, end - beg, int(qLD_tilesize[i]))
 
   else:
-    if USE_SEPARATE_MODULES:
-      module = wp.context.Module(f"support.mul_m_sparse", loader=None)
-    else:
-      module = None
 
-    @kernel(module=module)
+    @kernel
     def _mul_m_sparse_diag(
       m: Model,
       d: Data,
@@ -97,7 +87,7 @@ def mul_m(
       worldid, dofid = wp.tid()
       res[worldid, dofid] = d.qM[worldid, 0, m.dof_Madr[dofid]] * vec[worldid, dofid]
 
-    @kernel(module=module)
+    @kernel
     def _mul_m_sparse_ij(
       m: Model,
       d: Data,

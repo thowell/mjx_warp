@@ -24,7 +24,6 @@ from . import passive
 from . import smooth
 from . import solver
 from . import collision_driver
-from . import USE_SEPARATE_MODULES
 from . import kernel
 
 from .types import array2df, array3df
@@ -44,14 +43,9 @@ def _advance(
 ):
   """Advance state and time given activation derivatives and acceleration."""
 
-  if USE_SEPARATE_MODULES:
-    module = wp.context.Module("forward._advance", loader=None)
-  else:
-    module = None
-
   # TODO(team): can we assume static timesteps?
 
-  @kernel(module=module)
+  @kernel
   def next_activation(
     m: Model,
     d: Data,
@@ -91,12 +85,12 @@ def _advance(
 
     acts[act_adr] = act
 
-  @kernel(module=module)
+  @kernel
   def advance_velocities(m: Model, d: Data, qacc: array2df):
     worldId, tid = wp.tid()
     d.qvel[worldId, tid] = d.qvel[worldId, tid] + qacc[worldId, tid] * m.opt.timestep
 
-  @kernel(module=module)
+  @kernel
   def integrate_joint_positions(m: Model, d: Data, qvel_in: array2df):
     worldId, jntid = wp.tid()
 
@@ -169,13 +163,9 @@ def _advance(
 def euler(m: Model, d: Data):
   """Euler integrator, semi-implicit in velocity."""
 
-  if USE_SEPARATE_MODULES:
-    module = wp.context.Module("forward.euler", loader=None)
-  else:
-    module = None
   # integrate damping implicitly
 
-  @kernel(module=module)
+  @kernel
   def add_damping_sum_qfrc_kernel_sparse(m: Model, d: Data):
     worldId, tid = wp.tid()
 
@@ -186,7 +176,7 @@ def euler(m: Model, d: Data):
       d.qfrc_smooth[worldId, tid] + d.qfrc_constraint[worldId, tid]
     )
 
-  @kernel(module=module)
+  @kernel
   def add_damping_sum_qfrc_kernel_dense(m: Model, d: Data):
     worldid, i, j = wp.tid()
 
@@ -251,7 +241,7 @@ def implicit(m: Model, d: Data):
     not m.opt.disableflags & DisableBit.ACTUATION.value
   ) and m.actuator_affine_bias_gain
 
-  @wp.kernel
+  @kernel
   def actuator_bias_gain_vel(m: Model, d: Data):
     worldid, actid = wp.tid()
 
@@ -290,15 +280,7 @@ def implicit(m: Model, d: Data):
     def qderiv_actuator_damping_tiled(
       adr: int, size: int, tilesize_nv: int, tilesize_nu: int
     ):
-      if USE_SEPARATE_MODULES:
-        module = wp.context.Module(
-          f"forward.qderiv_actuator_damping_tiled_{tilesize_nu}_{tilesize_nv}",
-          loader=None,
-        )
-      else:
-        module = None
-
-      @kernel(module=module)
+      @kernel(module="unique")
       def qderiv_actuator_fused_kernel(
         m: Model, d: Data, damping: wp.array(dtype=wp.float32), leveladr: int
       ):
@@ -406,16 +388,11 @@ def fwd_position(m: Model, d: Data):
 def fwd_velocity(m: Model, d: Data):
   """Velocity-dependent computations."""
 
-  if USE_SEPARATE_MODULES:
-    module = wp.context.Module("forward.fwd_velocity", loader=None)
-  else:
-    module = None
-
   if m.opt.is_sparse:
     # TODO(team): sparse version
     d.actuator_velocity.zero_()
 
-    @kernel(module=module)
+    @kernel
     def _actuator_velocity(d: Data):
       worldid, actid, dofid = wp.tid()
       moment = d.actuator_moment[worldid, actid]
@@ -431,14 +408,7 @@ def fwd_velocity(m: Model, d: Data):
       tilesize_nu: int,
       tilesize_nv: int,
     ):
-      if USE_SEPARATE_MODULES:
-        module = wp.context.Module(
-          f"forward.actuator_velocity_{tilesize_nu}_{tilesize_nv}", loader=None
-        )
-      else:
-        module = None
-
-      @kernel(module=module)
+      @kernel(module="unique")
       def _actuator_velocity(
         m: Model, d: Data, leveladr: int, velocity: array3df, qvel: array3df
       ):
@@ -498,14 +468,9 @@ def fwd_actuation(m: Model, d: Data):
   if not m.nu:
     return
 
-  if USE_SEPARATE_MODULES:
-    module = wp.context.Module("forward.fwd_actuation", loader=None)
-  else:
-    module = None
-
   # TODO support stateful actuators
 
-  @kernel(module=module)
+  @kernel
   def _force(
     m: Model,
     ctrl: array2df,
@@ -526,7 +491,7 @@ def fwd_actuation(m: Model, d: Data):
       f = wp.clamp(f, r[0], r[1])
     force[worldid, dofid] = f
 
-  @kernel(module=module)
+  @kernel
   def _qfrc_limited(m: Model, d: Data):
     worldid, dofid = wp.tid()
     jntid = m.dof_jntid[dofid]
@@ -539,7 +504,7 @@ def fwd_actuation(m: Model, d: Data):
 
   if m.opt.is_sparse:
     # TODO(team): sparse version
-    @kernel(module=module)
+    @kernel
     def _qfrc(m: Model, moment: array3df, force: array2df, qfrc: array2df):
       worldid, vid = wp.tid()
 
@@ -570,14 +535,7 @@ def fwd_actuation(m: Model, d: Data):
   else:
 
     def qfrc_actuator(adr: int, size: int, tilesize_nu: int, tilesize_nv: int):
-      if USE_SEPARATE_MODULES:
-        module = wp.context.Module(
-          f"forward.qfrc_actuator_{tilesize_nu}_{tilesize_nv}", loader=None
-        )
-      else:
-        module = None
-
-      @kernel(module=module)
+      @kernel(module="unique")
       def qfrc_actuator_kernel(
         m: Model,
         d: Data,
@@ -638,15 +596,10 @@ def fwd_actuation(m: Model, d: Data):
 def fwd_acceleration(m: Model, d: Data):
   """Add up all non-constraint forces, compute qacc_smooth."""
 
-  if USE_SEPARATE_MODULES:
-    module = wp.context.Module("forward.fwd_acceleration", loader=None)
-  else:
-    module = None
-
   qfrc_applied = d.qfrc_applied
   qfrc_accumulated = xfrc_accumulate(m, d)
 
-  @kernel(module=module)
+  @kernel
   def _qfrc_smooth(
     d: Data,
     qfrc_applied: wp.array(ndim=2, dtype=wp.float32),

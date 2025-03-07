@@ -15,7 +15,6 @@
 
 import warp as wp
 from . import math
-from . import USE_SEPARATE_MODULES
 from . import kernel
 
 from .types import Model
@@ -28,12 +27,8 @@ from .types import JointType, TrnType
 
 def kinematics(m: Model, d: Data):
   """Forward kinematics."""
-  if USE_SEPARATE_MODULES:
-    module = wp.context.Module("smooth.kinematics", loader=None)
-  else:
-    module = None
 
-  @kernel(module=module)
+  @kernel
   def _root(m: Model, d: Data):
     worldid = wp.tid()
     d.xpos[worldid, 0] = wp.vec3(0.0)
@@ -42,7 +37,7 @@ def kinematics(m: Model, d: Data):
     d.xmat[worldid, 0] = wp.identity(n=3, dtype=wp.float32)
     d.ximat[worldid, 0] = wp.identity(n=3, dtype=wp.float32)
 
-  @kernel(module=module)
+  @kernel
   def _level(m: Model, d: Data, leveladr: int):
     worldid, nodeid = wp.tid()
     bodyid = m.body_tree[leveladr + nodeid]
@@ -115,36 +110,32 @@ def kinematics(m: Model, d: Data):
 
 def com_pos(m: Model, d: Data):
   """Map inertias and motion dofs to global frame centered at subtree-CoM."""
-  if USE_SEPARATE_MODULES:
-    module = wp.context.Module("smooth.com_pos", loader=None)
-  else:
-    module = None
 
-  @kernel(module=module)
+  @kernel
   def mass_subtree_acc(m: Model, mass_subtree: wp.array(dtype=float), leveladr: int):
     nodeid = wp.tid()
     bodyid = m.body_tree[leveladr + nodeid]
     pid = m.body_parentid[bodyid]
     wp.atomic_add(mass_subtree, pid, mass_subtree[bodyid])
 
-  @kernel(module=module)
+  @kernel
   def subtree_com_init(m: Model, d: Data):
     worldid, bodyid = wp.tid()
     d.subtree_com[worldid, bodyid] = d.xipos[worldid, bodyid] * m.body_mass[bodyid]
 
-  @kernel(module=module)
+  @kernel
   def subtree_com_acc(m: Model, d: Data, leveladr: int):
     worldid, nodeid = wp.tid()
     bodyid = m.body_tree[leveladr + nodeid]
     pid = m.body_parentid[bodyid]
     wp.atomic_add(d.subtree_com, worldid, pid, d.subtree_com[worldid, bodyid])
 
-  @kernel(module=module)
+  @kernel
   def subtree_div(mass_subtree: wp.array(dtype=float), d: Data):
     worldid, bodyid = wp.tid()
     d.subtree_com[worldid, bodyid] /= mass_subtree[bodyid]
 
-  @kernel(module=module)
+  @kernel
   def cinert(m: Model, d: Data):
     worldid, bodyid = wp.tid()
     mat = d.ximat[worldid, bodyid]
@@ -178,7 +169,7 @@ def com_pos(m: Model, d: Data):
 
     d.cinert[worldid, bodyid] = res
 
-  @kernel(module=module)
+  @kernel
   def cdof(m: Model, d: Data):
     worldid, jntid = wp.tid()
     bodyid = m.jnt_bodyid[jntid]
@@ -230,14 +221,10 @@ def com_pos(m: Model, d: Data):
 
 def crb(m: Model, d: Data):
   """Composite rigid body inertia algorithm."""
-  if USE_SEPARATE_MODULES:
-    module = wp.context.Module("smooth.com_pos", loader=None)
-  else:
-    module = None
 
   wp.copy(d.crb, d.cinert)
 
-  @kernel(module=module)
+  @kernel
   def crb_accumulate(m: Model, d: Data, leveladr: int):
     worldid, nodeid = wp.tid()
     bodyid = m.body_tree[leveladr + nodeid]
@@ -246,7 +233,7 @@ def crb(m: Model, d: Data):
       return
     wp.atomic_add(d.crb, worldid, pid, d.crb[worldid, bodyid])
 
-  @kernel(module=module)
+  @kernel
   def qM_sparse(m: Model, d: Data):
     worldid, dofid = wp.tid()
     madr_ij = m.dof_Madr[dofid]
@@ -264,7 +251,7 @@ def crb(m: Model, d: Data):
       madr_ij += 1
       dofid = m.dof_parentid[dofid]
 
-  @kernel(module=module)
+  @kernel
   def qM_dense(m: Model, d: Data):
     worldid, dofid = wp.tid()
     bodyid = m.dof_bodyid[dofid]
@@ -296,12 +283,8 @@ def crb(m: Model, d: Data):
 
 def _factor_i_sparse(m: Model, d: Data, M: array3df, L: array3df, D: array2df):
   """Sparse L'*D*L factorizaton of inertia-like matrix M, assumed spd."""
-  if USE_SEPARATE_MODULES:
-    module = wp.context.Module("smooth._factor_i_sparse", loader=None)
-  else:
-    module = None
 
-  @kernel(module=module)
+  @kernel
   def qLD_acc(m: Model, leveladr: int, L: array3df):
     worldid, nodeid = wp.tid()
     update = m.qLD_update_tree[leveladr + nodeid]
@@ -315,7 +298,7 @@ def _factor_i_sparse(m: Model, d: Data, M: array3df, L: array3df, D: array2df):
     # M(k,i) = tmp
     L[worldid, 0, Madr_ki] = tmp
 
-  @kernel(module=module)
+  @kernel
   def qLDiag_div(m: Model, L: array3df, D: array2df):
     worldid, dofid = wp.tid()
     D[worldid, dofid] = 1.0 / L[worldid, 0, m.dof_Madr[dofid]]
@@ -341,12 +324,8 @@ def _factor_i_dense(m: Model, d: Data, M: wp.array, L: wp.array):
   block_dim = 32
 
   def tile_cholesky(adr: int, size: int, tilesize: int):
-    if USE_SEPARATE_MODULES:
-      module = wp.context.Module(f"smooth._factor_i_dense_{tilesize}", loader=None)
-    else:
-      module = None
 
-    @kernel(module=module)
+    @kernel(module="unique")
     def cholesky(m: Model, leveladr: int, M: array3df, L: array3df):
       worldid, nodeid = wp.tid()
       dofid = m.qLD_tile[leveladr + nodeid]
@@ -385,20 +364,16 @@ def factor_m(m: Model, d: Data):
 
 def rne(m: Model, d: Data):
   """Computes inverse dynamics using Newton-Euler algorithm."""
-  if USE_SEPARATE_MODULES:
-    module = wp.context.Module("smooth.rne", loader=None)
-  else:
-    module = None
 
   cacc = wp.zeros(shape=(d.nworld, m.nbody), dtype=wp.spatial_vector)
   cfrc = wp.zeros(shape=(d.nworld, m.nbody), dtype=wp.spatial_vector)
 
-  @kernel(module=module)
+  @kernel
   def cacc_gravity(m: Model, cacc: wp.array(dtype=wp.spatial_vector, ndim=2)):
     worldid = wp.tid()
     cacc[worldid, 0] = wp.spatial_vector(wp.vec3(0.0), -m.opt.gravity)
 
-  @kernel(module=module)
+  @kernel
   def cacc_level(
     m: Model,
     d: Data,
@@ -415,7 +390,7 @@ def rne(m: Model, d: Data):
       local_cacc += d.cdof_dot[worldid, dofadr + i] * d.qvel[worldid, dofadr + i]
     cacc[worldid, bodyid] = local_cacc
 
-  @kernel(module=module)
+  @kernel
   def frc_fn(
     d: Data,
     cfrc: wp.array(dtype=wp.spatial_vector, ndim=2),
@@ -429,14 +404,14 @@ def rne(m: Model, d: Data):
     )
     cfrc[worldid, bodyid] += frc
 
-  @kernel(module=module)
+  @kernel
   def cfrc_fn(m: Model, cfrc: wp.array(dtype=wp.spatial_vector, ndim=2), leveladr: int):
     worldid, nodeid = wp.tid()
     bodyid = m.body_tree[leveladr + nodeid]
     pid = m.body_parentid[bodyid]
     wp.atomic_add(cfrc[worldid], pid, cfrc[worldid, bodyid])
 
-  @kernel(module=module)
+  @kernel
   def qfrc_bias(m: Model, d: Data, cfrc: wp.array(dtype=wp.spatial_vector, ndim=2)):
     worldid, dofid = wp.tid()
     bodyid = m.dof_bodyid[dofid]
@@ -465,12 +440,7 @@ def transmission(m: Model, d: Data):
   if not m.nu:
     return d
 
-  if USE_SEPARATE_MODULES:
-    module = wp.context.Module("smooth.transmission", loader=None)
-  else:
-    module = None
-
-  @kernel(module=module)
+  @kernel
   def _transmission(
     m: Model,
     d: Data,
@@ -537,17 +507,12 @@ def transmission(m: Model, d: Data):
 def com_vel(m: Model, d: Data):
   """Computes cvel, cdof_dot."""
 
-  if USE_SEPARATE_MODULES:
-    module = wp.context.Module("smooth.com_vel", loader=None)
-  else:
-    module = None
-
-  @kernel(module=module)
+  @kernel
   def _root(d: Data):
     worldid, elementid = wp.tid()
     d.cvel[worldid, 0][elementid] = 0.0
 
-  @kernel(module=module)
+  @kernel
   def _level(m: Model, d: Data, leveladr: int):
     worldid, nodeid = wp.tid()
     bodyid = m.body_tree[leveladr + nodeid]
@@ -613,24 +578,20 @@ def _solve_LD_sparse(
 ):
   """Computes sparse backsubstitution: x = inv(L'*D*L)*y"""
 
-  if USE_SEPARATE_MODULES:
-    module = wp.context.Module("smooth._solve_LD_sparse", loader=None)
-  else:
-    module = None
 
-  @kernel(module=module)
+  @kernel
   def x_acc_up(m: Model, L: array3df, x: array2df, leveladr: int):
     worldid, nodeid = wp.tid()
     update = m.qLD_update_tree[leveladr + nodeid]
     i, k, Madr_ki = update[0], update[1], update[2]
     wp.atomic_sub(x[worldid], i, L[worldid, 0, Madr_ki] * x[worldid, k])
 
-  @kernel(module=module)
+  @kernel
   def qLDiag_mul(D: array2df, x: array2df):
     worldid, dofid = wp.tid()
     x[worldid, dofid] *= D[worldid, dofid]
 
-  @kernel(module=module)
+  @kernel
   def x_acc_down(m: Model, L: array3df, x: array2df, leveladr: int):
     worldid, nodeid = wp.tid()
     update = m.qLD_update_tree[leveladr + nodeid]
@@ -661,16 +622,12 @@ def _solve_LD_sparse(
 def _solve_LD_dense(m: Model, d: Data, L: array3df, x: array2df, y: array2df):
   """Computes dense backsubstitution: x = inv(L'*L)*y"""
 
-  if USE_SEPARATE_MODULES:
-    module = wp.context.Module("smooth._solve_LD_dense", loader=None)
-  else:
-    module = None
 
   # TODO(team): develop heuristic for block dim, or make configurable
   block_dim = 32
 
   def tile_cho_solve(adr: int, size: int, tilesize: int):
-    @kernel(module=module)
+    @kernel
     def cho_solve(m: Model, L: array3df, x: array2df, y: array2df, leveladr: int):
       worldid, nodeid = wp.tid()
       dofid = m.qLD_tile[leveladr + nodeid]
@@ -712,14 +669,8 @@ def _factor_solve_i_dense(m: Model, d: Data, M: array3df, x: array2df, y: array2
   block_dim = 32
 
   def tile_cholesky(adr: int, size: int, tilesize: int):
-    if USE_SEPARATE_MODULES:
-      module = wp.context.Module(
-        f"smooth._factor_solve_i_dense_{tilesize}", loader=None
-      )
-    else:
-      module = None
 
-    @kernel(module=module)
+    @kernel(module="unique")
     def cholesky(m: Model, leveladr: int, M: array3df, x: array2df, y: array2df):
       worldid, nodeid = wp.tid()
       dofid = m.qLD_tile[leveladr + nodeid]

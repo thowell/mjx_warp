@@ -3,7 +3,6 @@ import mujoco
 from . import smooth
 from . import support
 from . import types
-from . import USE_SEPARATE_MODULES
 from . import kernel
 
 
@@ -68,12 +67,7 @@ def _context(m: types.Model, d: types.Data) -> Context:
 
 
 def _create_context(ctx: Context, m: types.Model, d: types.Data, grad: bool = True):
-  if USE_SEPARATE_MODULES:
-    module = wp.context.Module("solver._create_context", loader=None)
-  else:
-    module = None
-
-  @kernel(module=module)
+  @kernel
   def _init_context(ctx: Context):
     worldid = wp.tid()
     ctx.cost[worldid] = wp.inf
@@ -82,7 +76,7 @@ def _create_context(ctx: Context, m: types.Model, d: types.Data, grad: bool = Tr
     if grad:
       ctx.search_dot[worldid] = 0.0
 
-  @kernel(module=module)
+  @kernel
   def _jaref(ctx: Context, m: types.Model, d: types.Data):
     efcid, dofid = wp.tid()
 
@@ -96,7 +90,7 @@ def _create_context(ctx: Context, m: types.Model, d: types.Data, grad: bool = Tr
       d.efc_J[efcid, dofid] * d.qacc[worldid, dofid] - d.efc_aref[efcid] / float(m.nv),
     )
 
-  @kernel(module=module)
+  @kernel
   def _search(ctx: Context):
     worldid, dofid = wp.tid()
     search = -1.0 * ctx.Mgrad[worldid, dofid]
@@ -122,19 +116,14 @@ def _create_context(ctx: Context, m: types.Model, d: types.Data, grad: bool = Tr
 
 
 def _update_constraint(m: types.Model, d: types.Data, ctx: Context):
-  if USE_SEPARATE_MODULES:
-    module = wp.context.Module("solver._update_constraint", loader=None)
-  else:
-    module = None
-
-  @kernel(module=module)
+  @kernel
   def _init_cost(ctx: Context):
     worldid = wp.tid()
     ctx.prev_cost[worldid] = ctx.cost[worldid]
     ctx.cost[worldid] = 0.0
     ctx.gauss[worldid] = 0.0
 
-  @kernel(module=module)
+  @kernel
   def _efc_kernel(ctx: Context, d: types.Data):
     efcid = wp.tid()
 
@@ -158,7 +147,7 @@ def _update_constraint(m: types.Model, d: types.Data, ctx: Context):
     else:
       d.efc_force[efcid] = 0.0
 
-  @kernel(module=module)
+  @kernel
   def _qfrc_constraint(d: types.Data):
     dofid, efcid = wp.tid()
 
@@ -172,7 +161,7 @@ def _update_constraint(m: types.Model, d: types.Data, ctx: Context):
       d.efc_J[efcid, dofid] * d.efc_force[efcid],
     )
 
-  @kernel(module=module)
+  @kernel
   def _gauss(ctx: Context, d: types.Data):
     worldid, dofid = wp.tid()
     gauss_cost = (
@@ -199,16 +188,11 @@ def _update_constraint(m: types.Model, d: types.Data, ctx: Context):
 
 def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
   TILE = m.nv
-  if USE_SEPARATE_MODULES:
-    # add TILE to the module name to prevent recompilation of the same module
-    # for different tile sizes
-    module = wp.context.Module(
-      f"solver._update_gradient_{TILE}_{m.opt.is_sparse}", loader=None
-    )
-  else:
-    module = None
+  # add TILE to the module name to prevent recompilation of the same module
+  # for different tile sizes
+  module = wp.context.Module(f"solver._update_gradient_{TILE}_{m.opt.is_sparse}")
 
-  @kernel(module=module)
+  @kernel
   def _grad(ctx: Context, d: types.Data):
     worldid, dofid = wp.tid()
     grad = (
@@ -221,14 +205,14 @@ def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
 
   if m.opt.is_sparse:
 
-    @kernel(module=module)
+    @kernel
     def _zero_h_lower(m: types.Model, ctx: Context):
       worldid, elementid = wp.tid()
       rowid = m.dof_tri_row[elementid]
       colid = m.dof_tri_col[elementid]
       ctx.h[worldid, rowid, colid] = 0.0
 
-    @kernel(module=module)
+    @kernel
     def _set_h_qM_lower_sparse(m: types.Model, d: types.Data, ctx: Context):
       worldid, elementid = wp.tid()
       i = m.qM_fullm_i[elementid]
@@ -237,14 +221,14 @@ def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
 
   else:
 
-    @kernel(module=module)
+    @kernel
     def _copy_lower_triangle(m: types.Model, d: types.Data, ctx: Context):
       worldid, elementid = wp.tid()
       rowid = m.dof_tri_row[elementid]
       colid = m.dof_tri_col[elementid]
       ctx.h[worldid, rowid, colid] = d.qM[worldid, rowid, colid]
 
-  @kernel(module=module)
+  @kernel
   def _JTDAJ(ctx: Context, m: types.Model, d: types.Data):
     efcid, elementid = wp.tid()
 
@@ -267,7 +251,7 @@ def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
       d.efc_J[efcid, dofi] * d.efc_J[efcid, dofj] * efc_D,
     )
 
-  @kernel(module=module)
+  @kernel
   def _cholesky(ctx: Context):
     worldid = wp.tid()
     mat_tile = wp.tile_load(ctx.h[worldid], shape=(TILE, TILE))
@@ -326,12 +310,7 @@ def _safe_div(x: wp.float32, y: wp.float32) -> wp.float32:
 
 
 def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
-  if USE_SEPARATE_MODULES:
-    module = wp.context.Module("solver._linesearch_iterative", loader=None)
-  else:
-    module = None
-
-  @kernel(module=module)
+  @kernel
   def _gtol(m: types.Model, ctx: Context):
     # TODO(team): static m?
     worldid = wp.tid()
@@ -339,7 +318,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
     scale = m.stat.meaninertia * wp.float(wp.max(1, m.nv))
     ctx.gtol[worldid] = m.opt.tolerance * m.opt.ls_tolerance * snorm * scale
 
-  @kernel(module=module)
+  @kernel
   def _jv(d: types.Data, ctx: Context):
     efcid, dofid = wp.tid()
 
@@ -350,7 +329,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
     search = ctx.search[d.efc_worldid[efcid], dofid]
     wp.atomic_add(ctx.jv, efcid, j * search)
 
-  @kernel(module=module)
+  @kernel
   def _init_quad_gauss(m: types.Model, d: types.Data, ctx: Context):
     worldid, dofid = wp.tid()
     search = ctx.search[worldid, dofid]
@@ -360,7 +339,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
     quad_gauss[2] = 0.5 * search * ctx.mv[worldid, dofid]
     wp.atomic_add(ctx.quad_gauss, worldid, quad_gauss)
 
-  @kernel(module=module)
+  @kernel
   def _init_quad(d: types.Data, ctx: Context):
     efcid = wp.tid()
 
@@ -376,13 +355,13 @@ def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
     quad[2] = 0.5 * jv * jv * efc_D
     ctx.quad[efcid] = quad
 
-  @kernel(module=module)
+  @kernel
   def _init_p0_gauss(p0: wp.array(dtype=wp.vec3), ctx: Context):
     worldid = wp.tid()
     quad = ctx.quad_gauss[worldid]
     p0[worldid] = wp.vec3(quad[0], quad[1], 2.0 * quad[2])
 
-  @kernel(module=module)
+  @kernel
   def _init_p0(p0: wp.array(dtype=wp.vec3), d: types.Data, ctx: Context):
     efcid = wp.tid()
 
@@ -397,7 +376,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
     quad = ctx.quad[efcid]
     wp.atomic_add(p0, worldid, wp.vec3(quad[0], quad[1], 2.0 * quad[2]))
 
-  @kernel(module=module)
+  @kernel
   def _init_lo_gauss(
     p0: wp.array(dtype=wp.vec3),
     lo: wp.array(dtype=wp.vec3),
@@ -411,7 +390,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
     lo[worldid] = _eval_pt(ctx.quad_gauss[worldid], alpha)
     lo_alpha[worldid] = alpha
 
-  @kernel(module=module)
+  @kernel
   def _init_lo(
     lo: wp.array(dtype=wp.vec3),
     lo_alpha: wp.array(dtype=wp.float32),
@@ -430,7 +409,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
     if ctx.Jaref[efcid] + alpha * ctx.jv[efcid] < 0.0:
       wp.atomic_add(lo, worldid, _eval_pt(ctx.quad[efcid], alpha))
 
-  @kernel(module=module)
+  @kernel
   def _init_bounds(
     p0: wp.array(dtype=wp.vec3),
     lo: wp.array(dtype=wp.vec3),
@@ -448,7 +427,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
     hi[worldid] = wp.select(lo_less, plo, pp0)
     hi_alpha[worldid] = wp.select(lo_less, plo_alpha, 0.0)
 
-  @kernel(module=module)
+  @kernel
   def _next_alpha_gauss(
     done: wp.array(dtype=bool),
     lo: wp.array(dtype=wp.vec3),
@@ -486,7 +465,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
     mid[worldid] = _eval_pt(quad, pmid_alpha)
     mid_alpha[worldid] = pmid_alpha
 
-  @kernel(module=module)
+  @kernel
   def _next_quad(
     done: wp.array(dtype=bool),
     lo_next: wp.array(dtype=wp.vec3),
@@ -527,7 +506,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
     if jaref + alpha * jv < 0.0:
       wp.atomic_add(mid, worldid, _eval_pt(quad, alpha))
 
-  @kernel(module=module)
+  @kernel
   def _swap(
     done: wp.array(dtype=bool),
     p0: wp.array(dtype=wp.vec3),
@@ -605,14 +584,14 @@ def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
     alpha = wp.select(improved and not plo_better, alpha, phi_alpha)
     ctx.alpha[worldid] = alpha
 
-  @kernel(module=module)
+  @kernel
   def _qacc_ma(d: types.Data, ctx: Context):
     worldid, dofid = wp.tid()
     alpha = ctx.alpha[worldid]
     d.qacc[worldid, dofid] += alpha * ctx.search[worldid, dofid]
     ctx.Ma[worldid, dofid] += alpha * ctx.mv[worldid, dofid]
 
-  @kernel(module=module)
+  @kernel
   def _jaref(d: types.Data, ctx: Context):
     efcid = wp.tid()
 
@@ -694,19 +673,12 @@ def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
 def solve(m: types.Model, d: types.Data):
   """Finds forces that satisfy constraints."""
 
-  if USE_SEPARATE_MODULES:
-    module = wp.context.Module(
-      f"solver.solve_{m.opt.solver == mujoco.mjtSolver.mjSOL_CG}", loader=None
-    )
-  else:
-    module = None
-
-  @kernel(module=module)
+  @kernel
   def _zero_search_dot(ctx: Context):
     worldid = wp.tid()
     ctx.search_dot[worldid] = 0.0
 
-  @kernel(module=module)
+  @kernel
   def _search_update(ctx: Context):
     worldid, dofid = wp.tid()
     search = -1.0 * ctx.Mgrad[worldid, dofid]
@@ -717,7 +689,7 @@ def solve(m: types.Model, d: types.Data):
     ctx.search[worldid, dofid] = search
     wp.atomic_add(ctx.search_dot, worldid, search * search)
 
-  @kernel(module=module)
+  @kernel
   def _done(ctx: Context, m: types.Model, solver_niter: int):
     worldid = wp.tid()
     improvement = _rescale(m, ctx.prev_cost[worldid] - ctx.cost[worldid])
@@ -729,19 +701,19 @@ def solve(m: types.Model, d: types.Data):
 
   if m.opt.solver == mujoco.mjtSolver.mjSOL_CG:
 
-    @kernel(module=module)
+    @kernel
     def _prev_grad_Mgrad(ctx: Context):
       worldid, dofid = wp.tid()
       ctx.prev_grad[worldid, dofid] = ctx.grad[worldid, dofid]
       ctx.prev_Mgrad[worldid, dofid] = ctx.Mgrad[worldid, dofid]
 
-    @kernel(module=module)
+    @kernel
     def _zero_beta_num_den(ctx: Context):
       worldid = wp.tid()
       ctx.beta_num[worldid] = 0.0
       ctx.beta_den[worldid] = 0.0
 
-    @kernel(module=module)
+    @kernel
     def _beta_num_den(ctx: Context):
       worldid, dofid = wp.tid()
       prev_Mgrad = ctx.prev_Mgrad[worldid][dofid]
@@ -752,7 +724,7 @@ def solve(m: types.Model, d: types.Data):
       )
       wp.atomic_add(ctx.beta_den, worldid, ctx.prev_grad[worldid, dofid] * prev_Mgrad)
 
-    @kernel(module=module)
+    @kernel
     def _beta(ctx: Context):
       worldid = wp.tid()
       ctx.beta[worldid] = wp.max(
