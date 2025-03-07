@@ -23,9 +23,9 @@ from absl.testing import absltest, parameterized
 
 from . import test_util
 from . import collision_driver
+from .collision_driver import AABB
 
 BoxType = wp.types.matrix(shape=(2, 3), dtype=wp.float32)
-from .collision_driver import AABB
 
 
 def transform_aabb(aabb_pos, aabb_size, pos: wp.vec3, ori: wp.mat33) -> AABB:

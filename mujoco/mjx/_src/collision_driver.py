@@ -523,8 +523,6 @@ def nxn_broadphase(m: Model, d: Data):
       + (m.ngeom - geom1) * ((m.ngeom - geom1) - 1) // 2
     )
 
-    geomtype1 = m.geom_type[geom1]
-    geomtype2 = m.geom_type[geom2]
     margin1 = m.geom_margin[geom1]
     margin2 = m.geom_margin[geom2]
     pos1 = d.geom_xpos[worldid, geom1]
