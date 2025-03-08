@@ -23,6 +23,7 @@ import numpy as np
 import warp as wp
 from . import test_util
 from .support import xfrc_accumulate
+from .io import make_data
 
 wp.config.verify_cuda = True
 
@@ -75,6 +76,19 @@ class SupportTest(parameterized.TestCase):
         qfrc_expected,
       )
     np.testing.assert_almost_equal(qfrc.numpy()[0], qfrc_expected, 6)
+
+  def test_make_put_data(self):
+    """Tests that make_put_data and put_data are producing the same shapes for all warp arrays."""
+    mjm, mjd, m, d = test_util.fixture("pendula.xml")
+    md = make_data(mjm)
+
+    # same number of fields
+    self.assertEqual(len(d.__dict__), len(md.__dict__))
+
+    # test shapes for all arrays
+    for attr, val in md.__dict__.items():
+      if isinstance(val, wp.array):
+        self.assertEqual(val.shape, getattr(d, attr).shape)
 
 
 if __name__ == "__main__":

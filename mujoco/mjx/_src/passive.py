@@ -4,12 +4,15 @@ from . import math
 from .types import Model
 from .types import Data
 from .types import JointType
+from .warp_util import event_scope
+from .warp_util import kernel
 
 
+@event_scope
 def passive(m: Model, d: Data):
   """Adds all passive forces."""
 
-  @wp.kernel
+  @kernel
   def _spring(m: Model, d: Data):
     worldid, jntid = wp.tid()
     stiffness = m.jnt_stiffness[jntid]
@@ -67,7 +70,7 @@ def passive(m: Model, d: Data):
       fdif = d.qpos[worldid, qposid] - m.qpos_spring[qposid]
       d.qfrc_spring[worldid, dofid] = -stiffness * fdif
 
-  @wp.kernel
+  @kernel
   def _damper_passive(m: Model, d: Data):
     worldid, dofid = wp.tid()
     damping = m.dof_damping[dofid]

@@ -15,6 +15,7 @@
 
 import warp as wp
 from . import types
+from .warp_util import event_scope
 
 
 @wp.func
@@ -147,7 +148,7 @@ def _efc_contact_pyramidal(
 ):
   conid, dimid = wp.tid()
 
-  if conid >= d.ncon_total[0]:
+  if conid >= d.ncon[0]:
     return
 
   if d.contact.dim[conid] != 3:
@@ -208,6 +209,7 @@ def _efc_contact_pyramidal(
     )
 
 
+@event_scope
 def make_constraint(m: types.Model, d: types.Data):
   """Creates constraint jacobians and other supporting data."""
 

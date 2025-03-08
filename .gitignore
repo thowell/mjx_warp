@@ -2,6 +2,7 @@
 *.egg-info/
 env/
 .history
+.vscode
 
 # Python byte-compiled / optimized / DLL files
 __pycache__/

@@ -18,7 +18,11 @@ import warp as wp
 from .types import Model
 from .types import Data
 from .types import array2df
+from .types import NUM_GEOM_TYPES
+from typing import Any
 from .types import array3df
+from .warp_util import event_scope
+from .warp_util import kernel
 
 
 def is_sparse(m: mujoco.MjModel):
@@ -27,6 +31,7 @@ def is_sparse(m: mujoco.MjModel):
   return m.opt.jacobian == mujoco.mjtJacobian.mjJAC_SPARSE
 
 
+@event_scope
 def mul_m(
   m: Model,
   d: Data,
@@ -39,7 +44,7 @@ def mul_m(
 
     def tile_mul(adr: int, size: int, tilesize: int):
       # TODO(team): speed up kernel compile time (14s on 2023 Macbook Pro)
-      @wp.kernel
+      @kernel(module="unique")
       def mul(m: Model, d: Data, leveladr: int, res: array3df, vec: array3df):
         worldid, nodeid = wp.tid()
         dofid = m.qLD_tile[leveladr + nodeid]
@@ -74,7 +79,7 @@ def mul_m(
 
   else:
 
-    @wp.kernel
+    @kernel
     def _mul_m_sparse_diag(
       m: Model,
       d: Data,
@@ -84,9 +89,7 @@ def mul_m(
       worldid, dofid = wp.tid()
       res[worldid, dofid] = d.qM[worldid, 0, m.dof_Madr[dofid]] * vec[worldid, dofid]
 
-    wp.launch(_mul_m_sparse_diag, dim=(d.nworld, m.nv), inputs=[m, d, res, vec])
-
-    @wp.kernel
+    @kernel
     def _mul_m_sparse_ij(
       m: Model,
       d: Data,
@@ -102,6 +105,8 @@ def mul_m(
 
       wp.atomic_add(res[worldid], i, qM * vec[worldid, j])
       wp.atomic_add(res[worldid], j, qM * vec[worldid, i])
+
+    wp.launch(_mul_m_sparse_diag, dim=(d.nworld, m.nv), inputs=[m, d, res, vec])
 
     wp.launch(
       _mul_m_sparse_ij, dim=(d.nworld, m.qM_madr_ij.size), inputs=[m, d, res, vec]
@@ -156,6 +161,7 @@ def compute_qfrc(
   qfrc_total[worldid, dofid] = accumul
 
 
+@event_scope
 def xfrc_accumulate(m: Model, d: Data) -> array2df:
   body_treeadr_np = m.body_treeadr.numpy()
   mask = wp.zeros((m.nv, m.nbody), dtype=wp.bool)
@@ -176,3 +182,45 @@ def xfrc_accumulate(m: Model, d: Data) -> array2df:
   wp.launch(kernel=compute_qfrc, dim=(d.nworld, m.nv), inputs=[d, m, mask, qfrc_total])
 
   return qfrc_total
+
+
+@wp.func
+def where(condition: bool, ret_true: Any, ret_false: Any):
+  if condition:
+    return ret_true
+  return ret_false
+
+
+@wp.func
+def bisection(x: wp.array(dtype=int), v: int, a_: int, b_: int) -> int:
+  # Binary search for the largest index i such that x[i] <= v
+  # x is a sorted array
+  # a and b are the start and end indices within x to search
+  a = int(a_)
+  b = int(b_)
+  c = int(0)
+  while b - a > 1:
+    c = (a + b) // 2
+    if x[c] <= v:
+      a = c
+    else:
+      b = c
+  c = a
+  if c != b and x[b] <= v:
+    c = b
+  return c
+
+
+@wp.func
+def group_key(type1: wp.int32, type2: wp.int32) -> wp.int32:
+  return type1 + type2 * NUM_GEOM_TYPES
+
+
+@wp.func
+def mat33_from_rows(a: wp.vec3, b: wp.vec3, c: wp.vec3):
+  return wp.mat33(a, b, c)
+
+
+@wp.func
+def mat33_from_cols(a: wp.vec3, b: wp.vec3, c: wp.vec3):
+  return wp.mat33(a.x, b.x, c.x, a.y, b.y, c.y, a.z, b.z, c.z)

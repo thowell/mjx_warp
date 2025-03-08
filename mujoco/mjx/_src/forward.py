@@ -23,6 +23,7 @@ from . import math
 from . import passive
 from . import smooth
 from . import solver
+from . import collision_driver
 
 from .types import array2df, array3df
 from .types import Model
@@ -34,20 +35,18 @@ from .types import DynType
 from .types import BiasType
 from .types import GainType
 from .support import xfrc_accumulate
+from .warp_util import event_scope
+from .warp_util import kernel
 
 
 def _advance(
-  m: Model,
-  d: Data,
-  act_dot: wp.array,
-  qacc: wp.array,
-  qvel: Optional[wp.array] = None,
-) -> Data:
+  m: Model, d: Data, act_dot: wp.array, qacc: wp.array, qvel: Optional[wp.array] = None
+):
   """Advance state and time given activation derivatives and acceleration."""
 
   # TODO(team): can we assume static timesteps?
 
-  @wp.kernel
+  @kernel
   def next_activation(
     m: Model,
     d: Data,
@@ -87,12 +86,12 @@ def _advance(
 
     acts[act_adr] = act
 
-  @wp.kernel
+  @kernel
   def advance_velocities(m: Model, d: Data, qacc: array2df):
     worldId, tid = wp.tid()
     d.qvel[worldId, tid] = d.qvel[worldId, tid] + qacc[worldId, tid] * m.opt.timestep
 
-  @wp.kernel
+  @kernel
   def integrate_joint_positions(m: Model, d: Data, qvel_in: array2df):
     worldId, jntid = wp.tid()
 
@@ -160,15 +159,16 @@ def _advance(
   wp.launch(integrate_joint_positions, dim=(d.nworld, m.njnt), inputs=[m, d, qvel_in])
 
   d.time = d.time + m.opt.timestep
-  return d
 
 
-def euler(m: Model, d: Data) -> Data:
+@event_scope
+def euler(m: Model, d: Data):
   """Euler integrator, semi-implicit in velocity."""
+
   # integrate damping implicitly
 
-  def add_damping_sum_qfrc(m: Model, d: Data, is_sparse: bool):
-    @wp.kernel
+  def eulerdamp_sparse(m: Model, d: Data):
+    @kernel
     def add_damping_sum_qfrc_kernel_sparse(m: Model, d: Data):
       worldId, tid = wp.tid()
 
@@ -179,28 +179,8 @@ def euler(m: Model, d: Data) -> Data:
         d.qfrc_smooth[worldId, tid] + d.qfrc_constraint[worldId, tid]
       )
 
-    @wp.kernel
-    def add_damping_sum_qfrc_kernel_dense(m: Model, d: Data):
-      worldid, i, j = wp.tid()
-
-      damping = wp.select(i == j, 0.0, m.opt.timestep * m.dof_damping[i])
-      d.qM_integration[worldid, i, j] = d.qM[worldid, i, j] + damping
-
-      if i == 0:
-        d.qfrc_integration[worldid, j] = (
-          d.qfrc_smooth[worldid, j] + d.qfrc_constraint[worldid, j]
-        )
-
-    if is_sparse:
-      wp.copy(d.qM_integration, d.qM)
-      wp.launch(add_damping_sum_qfrc_kernel_sparse, dim=(d.nworld, m.nv), inputs=[m, d])
-    else:
-      wp.launch(
-        add_damping_sum_qfrc_kernel_dense, dim=(d.nworld, m.nv, m.nv), inputs=[m, d]
-      )
-
-  if not m.opt.disableflags & DisableBit.EULERDAMP.value:
-    add_damping_sum_qfrc(m, d, m.opt.is_sparse)
+    wp.copy(d.qM_integration, d.qM)
+    wp.launch(add_damping_sum_qfrc_kernel_sparse, dim=(d.nworld, m.nv), inputs=[m, d])
     smooth.factor_solve_i(
       m,
       d,
@@ -210,12 +190,59 @@ def euler(m: Model, d: Data) -> Data:
       d.qacc_integration,
       d.qfrc_integration,
     )
-    return _advance(m, d, d.act_dot, d.qacc_integration)
 
-  return _advance(m, d, d.act_dot, d.qacc)
+  def eulerdamp_fused_dense(m: Model, d: Data):
+    def tile_eulerdamp(adr: int, size: int, tilesize: int):
+      @kernel
+      def eulerdamp(
+        m: Model, d: Data, damping: wp.array(dtype=wp.float32), leveladr: int
+      ):
+        worldid, nodeid = wp.tid()
+        dofid = m.qLD_tile[leveladr + nodeid]
+        M_tile = wp.tile_load(
+          d.qM[worldid], shape=(tilesize, tilesize), offset=(dofid, dofid)
+        )
+        damping_tile = wp.tile_load(damping, shape=(tilesize,), offset=(dofid,))
+        damping_scaled = damping_tile * m.opt.timestep
+        qm_integration_tile = wp.tile_diag_add(M_tile, damping_scaled)
+
+        qfrc_smooth_tile = wp.tile_load(
+          d.qfrc_smooth[worldid], shape=(tilesize,), offset=(dofid,)
+        )
+        qfrc_constraint_tile = wp.tile_load(
+          d.qfrc_constraint[worldid], shape=(tilesize,), offset=(dofid,)
+        )
+
+        qfrc_tile = qfrc_smooth_tile + qfrc_constraint_tile
+
+        L_tile = wp.tile_cholesky(qm_integration_tile)
+        qacc_tile = wp.tile_cholesky_solve(L_tile, qfrc_tile)
+        wp.tile_store(d.qacc_integration[worldid], qacc_tile, offset=(dofid))
+
+      wp.launch_tiled(
+        eulerdamp, dim=(d.nworld, size), inputs=[m, d, m.dof_damping, adr], block_dim=32
+      )
+
+    qLD_tileadr, qLD_tilesize = m.qLD_tileadr.numpy(), m.qLD_tilesize.numpy()
+
+    for i in range(len(qLD_tileadr)):
+      beg = qLD_tileadr[i]
+      end = m.qLD_tile.shape[0] if i == len(qLD_tileadr) - 1 else qLD_tileadr[i + 1]
+      tile_eulerdamp(beg, end - beg, int(qLD_tilesize[i]))
+
+  if not m.opt.disableflags & DisableBit.EULERDAMP.value:
+    if m.opt.is_sparse:
+      eulerdamp_sparse(m, d)
+    else:
+      eulerdamp_fused_dense(m, d)
+
+    _advance(m, d, d.act_dot, d.qacc_integration)
+  else:
+    _advance(m, d, d.act_dot, d.qacc)
 
 
-def implicit(m: Model, d: Data) -> Data:
+@event_scope
+def implicit(m: Model, d: Data):
   """Integrates fully implicit in velocity."""
 
   # optimization comments (AD)
@@ -246,7 +273,7 @@ def implicit(m: Model, d: Data) -> Data:
     not m.opt.disableflags & DisableBit.ACTUATION.value
   ) and m.actuator_affine_bias_gain
 
-  @wp.kernel
+  @kernel
   def actuator_bias_gain_vel(m: Model, d: Data):
     worldid, actid = wp.tid()
 
@@ -285,16 +312,16 @@ def implicit(m: Model, d: Data) -> Data:
     def qderiv_actuator_damping_tiled(
       adr: int, size: int, tilesize_nv: int, tilesize_nu: int
     ):
-      @wp.kernel
+      @kernel(module="unique")
       def qderiv_actuator_fused_kernel(
         m: Model, d: Data, damping: wp.array(dtype=wp.float32), leveladr: int
       ):
         worldid, nodeid = wp.tid()
-        offset_nv = m.qderiv_implicit_offset_nv[leveladr + nodeid]
+        offset_nv = m.actuator_moment_offset_nv[leveladr + nodeid]
 
         # skip tree with no actuators.
         if wp.static(actuation_enabled and tilesize_nu != 0):
-          offset_nu = m.qderiv_implicit_offset_nu[leveladr + nodeid]
+          offset_nu = m.actuator_moment_offset_nu[leveladr + nodeid]
           actuator_moment_tile = wp.tile_load(
             d.actuator_moment[worldid],
             shape=(tilesize_nu, tilesize_nv),
@@ -344,18 +371,19 @@ def implicit(m: Model, d: Data) -> Data:
         block_dim=block_dim,
       )
 
-    qderiv_tilesize_nv = m.qderiv_implicit_tilesize_nv.numpy()
-    qderiv_tilesize_nu = m.qderiv_implicit_tilesize_nu.numpy()
-    qderiv_tileadr = m.qderiv_implicit_tileadr.numpy()
+    qderiv_tilesize_nv = m.actuator_moment_tilesize_nv.numpy()
+    qderiv_tilesize_nu = m.actuator_moment_tilesize_nu.numpy()
+    qderiv_tileadr = m.actuator_moment_tileadr.numpy()
 
     for i in range(len(qderiv_tileadr)):
       beg = qderiv_tileadr[i]
       end = (
         m.qLD_tile.shape[0] if i == len(qderiv_tileadr) - 1 else qderiv_tileadr[i + 1]
       )
-      qderiv_actuator_damping_tiled(
-        beg, end - beg, int(qderiv_tilesize_nv[i]), int(qderiv_tilesize_nu[i])
-      )
+      if qderiv_tilesize_nv[i] != 0:
+        qderiv_actuator_damping_tiled(
+          beg, end - beg, int(qderiv_tilesize_nv[i]), int(qderiv_tilesize_nu[i])
+        )
 
   if passive_enabled or actuation_enabled:
     if actuation_enabled:
@@ -371,11 +399,12 @@ def implicit(m: Model, d: Data) -> Data:
       m, d, d.qM_integration, d.qacc_integration, d.qfrc_integration
     )
 
-    return _advance(m, d, d.act_dot, d.qacc_integration)
+    _advance(m, d, d.act_dot, d.qacc_integration)
+  else:
+    _advance(m, d, d.act_dot, d.qacc)
 
-  return _advance(m, d, d.act_dot, d.qacc)
 
-
+@event_scope
 def fwd_position(m: Model, d: Data):
   """Position-dependent computations."""
 
@@ -385,31 +414,92 @@ def fwd_position(m: Model, d: Data):
   # TODO(team): smooth.tendon
   smooth.crb(m, d)
   smooth.factor_m(m, d)
-  # TODO(team): collision_driver.collision
+  collision_driver.collision(m, d)
   constraint.make_constraint(m, d)
   smooth.transmission(m, d)
 
 
+@event_scope
 def fwd_velocity(m: Model, d: Data):
   """Velocity-dependent computations."""
 
-  # TODO(team): tile operations?
-  d.actuator_velocity.zero_()
+  if m.opt.is_sparse:
+    # TODO(team): sparse version
+    d.actuator_velocity.zero_()
 
-  @wp.kernel
-  def _actuator_velocity(d: Data):
-    worldid, actid, dofid = wp.tid()
-    moment = d.actuator_moment[worldid, actid]
-    qvel = d.qvel[worldid]
-    wp.atomic_add(d.actuator_velocity[worldid], actid, moment[dofid] * qvel[dofid])
+    @kernel
+    def _actuator_velocity(d: Data):
+      worldid, actid, dofid = wp.tid()
+      moment = d.actuator_moment[worldid, actid]
+      qvel = d.qvel[worldid]
+      wp.atomic_add(d.actuator_velocity[worldid], actid, moment[dofid] * qvel[dofid])
 
-  wp.launch(_actuator_velocity, dim=(d.nworld, m.nu, m.nv), inputs=[d])
+    wp.launch(_actuator_velocity, dim=(d.nworld, m.nu, m.nv), inputs=[d])
+  else:
+
+    def actuator_velocity(
+      adr: int,
+      size: int,
+      tilesize_nu: int,
+      tilesize_nv: int,
+    ):
+      @kernel(module="unique")
+      def _actuator_velocity(
+        m: Model, d: Data, leveladr: int, velocity: array3df, qvel: array3df
+      ):
+        worldid, nodeid = wp.tid()
+        offset_nu = m.actuator_moment_offset_nu[leveladr + nodeid]
+        offset_nv = m.actuator_moment_offset_nv[leveladr + nodeid]
+        actuator_moment_tile = wp.tile_load(
+          d.actuator_moment[worldid],
+          shape=(tilesize_nu, tilesize_nv),
+          offset=(offset_nu, offset_nv),
+        )
+        qvel_tile = wp.tile_load(
+          qvel[worldid], shape=(tilesize_nv, 1), offset=(offset_nv, 0)
+        )
+        velocity_tile = wp.tile_matmul(actuator_moment_tile, qvel_tile)
+
+        wp.tile_store(velocity[worldid], velocity_tile, offset=(offset_nu, 0))
+
+      wp.launch_tiled(
+        _actuator_velocity,
+        dim=(d.nworld, size),
+        inputs=[
+          m,
+          d,
+          adr,
+          d.actuator_velocity.reshape(d.actuator_velocity.shape + (1,)),
+          d.qvel.reshape(d.qvel.shape + (1,)),
+        ],
+        block_dim=32,
+      )
+
+    actuator_moment_tilesize_nu = m.actuator_moment_tilesize_nu.numpy()
+    actuator_moment_tilesize_nv = m.actuator_moment_tilesize_nv.numpy()
+    actuator_moment_tileadr = m.actuator_moment_tileadr.numpy()
+
+    for i in range(len(actuator_moment_tileadr)):
+      beg = actuator_moment_tileadr[i]
+      end = (
+        m.actuator_moment_tileadr.shape[0]
+        if i == len(actuator_moment_tileadr) - 1
+        else actuator_moment_tileadr[i + 1]
+      )
+      if actuator_moment_tilesize_nu[i] != 0 and actuator_moment_tilesize_nv[i] != 0:
+        actuator_velocity(
+          beg,
+          end - beg,
+          int(actuator_moment_tilesize_nu[i]),
+          int(actuator_moment_tilesize_nv[i]),
+        )
 
   smooth.com_vel(m, d)
   passive.passive(m, d)
   smooth.rne(m, d)
 
 
+@event_scope
 def fwd_actuation(m: Model, d: Data):
   """Actuation-dependent computations."""
   if not m.nu:
@@ -417,7 +507,7 @@ def fwd_actuation(m: Model, d: Data):
 
   # TODO support stateful actuators
 
-  @wp.kernel
+  @kernel
   def _force(
     m: Model,
     ctrl: array2df,
@@ -438,43 +528,117 @@ def fwd_actuation(m: Model, d: Data):
       f = wp.clamp(f, r[0], r[1])
     force[worldid, dofid] = f
 
+  @kernel
+  def _qfrc_limited(m: Model, d: Data):
+    worldid, dofid = wp.tid()
+    jntid = m.dof_jntid[dofid]
+    if m.jnt_actfrclimited[jntid]:
+      d.qfrc_actuator[worldid, dofid] = wp.clamp(
+        d.qfrc_actuator[worldid, dofid],
+        m.jnt_actfrcrange[jntid][0],
+        m.jnt_actfrcrange[jntid][1],
+      )
+
+  if m.opt.is_sparse:
+    # TODO(team): sparse version
+    @kernel
+    def _qfrc(m: Model, moment: array3df, force: array2df, qfrc: array2df):
+      worldid, vid = wp.tid()
+
+      s = float(0.0)
+      for uid in range(m.nu):
+        # TODO consider using Tile API or transpose moment for better access pattern
+        s += moment[worldid, uid, vid] * force[worldid, uid]
+      jntid = m.dof_jntid[vid]
+      if m.jnt_actfrclimited[jntid]:
+        r = m.jnt_actfrcrange[jntid]
+        s = wp.clamp(s, r[0], r[1])
+      qfrc[worldid, vid] = s
+
   wp.launch(
     _force, dim=[d.nworld, m.nu], inputs=[m, d.ctrl], outputs=[d.actuator_force]
   )
 
-  @wp.kernel
-  def _qfrc(m: Model, moment: array3df, force: array2df, qfrc: array2df):
-    worldid, vid = wp.tid()
+  if m.opt.is_sparse:
+    # TODO(team): sparse version
 
-    s = float(0.0)
-    for uid in range(m.nu):
-      # TODO consider using Tile API or transpose moment for better access pattern
-      s += moment[worldid, uid, vid] * force[worldid, uid]
-    jntid = m.dof_jntid[vid]
-    if m.jnt_actfrclimited[jntid]:
-      r = m.jnt_actfrcrange[jntid]
-      s = wp.clamp(s, r[0], r[1])
-    qfrc[worldid, vid] = s
+    wp.launch(
+      _qfrc,
+      dim=(d.nworld, m.nv),
+      inputs=[m, d.actuator_moment, d.actuator_force],
+      outputs=[d.qfrc_actuator],
+    )
 
-  wp.launch(
-    _qfrc,
-    dim=(d.nworld, m.nv),
-    inputs=[m, d.actuator_moment, d.actuator_force],
-    outputs=[d.qfrc_actuator],
-  )
+  else:
+
+    def qfrc_actuator(adr: int, size: int, tilesize_nu: int, tilesize_nv: int):
+      @kernel(module="unique")
+      def qfrc_actuator_kernel(
+        m: Model,
+        d: Data,
+        leveladr: int,
+        qfrc_actuator: array3df,
+        actuator_force: array3df,
+      ):
+        worldid, nodeid = wp.tid()
+        offset_nu = m.actuator_moment_offset_nu[leveladr + nodeid]
+        offset_nv = m.actuator_moment_offset_nv[leveladr + nodeid]
+
+        actuator_moment_tile = wp.tile_load(
+          d.actuator_moment[worldid],
+          shape=(tilesize_nu, tilesize_nv),
+          offset=(offset_nu, offset_nv),
+        )
+        actuator_moment_T_tile = wp.tile_transpose(actuator_moment_tile)
+
+        force_tile = wp.tile_load(
+          actuator_force[worldid], shape=(tilesize_nu, 1), offset=(offset_nu, 0)
+        )
+        qfrc_tile = wp.tile_matmul(actuator_moment_T_tile, force_tile)
+        wp.tile_store(qfrc_actuator[worldid], qfrc_tile, offset=(offset_nv, 0))
+
+      wp.launch_tiled(
+        qfrc_actuator_kernel,
+        dim=(d.nworld, size),
+        inputs=[
+          m,
+          d,
+          adr,
+          d.qfrc_actuator.reshape(d.qfrc_actuator.shape + (1,)),
+          d.actuator_force.reshape(d.actuator_force.shape + (1,)),
+        ],
+        block_dim=32,
+      )
+
+    qderiv_tilesize_nu = m.actuator_moment_tilesize_nu.numpy()
+    qderiv_tilesize_nv = m.actuator_moment_tilesize_nv.numpy()
+    qderiv_tileadr = m.actuator_moment_tileadr.numpy()
+
+    for i in range(len(qderiv_tileadr)):
+      beg = qderiv_tileadr[i]
+      end = (
+        m.actuator_moment_tileadr.shape[0]
+        if i == len(qderiv_tileadr) - 1
+        else qderiv_tileadr[i + 1]
+      )
+      if qderiv_tilesize_nu[i] != 0 and qderiv_tilesize_nv[i] != 0:
+        qfrc_actuator(
+          beg, end - beg, int(qderiv_tilesize_nu[i]), int(qderiv_tilesize_nv[i])
+        )
+
+    wp.launch(_qfrc_limited, dim=(d.nworld, m.nv), inputs=[m, d])
 
   # TODO actuator-level gravity compensation, skip if added as passive force
 
-  return d
 
-
+@event_scope
 def fwd_acceleration(m: Model, d: Data):
   """Add up all non-constraint forces, compute qacc_smooth."""
 
   qfrc_applied = d.qfrc_applied
   qfrc_accumulated = xfrc_accumulate(m, d)
 
-  @wp.kernel
+  @kernel
   def _qfrc_smooth(
     d: Data,
     qfrc_applied: wp.array(ndim=2, dtype=wp.float32),
@@ -496,6 +660,7 @@ def fwd_acceleration(m: Model, d: Data):
   smooth.solve_m(m, d, d.qacc_smooth, d.qfrc_smooth)
 
 
+@event_scope
 def forward(m: Model, d: Data):
   """Forward dynamics."""
 
@@ -513,6 +678,7 @@ def forward(m: Model, d: Data):
     solver.solve(m, d)
 
 
+@event_scope
 def step(m: Model, d: Data):
   """Advance simulation."""
   forward(m, d)
@@ -523,7 +689,6 @@ def step(m: Model, d: Data):
     # TODO(team): rungekutta4
     raise NotImplementedError(f"integrator {m.opt.integrator} not implemented.")
   elif m.opt.integrator == mujoco.mjtIntegrator.mjINT_IMPLICITFAST:
-    # TODO(team): implicit
-    raise NotImplementedError(f"integrator {m.opt.integrator} not implemented.")
+    implicit(m, d)
   else:
     raise NotImplementedError(f"integrator {m.opt.integrator} not implemented.")

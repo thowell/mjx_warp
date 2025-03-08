@@ -21,8 +21,11 @@ from absl.testing import absltest
 from absl.testing import parameterized
 from etils import epath
 
+
 import mujoco
 from mujoco import mjx
+
+wp.config.verify_cuda = True
 
 wp.config.verify_cuda = True
 
@@ -54,7 +57,7 @@ class ForwardTest(absltest.TestCase):
 
   def test_fwd_velocity(self):
     """Tests MJX fwd_velocity."""
-    _, mjd, m, d = self._load("humanoid/humanoid.xml")
+    _, mjd, m, d = self._load("humanoid/humanoid.xml", is_sparse=False)
 
     d.actuator_velocity.zero_()
     mjx.fwd_velocity(m, d)
