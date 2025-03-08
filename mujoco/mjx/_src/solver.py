@@ -756,7 +756,7 @@ def _linesearch(m: types.Model, d: types.Data, ctx: Context):
   wp.launch(_init_quad, dim=(d.njmax), inputs=[d, ctx])
 
   if m.opt.ls_parallel:
-    _linesearch_parallel()
+    _linesearch_parallel(m, d, ctx)
   else:
     _linesearch_iterative(m, d, ctx)
 
@@ -844,7 +844,7 @@ def solve(m: types.Model, d: types.Data):
         return
 
       ctx.alpha_candidate[tid] = float(tid) / float(
-        wp.maximum(wp.min(m.opt.ls_iterations, MAX_LS_PARALLEL) - 1, 1)
+        wp.max(wp.min(m.opt.ls_iterations, MAX_LS_PARALLEL) - 1, 1)
       )
 
     wp.launch(_alpha_candidate, dim=(MAX_LS_PARALLEL), inputs=[ctx, m])
