@@ -94,6 +94,7 @@ def _main(argv: Sequence[str]):
     f"Model nbody: {m.nbody} nv: {m.nv} ngeom: {m.ngeom} is_sparse: {_IS_SPARSE.value} solver: {_SOLVER.value}"
   )
   print(f"Data ncon: {d.ncon} nefc: {d.nefc}")
+  print(f"Linesearch: {"parallel" if _LS_PARALLEL.value else "iterative"}")
   print(f"Rolling out {_NSTEP.value} steps at dt = {m.opt.timestep:.3f}...")
   jit_time, run_time, trace, steps = mjx.benchmark(
     mjx.__dict__[_FUNCTION.value],
