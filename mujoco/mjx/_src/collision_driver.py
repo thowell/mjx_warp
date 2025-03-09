@@ -502,14 +502,16 @@ def nxn_broadphase(m: Model, d: Data):
     if size1 != 0.0 and size2 != 0.0:
       # neither geom is a plane
       dist_sq = wp.dot(dif, dif)
+      bounds_filter = dist_sq <= bound * bound
     elif size1 == 0.0:
       # geom1 is a plane
-      dist_sq = wp.dot(dif, wp.vec3(xmat1[0, 2], xmat1[1, 2], xmat1[2, 2]))
+      dist = wp.dot(dif, wp.vec3(xmat1[0, 2], xmat1[1, 2], xmat1[2, 2]))
+      bounds_filter = dist <= bound
     else:
       # geom2 is a plane
-      dist_sq = wp.dot(-dif, wp.vec3(xmat2[0, 2], xmat2[1, 2], xmat2[2, 2]))
+      dist = wp.dot(-dif, wp.vec3(xmat2[0, 2], xmat2[1, 2], xmat2[2, 2]))
+      bounds_filter = dist <= bound
 
-    bounds_filter = dist_sq <= bound * bound
     geom_filter = _geom_filter(m, geom1, geom2, filterparent)
 
     if bounds_filter and geom_filter:
