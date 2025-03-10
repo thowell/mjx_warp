@@ -25,6 +25,17 @@ class PrimitiveTest(parameterized.TestCase):
   """Tests the primtive contact functions."""
 
   _MJCFS = {
+    "box_plane": """
+        <mujoco>
+          <worldbody>
+            <geom size="40 40 40" type="plane"/>
+            <body pos="0 0 0.3" euler="45 0 0">
+              <freejoint/>
+              <geom size="0.5 0.5 0.5" type="box"/>
+            </body>
+          </worldbody>
+        </mujoco>
+      """,
     "plane_sphere": """
         <mujoco>
           <worldbody>
@@ -80,6 +91,7 @@ class PrimitiveTest(parameterized.TestCase):
   }
 
   @parameterized.parameters(
+    "box_plane",
     "plane_sphere",
     "sphere_sphere",
     "plane_capsule",
