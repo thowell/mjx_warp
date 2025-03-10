@@ -33,7 +33,7 @@ class Context:
   beta: wp.array(dtype=wp.float32, ndim=1)
   beta_num: wp.array(dtype=wp.float32, ndim=1)
   beta_den: wp.array(dtype=wp.float32, ndim=1)
-  done: wp.array(dtype=wp.int32, ndim=1)
+  done: wp.array(dtype=bool, ndim=1)
 
 
 def _context(m: types.Model, d: types.Data) -> Context:
@@ -62,7 +62,7 @@ def _context(m: types.Model, d: types.Data) -> Context:
   ctx.beta = wp.empty(shape=(d.nworld,), dtype=wp.float32)
   ctx.beta_num = wp.empty(shape=(d.nworld,), dtype=wp.float32)
   ctx.beta_den = wp.empty(shape=(d.nworld,), dtype=wp.float32)
-  ctx.done = wp.empty(shape=(d.nworld,), dtype=wp.int32)
+  ctx.done = wp.empty(shape=(d.nworld,), dtype=bool)
 
   return ctx
 
@@ -73,7 +73,7 @@ def _create_context(ctx: Context, m: types.Model, d: types.Data, grad: bool = Tr
     worldid = wp.tid()
     ctx.cost[worldid] = wp.inf
     ctx.solver_niter[worldid] = 0
-    ctx.done[worldid] = 0
+    ctx.done[worldid] = False
     if grad:
       ctx.search_dot[worldid] = 0.0
 
@@ -106,7 +106,7 @@ def _create_context(ctx: Context, m: types.Model, d: types.Data, grad: bool = Tr
   wp.launch(_jaref, dim=(d.njmax, m.nv), inputs=[ctx, m, d])
 
   # Ma = qM @ qacc
-  support.mul_m(m, d, ctx.Ma, d.qacc)
+  support.mul_m(m, d, ctx.Ma, d.qacc, ctx.done)
 
   _update_constraint(m, d, ctx)
   if grad:
@@ -750,8 +750,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data, ctx: Context):
   wp.launch(_gtol, dim=(d.nworld,), inputs=[m, ctx])
 
   # mv = qM @ search
-  # TODO(team): skip if done
-  support.mul_m(m, d, ctx.mv, ctx.search)
+  support.mul_m(m, d, ctx.mv, ctx.search, ctx.done)
 
   # jv = efc_J @ search
   # TODO(team): is there a better way of doing batched matmuls with dynamic array sizes?
@@ -854,9 +853,7 @@ def solve(m: types.Model, d: types.Data):
 
     improvement = _rescale(m, ctx.prev_cost[worldid] - ctx.cost[worldid])
     gradient = _rescale(m, wp.math.sqrt(ctx.grad_dot[worldid]))
-    ctx.done[worldid] = int(
-      (improvement < m.opt.tolerance) or (gradient < m.opt.tolerance)
-    )
+    ctx.done[worldid] = (improvement < m.opt.tolerance) or (gradient < m.opt.tolerance)
 
   if m.opt.solver == mujoco.mjtSolver.mjSOL_CG:
 
@@ -934,6 +931,5 @@ def solve(m: types.Model, d: types.Data):
     wp.launch(_search_update, dim=(d.nworld, m.nv), inputs=[ctx])
 
     wp.launch(_done, dim=(d.nworld,), inputs=[ctx, m, i])
-    # TODO(team): return if all done
 
   wp.copy(d.qacc_warmstart, d.qacc)
