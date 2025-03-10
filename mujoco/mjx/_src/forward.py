@@ -173,7 +173,7 @@ def euler(m: Model, d: Data):
       worldId, tid = wp.tid()
 
       dof_Madr = m.dof_Madr[tid]
-      d.qM_integration[worldId, 0, dof_Madr] += m.opt.timestep * m.dof_damping[dof_Madr]
+      d.qM_integration[worldId, 0, dof_Madr] += m.opt.timestep * m.dof_damping[tid]
 
       d.qfrc_integration[worldId, tid] = (
         d.qfrc_smooth[worldId, tid] + d.qfrc_constraint[worldId, tid]
