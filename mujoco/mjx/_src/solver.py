@@ -6,7 +6,7 @@ from . import types
 from .warp_util import event_scope
 from .warp_util import kernel
 
-MAX_LS_PARALLEL = 64
+MAX_LS_PARALLEL = 32
 
 
 class veclsf(wp.types.vector(length=MAX_LS_PARALLEL, dtype=wp.float32)):
