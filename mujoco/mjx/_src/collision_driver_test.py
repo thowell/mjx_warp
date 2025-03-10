@@ -22,7 +22,7 @@ from absl.testing import parameterized
 
 
 class PrimitiveTest(parameterized.TestCase):
-  """Tests the primtive contact functions."""
+  """Tests the primitive contact functions."""
 
   _MJCFS = {
     "box_plane": """
