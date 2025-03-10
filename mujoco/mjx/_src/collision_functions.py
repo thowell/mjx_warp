@@ -22,7 +22,6 @@ from .math import make_frame
 from .math import closest_segment_to_segment_points
 from .math import normalize_with_norm
 from .support import group_key
-from .support import mat33_from_cols
 
 
 @wp.struct
@@ -279,7 +278,8 @@ def plane_capsule(
     else:
       b = wp.vec3(0.0, 0.0, 1.0)
 
-  frame = mat33_from_cols(n, b, wp.cross(n, b))
+  c = wp.cross(n, b)
+  frame = wp.mat33(n[0], n[1], n[2], b[0], b[1], b[2], c[0], c[1], c[2])
   segment = axis * cap.halfsize
 
   dist1, pos1 = _plane_sphere(n, plane.pos, cap.pos + segment, cap.radius)
@@ -287,13 +287,6 @@ def plane_capsule(
 
   dist2, pos2 = _plane_sphere(n, plane.pos, cap.pos - segment, cap.radius)
   write_contact(d, dist2, pos2, frame, margin, geom_indices, worldid)
-
-
-@wp.func
-def distance_point_plane(plane_normal: wp.vec3, plane_pos: wp.vec3, point: wp.vec3):
-  plane_normal = wp.normalize(plane_normal)
-  dist = wp.dot(point - plane_pos, plane_normal)
-  return dist, plane_pos - plane_normal * dist
 
 
 @wp.func
@@ -305,29 +298,31 @@ def plane_box(
   margin: float,
   geom_indices: wp.vec2i,
 ):
-  contact_count = int(0)
+  count = int(0)
+  corner = wp.vec3()
+  dist = wp.dot(box.pos - plane.pos, plane.normal)
 
-  # Check all 8 corners of the box
+  # test all corners, pick bottom 4
   for i in range(8):
-    corner = wp.vec3(box.size.x * 0.5, box.size.y * 0.5, box.size.z * 0.5)
-    if i % 2 == 0:
-      corner.x = -corner.x
-    if (i // 2) % 2 == 0:
-      corner.y = -corner.y
-    if i < 4:
-      corner.z = -corner.z
+    # get corner in local coordinates
+    corner.x = wp.select(i & 1, -box.size.x, box.size.x)
+    corner.y = wp.select(i & 2, -box.size.y, box.size.y)
+    corner.z = wp.select(i & 4, -box.size.z, box.size.z)
 
-    corner_world = box.rot * (corner) + box.pos
+    # get corner in global coordinates relative to box center
+    corner = box.rot * corner
 
-    dist, pos = distance_point_plane(plane.normal, plane.pos, corner_world)
+    # compute distance to plane, skip if too far or pointing up
+    ldist = wp.dot(plane.normal, corner)
+    if dist + ldist > margin or ldist > 0:
+      continue
 
-    if dist < 0.0:
-      write_contact(
-        d, dist, pos, make_frame(plane.normal), margin, geom_indices, worldid
-      )
-      contact_count += 1
-
-    if contact_count >= 4:
+    cdist = dist + ldist
+    frame = make_frame(plane.normal)
+    pos = corner + box.pos + (plane.normal * cdist / -2.0)
+    write_contact(d, cdist, pos, frame, margin, geom_indices, worldid)
+    count += 1
+    if count >= 4:
       break
 
 
