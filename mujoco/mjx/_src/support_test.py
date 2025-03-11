@@ -60,20 +60,14 @@ class SupportTest(parameterized.TestCase):
     mjm, mjd, m, d = test_util.fixture("pendula.xml")
     xfrc = np.random.randn(*d.xfrc_applied.numpy().shape)
     d.xfrc_applied = wp.from_numpy(xfrc, dtype=wp.spatial_vector)
-    qfrc = xfrc_accumulate(m, d)
+    qfrc = wp.zeros((1, mjm.nv), dtype=wp.float32)
+    xfrc_accumulate(m, d, qfrc)
 
     qfrc_expected = np.zeros(m.nv)
     xfrc = xfrc[0]
-    mjd.xfrc_applied[:] = xfrc
     for i in range(1, m.nbody):
       mujoco.mj_applyFT(
-        mjm,
-        mjd,
-        mjd.xfrc_applied[i, :3],
-        mjd.xfrc_applied[i, 3:],
-        mjd.xipos[i],
-        i,
-        qfrc_expected,
+        mjm, mjd, xfrc[i, :3], xfrc[i, 3:], mjd.xipos[i], i, qfrc_expected
       )
     np.testing.assert_almost_equal(qfrc.numpy()[0], qfrc_expected, 6)
 

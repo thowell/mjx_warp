@@ -464,6 +464,10 @@ class Data:
   contact: Contact
   efc: Constraint
 
+  # arrays used for smooth.rne
+  rne_cacc: wp.array(dtype=wp.spatial_vector, ndim=2)
+  rne_cfrc: wp.array(dtype=wp.spatial_vector, ndim=2)
+
   # temp arrays
   qfrc_integration: wp.array(dtype=wp.float32, ndim=2)
   qacc_integration: wp.array(dtype=wp.float32, ndim=2)
