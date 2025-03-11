@@ -69,7 +69,6 @@ class SupportTest(parameterized.TestCase):
       mujoco.mj_applyFT(
         mjm, mjd, xfrc[i, :3], xfrc[i, 3:], mjd.xipos[i], i, qfrc_expected
       )
-    np.set_printoptions(suppress=True, linewidth=1000, precision=5)
     np.testing.assert_almost_equal(qfrc.numpy()[0], qfrc_expected, 6)
 
   def test_make_put_data(self):

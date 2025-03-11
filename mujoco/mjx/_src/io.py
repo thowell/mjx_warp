@@ -666,8 +666,8 @@ def put_data(
 
   d.rne_cacc = wp.zeros(shape=(d.nworld, mjm.nbody), dtype=wp.spatial_vector)
   d.rne_cfrc = wp.zeros(shape=(d.nworld, mjm.nbody), dtype=wp.spatial_vector)
-  d.efc = _constraint(mjm.nv, d.nworld, d.njmax)
 
+  d.efc = _constraint(mjm.nv, d.nworld, d.njmax)
   d.efc.J = wp.array(efc_J_fill, dtype=wp.float32, ndim=2)
   d.efc.D = wp.array(efc_D_fill, dtype=wp.float32, ndim=1)
   d.efc.pos = wp.array(efc_pos_fill, dtype=wp.float32, ndim=1)
