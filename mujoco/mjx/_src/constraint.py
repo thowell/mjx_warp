@@ -228,7 +228,10 @@ def make_constraint(m: types.Model, d: types.Data):
         inputs=[m, d, refsafe],
       )
 
-    if m.opt.cone == types.ConeType.PYRAMIDAL.value:
+    if (
+      not (m.opt.disableflags & types.DisableBit.CONTACT.value)
+      and m.opt.cone == types.ConeType.PYRAMIDAL.value
+    ):
       wp.launch(
         _efc_contact_pyramidal,
         dim=(d.nconmax, 4),

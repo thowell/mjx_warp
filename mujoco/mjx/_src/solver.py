@@ -347,7 +347,7 @@ def _update_gradient(m: types.Model, d: types.Data, ctx: Context):
   wp.launch(_grad, dim=(d.nworld, m.nv), inputs=[ctx, d])
 
   if m.opt.solver == mujoco.mjtSolver.mjSOL_CG:
-    smooth.solve_m(m, d, ctx.grad, ctx.Mgrad)
+    smooth.solve_m(m, d, ctx.Mgrad, ctx.grad)
   elif m.opt.solver == mujoco.mjtSolver.mjSOL_NEWTON:
     # h = qM + (efc_J.T * efc_D * active) @ efc_J
     if m.opt.is_sparse:
