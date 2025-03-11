@@ -520,7 +520,7 @@ def nxn_broadphase(m: Model, d: Data):
     geom_filter = _geom_filter(m, geom1, geom2, filterparent)
 
     if bounds_filter and geom_filter:
-      pairid = wp.atomic_add(d.broadphase_result_count, 0, 1)
+      pairid = wp.atomic_add(d.broadphase_result_count, worldid, 1)
       d.broadphase_pairs[worldid, pairid] = _geom_pair(m, geom1, geom2)
 
   wp.launch(
