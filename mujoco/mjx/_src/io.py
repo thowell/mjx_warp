@@ -394,6 +394,9 @@ def make_data(
   d.efc_margin = wp.zeros((njmax,), dtype=wp.float32)
   d.efc_worldid = wp.zeros((njmax,), dtype=wp.int32)
 
+  d.rne_cacc = wp.zeros(shape=(d.nworld, mjm.nbody), dtype=wp.spatial_vector)
+  d.rne_cfrc = wp.zeros(shape=(d.nworld, mjm.nbody), dtype=wp.spatial_vector)
+
   d.xfrc_applied = wp.zeros((nworld, mjm.nbody), dtype=wp.spatial_vector)
 
   # internal tmp arrays
@@ -621,6 +624,9 @@ def put_data(
   d.contact.geom = wp.array(con_geom_fill, dtype=wp.vec2i, ndim=1)
   d.contact.efc_address = wp.array(con_efc_address, dtype=wp.int32, ndim=1)
   d.contact.worldid = wp.array(con_worldid, dtype=wp.int32, ndim=1)
+
+  d.rne_cacc = wp.zeros(shape=(d.nworld, mjm.nbody), dtype=wp.spatial_vector)
+  d.rne_cfrc = wp.zeros(shape=(d.nworld, mjm.nbody), dtype=wp.spatial_vector)
 
   d.xfrc_applied = wp.array(tile(mjd.xfrc_applied), dtype=wp.spatial_vector, ndim=2)
 
