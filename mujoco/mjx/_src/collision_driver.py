@@ -155,9 +155,6 @@ def broadphase_project_boxes_onto_sweep_direction_kernel(
   d.box_projections_upper[worldId, i] = center + d_val
   d.box_sorting_indexer[worldId, i] = i
 
-  if i == 0:
-    d.broadphase_result_count[worldId] = 0  # Initialize result count to 0
-
 
 @wp.kernel
 def reorder_bounding_boxes_kernel(
@@ -291,10 +288,16 @@ def broadphase_sweep_and_prune_kernel(
     """
     # Check if the boxes overlap
     if overlap(worldId, i, j, d.boxes_sorted):
-      id = wp.atomic_add(d.broadphase_result_count, worldId, 1)
+      pairid = wp.atomic_add(d.ncollision, 0, 1)
 
-      if id < d.max_num_overlaps_per_world:
-        d.broadphase_pairs[worldId, id] = _geom_pair(m, idx1, idx2)
+      if pairid >= d.nconmax:
+        return
+      
+      pair = _geom_pair(m, idx1, idx2)
+      key = group_key(m.geom_type[idx1], m.geom_type[idx2])
+      d.collision_pair[pairid] = pair
+      d.collision_type[pairid] = key
+      d.collision_worldid[pairid] = worldId
 
     threadId += num_threads
 
@@ -341,29 +344,6 @@ def get_contact_solver_params_kernel(
   friction5 = vec5(friction_[0], friction_[0], friction_[1], friction_[2], friction_[2])
   d.contact.friction[tid] = friction5
   d.contact.solimp[tid] = mix * m.geom_solimp[g1] + (1.0 - mix) * m.geom_solimp[g2]
-
-
-@wp.kernel
-def group_contacts_by_type_kernel(
-  m: Model,
-  d: Data,
-):
-  worldid, tid = wp.tid()
-
-  if tid >= d.broadphase_result_count[worldid]:
-    return
-
-  geoms = d.broadphase_pairs[worldid, tid]
-  geom1 = geoms[0]
-  geom2 = geoms[1]
-
-  type1 = m.geom_type[geom1]
-  type2 = m.geom_type[geom2]
-  key = group_key(type1, type2)
-
-  n_type_pair = wp.atomic_add(d.narrowphase_candidate_group_count, key, 1)
-  d.narrowphase_candidate_worldid[key, n_type_pair] = worldid
-  d.narrowphase_candidate_geom[key, n_type_pair] = wp.vec2i(geom1, geom2)
 
 
 def broadphase_sweep_and_prune(m: Model, d: Data):
@@ -472,8 +452,6 @@ def broadphase_sweep_and_prune(m: Model, d: Data):
 def nxn_broadphase(m: Model, d: Data):
   filterparent = not (m.opt.disableflags & DisableBit.FILTERPARENT.value)
 
-  d.broadphase_result_count.zero_()
-
   @wp.kernel
   def _nxn_broadphase(m: Model, d: Data):
     worldid, elementid = wp.tid()
@@ -500,6 +478,8 @@ def nxn_broadphase(m: Model, d: Data):
     xmat2 = d.geom_xmat[worldid, geom2]
     size1 = m.geom_rbound[geom1]
     size2 = m.geom_rbound[geom2]
+    type1 = m.geom_type[geom1]
+    type2 = m.geom_type[geom2]
 
     bound = size1 + size2 + wp.max(margin1, margin2)
     dif = pos2 - pos1
@@ -520,8 +500,16 @@ def nxn_broadphase(m: Model, d: Data):
     geom_filter = _geom_filter(m, geom1, geom2, filterparent)
 
     if bounds_filter and geom_filter:
-      pairid = wp.atomic_add(d.broadphase_result_count, 0, 1)
-      d.broadphase_pairs[worldid, pairid] = _geom_pair(m, geom1, geom2)
+      pairid = wp.atomic_add(d.ncollision, 0, 1)
+
+      if pairid >= d.nconmax:
+        return
+      
+      pair = _geom_pair(m, geom1, geom2)
+      key = group_key(type1, type2)
+      d.collision_pair[pairid] = pair
+      d.collision_type[pairid] = key
+      d.collision_worldid[pairid] = worldid
 
   wp.launch(
     _nxn_broadphase, dim=(d.nworld, m.ngeom * (m.ngeom - 1) // 2), inputs=[m, d]
@@ -539,22 +527,6 @@ def broadphase(m: Model, d: Data):
     nxn_broadphase(m, d)
   else:
     broadphase_sweep_and_prune(m, d)
-
-
-def group_contacts_by_type(m: Model, d: Data):
-  # initialize type pair count & group contacts by type
-
-  # Initialize type pair count
-  d.narrowphase_candidate_group_count.zero_()
-
-  wp.launch(
-    group_contacts_by_type_kernel,
-    dim=(d.nworld, d.max_num_overlaps_per_world),
-    inputs=[m, d],
-  )
-
-  # Initialize the env contact counter
-  d.ncon.zero_()
 
 
 def get_contact_solver_params(m: Model, d: Data):
@@ -575,9 +547,10 @@ def collision(m: Model, d: Data):
   # which is further based on the CUDA code here:
   # https://github.com/btaba/mujoco/blob/warp-collisions/mjx/mujoco/mjx/_src/cuda/engine_collision_driver.cu.cc#L458-L583
 
+  d.ncollision.zero_()
+  d.ncon.zero_()
+
   broadphase(m, d)
-  # filtering?
-  group_contacts_by_type(m, d)
   # XXX switch between collision functions and GJK/EPA here
   if True:
     from .collision_functions import narrowphase

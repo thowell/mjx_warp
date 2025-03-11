@@ -344,12 +344,12 @@ def create_collision_function_kernel(type1, type2):
     d: Data,
   ):
     tid = wp.tid()
-    num_candidate_contacts = d.narrowphase_candidate_group_count[key]
-    if tid >= num_candidate_contacts:
+    
+    if tid >= d.ncollision[0] or d.collision_type[tid] != key:
       return
 
-    geoms = d.narrowphase_candidate_geom[key, tid]
-    worldid = d.narrowphase_candidate_worldid[key, tid]
+    geoms = d.collision_pair[tid]
+    worldid = d.collision_worldid[tid]
 
     g1 = geoms[0]
     g2 = geoms[1]

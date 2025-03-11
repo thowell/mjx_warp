@@ -405,11 +405,6 @@ def make_data(
   d.act_vel_integration = wp.zeros_like(d.ctrl)
 
   # the result of the broadphase gets stored in this array
-  d.max_num_overlaps_per_world = (
-    mjm.ngeom * (mjm.ngeom - 1) // 2
-  )  # TODO: this is a hack to estimate the maximum number of overlaps per world
-  d.broadphase_pairs = wp.zeros((nworld, d.max_num_overlaps_per_world), dtype=wp.vec2i)
-  d.broadphase_result_count = wp.zeros(nworld, dtype=wp.int32)
 
   # internal broadphase tmp arrays
   d.boxes_sorted = wp.zeros((nworld, mjm.ngeom, 2), dtype=wp.vec3)
@@ -421,15 +416,11 @@ def make_data(
   segment_indices_list = [i * mjm.ngeom for i in range(nworld + 1)]
   d.segment_indices = wp.array(segment_indices_list, dtype=int)
 
-  # internal narrowphase tmp arrays
-  ngroups = types.NUM_GEOM_TYPES * types.NUM_GEOM_TYPES
-  d.narrowphase_candidate_worldid = wp.empty(
-    (ngroups, d.max_num_overlaps_per_world * nworld), dtype=wp.int32, ndim=2
-  )
-  d.narrowphase_candidate_geom = wp.empty(
-    (ngroups, d.max_num_overlaps_per_world * nworld), dtype=wp.vec2i, ndim=2
-  )
-  d.narrowphase_candidate_group_count = wp.zeros(ngroups, dtype=wp.int32, ndim=1)
+  # collision driver
+  d.collision_pair = wp.empty(nconmax, dtype=wp.vec2i, ndim=1)
+  d.collision_type = wp.empty(nconmax, dtype=wp.int32, ndim=1)
+  d.collision_worldid = wp.empty(nconmax, dtype=wp.int32, ndim=1)
+  d.ncollision = wp.zeros(1, dtype=wp.int32, ndim=1)
 
   return d
 
@@ -633,9 +624,6 @@ def put_data(
   d.act_vel_integration = wp.zeros_like(d.ctrl)
 
   # the result of the broadphase gets stored in this array
-  d.max_num_overlaps_per_world = mjm.ngeom * (mjm.ngeom - 1) // 2
-  d.broadphase_pairs = wp.zeros((nworld, d.max_num_overlaps_per_world), dtype=wp.vec2i)
-  d.broadphase_result_count = wp.zeros(nworld, dtype=wp.int32)
 
   # internal broadphase tmp arrays
   d.boxes_sorted = wp.zeros((nworld, mjm.ngeom, 2), dtype=wp.vec3)
@@ -648,15 +636,11 @@ def put_data(
   d.segment_indices = wp.array(segment_indices_list, dtype=int)
   d.dyn_geom_aabb = wp.zeros((nworld, mjm.ngeom, 2), dtype=wp.vec3)
 
-  # internal narrowphase tmp arrays
-  ngroups = types.NUM_GEOM_TYPES * types.NUM_GEOM_TYPES
-  d.narrowphase_candidate_worldid = wp.empty(
-    (ngroups, d.max_num_overlaps_per_world * nworld), dtype=wp.int32, ndim=2
-  )
-  d.narrowphase_candidate_geom = wp.empty(
-    (ngroups, d.max_num_overlaps_per_world * nworld), dtype=wp.vec2i, ndim=2
-  )
-  d.narrowphase_candidate_group_count = wp.zeros(ngroups, dtype=wp.int32, ndim=1)
+  # collision driver
+  d.collision_pair = wp.empty(nconmax, dtype=wp.vec2i, ndim=1)
+  d.collision_type = wp.empty(nconmax, dtype=wp.int32, ndim=1)
+  d.collision_worldid = wp.empty(nconmax, dtype=wp.int32, ndim=1)
+  d.ncollision = wp.zeros(1, dtype=wp.int32, ndim=1)
 
   return d
 
