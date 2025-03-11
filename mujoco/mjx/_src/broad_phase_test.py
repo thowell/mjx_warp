@@ -116,23 +116,6 @@ def find_overlaps_brute_force_batched(
   return overlaps
 
 
-class MultiIndexList:
-  def __init__(self):
-    self.data = {}
-
-  def __setitem__(self, key, value):
-    worldId, i = key
-    if worldId not in self.data:
-      self.data[worldId] = []
-    if i >= len(self.data[worldId]):
-      self.data[worldId].extend([None] * (i - len(self.data[worldId]) + 1))
-    self.data[worldId][i] = value
-
-  def __getitem__(self, key):
-    worldId, i = key
-    return self.data[worldId][i]  # Raises KeyError if not found
-
-
 class BroadPhaseTest(parameterized.TestCase):
   def test_broadphase_sweep_and_prune(self):
     """Tests broadphase_sweep_and_prune."""
