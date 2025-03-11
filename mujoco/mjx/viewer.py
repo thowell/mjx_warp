@@ -33,9 +33,7 @@ _MODEL_PATH = flags.DEFINE_string(
 _CLEAR_KERNEL_CACHE = flags.DEFINE_bool(
   "clear_kernel_cache", False, "Clear kernel cache (to calculate full JIT time)"
 )
-_IS_MJC = flags.DEFINE_bool(
-  "is_mjc", False, "Simulate with MuJoCo C"
-)
+_ENGINE = flags.DEFINE_enum("engine", "mjwarp", ["mjwarp", "mjc"], "Simulation engine")
 _VIEWER_GLOBAL_STATE = {
   "running": True,
 }
@@ -60,10 +58,10 @@ def _main(argv: Sequence[str]) -> None:
   mjd = mujoco.MjData(mjm)
   mujoco.mj_forward(mjm, mjd)
 
-  if _IS_MJC.value:
-    m = mjm
-    d = mjd
-  else:
+  if _ENGINE.value == "mjc":
+    print("Engine: MuJoCo C")
+  else:  # mjwarp
+    print("Engine: MuJoCo Warp")
     m = mjx.put_model(mjm)
     d = mjx.put_data(mjm, mjd)
 
@@ -87,9 +85,9 @@ def _main(argv: Sequence[str]) -> None:
     while True:
       start = time.time()
 
-      if _IS_MJC.value:
-        mujoco.mj_step(m, d)
-      else:
+      if _ENGINE.value == "mjc":
+        mujoco.mj_step(mjm, mjd)
+      else:  # mjwarp
         # TODO(robotics-simulation): recompile when changing disable flags, etc.
         wp.copy(d.ctrl, wp.array([mjd.ctrl.astype(np.float32)]))
         wp.copy(d.act, wp.array([mjd.act.astype(np.float32)]))
@@ -103,12 +101,12 @@ def _main(argv: Sequence[str]) -> None:
           wp.synchronize()
 
         mjx.get_data_into(mjd, mjm, d)
-      
+
       viewer.sync()
 
       elapsed = time.time() - start
-      if elapsed < m.opt.timestep:
-        time.sleep(m.opt.timestep - elapsed)
+      if elapsed < mjm.opt.timestep:
+        time.sleep(mjm.opt.timestep - elapsed)
 
 
 def main():
