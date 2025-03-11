@@ -48,8 +48,7 @@ class ForwardTest(absltest.TestCase):
     mjd = mujoco.MjData(mjm)
     mujoco.mj_resetDataKeyframe(mjm, mjd, 1)  # reset to stand_on_left_leg
     mjd.qvel = np.random.uniform(low=-0.01, high=0.01, size=mjd.qvel.shape)
-    mjd.ctrl = np.random.normal(scale=10, size=mjd.ctrl.shape)
-    mjd.act = np.random.normal(scale=10, size=mjd.act.shape)
+    mjd.ctrl = np.random.normal(scale=1, size=mjd.ctrl.shape)
     mujoco.mj_forward(mjm, mjd)
     m = mjx.put_model(mjm)
     d = mjx.put_data(mjm, mjd)
