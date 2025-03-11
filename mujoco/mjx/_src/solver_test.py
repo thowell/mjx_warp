@@ -76,10 +76,9 @@ class SolverTest(parameterized.TestCase):
 
       mj_cost = cost(mjd.qacc)
 
-      ctx = solver._context(m, d)
-      solver._create_context(ctx, m, d)
+      solver._create_context(m, d)
 
-      mjx_cost = ctx.cost.numpy()[0] - ctx.gauss.numpy()[0]
+      mjx_cost = d.efc.cost.numpy()[0] - d.efc.gauss.numpy()[0]
 
       _assert_eq(mjx_cost, mj_cost, name="cost")
 
@@ -91,7 +90,7 @@ class SolverTest(parameterized.TestCase):
       d = io.put_data(mjm, mjd, njmax=mjd.nefc)
       d.qacc.zero_()
       d.qfrc_constraint.zero_()
-      d.efc_force.zero_()
+      d.efc.force.zero_()
 
       if solver_ == mujoco.mjtSolver.mjSOL_CG:
         smooth.factor_m(m, d)
@@ -104,7 +103,7 @@ class SolverTest(parameterized.TestCase):
       if m.opt.solver == mujoco.mjtSolver.mjSOL_NEWTON:
         _assert_eq(d.qacc.numpy()[0], mjd.qacc, "qacc")
         _assert_eq(d.qfrc_constraint.numpy()[0], mjd.qfrc_constraint, "qfrc_constraint")
-        _assert_eq(d.efc_force.numpy()[: mjd.nefc], mjd.efc_force, "efc_force")
+        _assert_eq(d.efc.force.numpy()[: mjd.nefc], mjd.efc_force, "efc_force")
 
   @parameterized.parameters(
     (mujoco.mjtCone.mjCONE_PYRAMIDAL, mujoco.mjtSolver.mjSOL_CG, 25, 5),
@@ -227,10 +226,10 @@ class SolverTest(parameterized.TestCase):
     d.qM = wp.from_numpy(qM, dtype=wp.float32)
     d.qacc_smooth = wp.from_numpy(qacc_smooth, dtype=wp.float32)
     d.qfrc_smooth = wp.from_numpy(qfrc_smooth, dtype=wp.float32)
-    d.efc_J = wp.from_numpy(efc_J_fill, dtype=wp.float32)
-    d.efc_D = wp.from_numpy(efc_D_fill, dtype=wp.float32)
-    d.efc_aref = wp.from_numpy(efc_aref_fill, dtype=wp.float32)
-    d.efc_worldid = wp.from_numpy(efc_worldid, dtype=wp.int32)
+    d.efc.J = wp.from_numpy(efc_J_fill, dtype=wp.float32)
+    d.efc.D = wp.from_numpy(efc_D_fill, dtype=wp.float32)
+    d.efc.aref = wp.from_numpy(efc_aref_fill, dtype=wp.float32)
+    d.efc.worldid = wp.from_numpy(efc_worldid, dtype=wp.int32)
 
     if solver_ == mujoco.mjtSolver.mjSOL_CG:
       m0 = io.put_model(mjm0)
@@ -253,7 +252,7 @@ class SolverTest(parameterized.TestCase):
 
     d.qacc.zero_()
     d.qfrc_constraint.zero_()
-    d.efc_force.zero_()
+    d.efc.force.zero_()
     solver.solve(m, d)
 
     def cost(m, d, qacc):
@@ -285,17 +284,17 @@ class SolverTest(parameterized.TestCase):
       _assert_eq(d.qfrc_constraint.numpy()[2], mjd2.qfrc_constraint, "qfrc_constraint2")
 
       _assert_eq(
-        d.efc_force.numpy()[: mjd0.nefc],
+        d.efc.force.numpy()[: mjd0.nefc],
         mjd0.efc_force,
         "efc_force0",
       )
       _assert_eq(
-        d.efc_force.numpy()[mjd0.nefc : mjd0.nefc + mjd1.nefc],
+        d.efc.force.numpy()[mjd0.nefc : mjd0.nefc + mjd1.nefc],
         mjd1.efc_force,
         "efc_force1",
       )
       _assert_eq(
-        d.efc_force.numpy()[mjd0.nefc + mjd1.nefc : mjd0.nefc + mjd1.nefc + mjd2.nefc],
+        d.efc.force.numpy()[mjd0.nefc + mjd1.nefc : mjd0.nefc + mjd1.nefc + mjd2.nefc],
         mjd2.efc_force,
         "efc_force2",
       )

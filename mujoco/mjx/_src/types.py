@@ -221,6 +221,57 @@ class Statistic:
 
 
 @wp.struct
+class Constraint:
+  # efc
+  J: wp.array(dtype=wp.float32, ndim=2)
+  D: wp.array(dtype=wp.float32, ndim=1)
+  pos: wp.array(dtype=wp.float32, ndim=1)
+  aref: wp.array(dtype=wp.float32, ndim=1)
+  force: wp.array(dtype=wp.float32, ndim=1)
+  margin: wp.array(dtype=wp.float32, ndim=1)
+  worldid: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  # solver context
+  Jaref: wp.array(dtype=wp.float32, ndim=1)
+  Ma: wp.array(dtype=wp.float32, ndim=2)
+  grad: wp.array(dtype=wp.float32, ndim=2)
+  grad_dot: wp.array(dtype=wp.float32, ndim=1)
+  Mgrad: wp.array(dtype=wp.float32, ndim=2)
+  search: wp.array(dtype=wp.float32, ndim=2)
+  search_dot: wp.array(dtype=wp.float32, ndim=1)
+  gauss: wp.array(dtype=wp.float32, ndim=1)
+  cost: wp.array(dtype=wp.float32, ndim=1)
+  prev_cost: wp.array(dtype=wp.float32, ndim=1)
+  solver_niter: wp.array(dtype=wp.int32, ndim=1)
+  active: wp.array(dtype=wp.int32, ndim=1)
+  gtol: wp.array(dtype=wp.float32, ndim=1)
+  mv: wp.array(dtype=wp.float32, ndim=2)
+  jv: wp.array(dtype=wp.float32, ndim=1)
+  quad: wp.array(dtype=wp.vec3f, ndim=1)
+  quad_gauss: wp.array(dtype=wp.vec3f, ndim=1)
+  h: wp.array(dtype=wp.float32, ndim=3)
+  alpha: wp.array(dtype=wp.float32, ndim=1)
+  prev_grad: wp.array(dtype=wp.float32, ndim=2)
+  prev_Mgrad: wp.array(dtype=wp.float32, ndim=2)
+  beta: wp.array(dtype=wp.float32, ndim=1)
+  beta_num: wp.array(dtype=wp.float32, ndim=1)
+  beta_den: wp.array(dtype=wp.float32, ndim=1)
+  done: wp.array(dtype=wp.int32, ndim=1)
+  # linesearch
+  ls_done: wp.array(dtype=bool, ndim=1)
+  p0: wp.array(dtype=wp.vec3, ndim=1)
+  lo: wp.array(dtype=wp.vec3, ndim=1)
+  lo_alpha: wp.array(dtype=wp.float32, ndim=1)
+  hi: wp.array(dtype=wp.vec3, ndim=1)
+  hi_alpha: wp.array(dtype=wp.float32, ndim=1)
+  lo_next: wp.array(dtype=wp.vec3, ndim=1)
+  lo_next_alpha: wp.array(dtype=wp.float32, ndim=1)
+  hi_next: wp.array(dtype=wp.vec3, ndim=1)
+  hi_next_alpha: wp.array(dtype=wp.float32, ndim=1)
+  mid: wp.array(dtype=wp.vec3, ndim=1)
+  mid_alpha: wp.array(dtype=wp.float32, ndim=1)
+
+
+@wp.struct
 class Model:
   nq: int
   nv: int
@@ -409,15 +460,9 @@ class Data:
   qfrc_actuator: wp.array(dtype=wp.float32, ndim=2)
   qfrc_smooth: wp.array(dtype=wp.float32, ndim=2)
   qacc_smooth: wp.array(dtype=wp.float32, ndim=2)
-  efc_J: wp.array(dtype=wp.float32, ndim=2)
-  efc_D: wp.array(dtype=wp.float32, ndim=1)
-  efc_pos: wp.array(dtype=wp.float32, ndim=1)
-  efc_aref: wp.array(dtype=wp.float32, ndim=1)
-  efc_force: wp.array(dtype=wp.float32, ndim=1)
-  efc_margin: wp.array(dtype=wp.float32, ndim=1)
-  efc_worldid: wp.array(dtype=wp.int32, ndim=1)  # warp only
   xfrc_applied: wp.array(dtype=wp.spatial_vector, ndim=2)
   contact: Contact
+  efc: Constraint
 
   # temp arrays
   qfrc_integration: wp.array(dtype=wp.float32, ndim=2)

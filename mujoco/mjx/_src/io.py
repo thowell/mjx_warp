@@ -304,6 +304,59 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   return m
 
 
+def _constraint(nv: int, nworld: int, njmax: int) -> types.Constraint:
+  efc = types.Constraint()
+
+  efc.J = wp.zeros((njmax, nv), dtype=wp.float32)
+  efc.D = wp.zeros((njmax,), dtype=wp.float32)
+  efc.pos = wp.zeros((njmax,), dtype=wp.float32)
+  efc.aref = wp.zeros((njmax,), dtype=wp.float32)
+  efc.force = wp.zeros((njmax,), dtype=wp.float32)
+  efc.margin = wp.zeros((njmax,), dtype=wp.float32)
+  efc.worldid = wp.zeros((njmax,), dtype=wp.int32)
+
+  efc.Jaref = wp.empty(shape=(njmax,), dtype=wp.float32)
+  efc.Ma = wp.empty(shape=(nworld, nv), dtype=wp.float32)
+  efc.grad = wp.empty(shape=(nworld, nv), dtype=wp.float32)
+  efc.grad_dot = wp.empty(shape=(nworld,), dtype=wp.float32)
+  efc.Mgrad = wp.empty(shape=(nworld, nv), dtype=wp.float32)
+  efc.search = wp.empty(shape=(nworld, nv), dtype=wp.float32)
+  efc.search_dot = wp.empty(shape=(nworld,), dtype=wp.float32)
+  efc.gauss = wp.empty(shape=(nworld,), dtype=wp.float32)
+  efc.cost = wp.empty(shape=(nworld,), dtype=wp.float32)
+  efc.prev_cost = wp.empty(shape=(nworld,), dtype=wp.float32)
+  efc.solver_niter = wp.empty(shape=(nworld,), dtype=wp.int32)
+  efc.active = wp.empty(shape=(njmax,), dtype=wp.int32)
+  efc.gtol = wp.empty(shape=(nworld,), dtype=wp.float32)
+  efc.mv = wp.empty(shape=(nworld, nv), dtype=wp.float32)
+  efc.jv = wp.empty(shape=(njmax,), dtype=wp.float32)
+  efc.quad = wp.empty(shape=(njmax,), dtype=wp.vec3f)
+  efc.quad_gauss = wp.empty(shape=(nworld,), dtype=wp.vec3f)
+  efc.h = wp.empty(shape=(nworld, nv, nv), dtype=wp.float32)
+  efc.alpha = wp.empty(shape=(nworld,), dtype=wp.float32)
+  efc.prev_grad = wp.empty(shape=(nworld, nv), dtype=wp.float32)
+  efc.prev_Mgrad = wp.empty(shape=(nworld, nv), dtype=wp.float32)
+  efc.beta = wp.empty(shape=(nworld,), dtype=wp.float32)
+  efc.beta_num = wp.empty(shape=(nworld,), dtype=wp.float32)
+  efc.beta_den = wp.empty(shape=(nworld,), dtype=wp.float32)
+  efc.done = wp.empty(shape=(nworld,), dtype=wp.int32)
+
+  efc.ls_done = wp.zeros(shape=(nworld,), dtype=bool)
+  efc.p0 = wp.empty(shape=(nworld,), dtype=wp.vec3)
+  efc.lo = wp.empty(shape=(nworld,), dtype=wp.vec3)
+  efc.lo_alpha = wp.empty(shape=(nworld,), dtype=wp.float32)
+  efc.hi = wp.empty(shape=(nworld,), dtype=wp.vec3)
+  efc.hi_alpha = wp.empty(shape=(nworld,), dtype=wp.float32)
+  efc.lo_next = wp.empty(shape=(nworld,), dtype=wp.vec3)
+  efc.lo_next_alpha = wp.empty(shape=(nworld,), dtype=wp.float32)
+  efc.hi_next = wp.empty(shape=(nworld,), dtype=wp.vec3)
+  efc.hi_next_alpha = wp.empty(shape=(nworld,), dtype=wp.float32)
+  efc.mid = wp.empty(shape=(nworld,), dtype=wp.vec3)
+  efc.mid_alpha = wp.empty(shape=(nworld,), dtype=wp.float32)
+
+  return efc
+
+
 def make_data(
   mjm: mujoco.MjModel, nworld: int = 1, nconmax: int = -1, njmax: int = -1
 ) -> types.Data:
@@ -379,6 +432,7 @@ def make_data(
   d.contact.geom = wp.zeros((nconmax,), dtype=wp.vec2i)
   d.contact.efc_address = wp.zeros((nconmax,), dtype=wp.int32)
   d.contact.worldid = wp.zeros((nconmax,), dtype=wp.int32)
+  d.efc = _constraint(mjm.nv, d.nworld, d.njmax)
   d.qfrc_passive = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qfrc_spring = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qfrc_damper = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
@@ -386,13 +440,6 @@ def make_data(
   d.qfrc_smooth = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qfrc_constraint = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qacc_smooth = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
-  d.efc_J = wp.zeros((njmax, mjm.nv), dtype=wp.float32)
-  d.efc_D = wp.zeros((njmax,), dtype=wp.float32)
-  d.efc_pos = wp.zeros((njmax,), dtype=wp.float32)
-  d.efc_aref = wp.zeros((njmax,), dtype=wp.float32)
-  d.efc_force = wp.zeros((njmax,), dtype=wp.float32)
-  d.efc_margin = wp.zeros((njmax,), dtype=wp.float32)
-  d.efc_worldid = wp.zeros((njmax,), dtype=wp.int32)
 
   d.xfrc_applied = wp.zeros((nworld, mjm.nbody), dtype=wp.spatial_vector)
 
@@ -560,14 +607,6 @@ def put_data(
     [np.repeat(mjd.efc_margin, nworld, axis=0), np.zeros(nefc_fill)]
   )
 
-  d.efc_J = wp.array(efc_J_fill, dtype=wp.float32, ndim=2)
-  d.efc_D = wp.array(efc_D_fill, dtype=wp.float32, ndim=1)
-  d.efc_pos = wp.array(efc_pos_fill, dtype=wp.float32, ndim=1)
-  d.efc_aref = wp.array(efc_aref_fill, dtype=wp.float32, ndim=1)
-  d.efc_force = wp.array(efc_force_fill, dtype=wp.float32, ndim=1)
-  d.efc_margin = wp.array(efc_margin_fill, dtype=wp.float32, ndim=1)
-  d.efc_worldid = wp.from_numpy(efc_worldid, dtype=wp.int32)
-
   ncon = mjd.ncon
   con_efc_address = np.zeros(nconmax, dtype=int)
   con_worldid = np.zeros(nconmax, dtype=int)
@@ -621,6 +660,15 @@ def put_data(
   d.contact.geom = wp.array(con_geom_fill, dtype=wp.vec2i, ndim=1)
   d.contact.efc_address = wp.array(con_efc_address, dtype=wp.int32, ndim=1)
   d.contact.worldid = wp.array(con_worldid, dtype=wp.int32, ndim=1)
+
+  d.efc = _constraint(mjm.nv, d.nworld, d.njmax)
+  d.efc.J = wp.array(efc_J_fill, dtype=wp.float32, ndim=2)
+  d.efc.D = wp.array(efc_D_fill, dtype=wp.float32, ndim=1)
+  d.efc.pos = wp.array(efc_pos_fill, dtype=wp.float32, ndim=1)
+  d.efc.aref = wp.array(efc_aref_fill, dtype=wp.float32, ndim=1)
+  d.efc.force = wp.array(efc_force_fill, dtype=wp.float32, ndim=1)
+  d.efc.margin = wp.array(efc_margin_fill, dtype=wp.float32, ndim=1)
+  d.efc.worldid = wp.from_numpy(efc_worldid, dtype=wp.int32)
 
   d.xfrc_applied = wp.array(tile(mjd.xfrc_applied), dtype=wp.spatial_vector, ndim=2)
 
@@ -758,10 +806,10 @@ def get_data_into(
     # TODO(team): set efc_J after fix to _realloc_con_efc lands
     # if nefc > 0:
     #   result.efc_J[:nefc * mjm.nv] = d.efc_J.numpy()[:nefc].flatten()
-  result.efc_D[:] = d.efc_D.numpy()[:nefc]
-  result.efc_pos[:] = d.efc_pos.numpy()[:nefc]
-  result.efc_aref[:] = d.efc_aref.numpy()[:nefc]
-  result.efc_force[:] = d.efc_force.numpy()[:nefc]
-  result.efc_margin[:] = d.efc_margin.numpy()[:nefc]
+  result.efc_D[:] = d.efc.D.numpy()[:nefc]
+  result.efc_pos[:] = d.efc.pos.numpy()[:nefc]
+  result.efc_aref[:] = d.efc.aref.numpy()[:nefc]
+  result.efc_force[:] = d.efc.force.numpy()[:nefc]
+  result.efc_margin[:] = d.efc.margin.numpy()[:nefc]
 
   # TODO: other efc_ fields, anything else missing
