@@ -19,7 +19,8 @@ import mujoco
 from mujoco import mjx
 import warp as wp
 import numpy as np
-from absl.testing import absltest, parameterized
+from absl.testing import absltest
+from absl.testing import parameterized
 
 from . import test_util
 from . import collision_driver
@@ -254,15 +255,16 @@ class BroadPhaseTest(parameterized.TestCase):
     )
 
     collision_driver.nxn_broadphase(m, d3)
-    np.testing.assert_allclose(d3.broadphase_result_count.numpy()[0], 4)
+    np.testing.assert_allclose(d3.broadphase_result_count.numpy()[0], 1)
     np.testing.assert_allclose(d3.broadphase_pairs.numpy()[0, 0][0], 0)
     np.testing.assert_allclose(d3.broadphase_pairs.numpy()[0, 0][1], 1)
+    np.testing.assert_allclose(d3.broadphase_result_count.numpy()[1], 3)
+    np.testing.assert_allclose(d3.broadphase_pairs.numpy()[1, 0][0], 0)
+    np.testing.assert_allclose(d3.broadphase_pairs.numpy()[1, 0][1], 1)
     np.testing.assert_allclose(d3.broadphase_pairs.numpy()[1, 1][0], 0)
-    np.testing.assert_allclose(d3.broadphase_pairs.numpy()[1, 1][1], 1)
-    np.testing.assert_allclose(d3.broadphase_pairs.numpy()[1, 2][0], 0)
+    np.testing.assert_allclose(d3.broadphase_pairs.numpy()[1, 1][1], 2)
+    np.testing.assert_allclose(d3.broadphase_pairs.numpy()[1, 2][0], 1)
     np.testing.assert_allclose(d3.broadphase_pairs.numpy()[1, 2][1], 2)
-    np.testing.assert_allclose(d3.broadphase_pairs.numpy()[1, 3][0], 1)
-    np.testing.assert_allclose(d3.broadphase_pairs.numpy()[1, 3][1], 2)
 
     # one world and zero collisions: contype and conaffinity incompatibility
     _, _, m4, d4 = test_util.fixture("broadphase.xml", keyframe=1)
