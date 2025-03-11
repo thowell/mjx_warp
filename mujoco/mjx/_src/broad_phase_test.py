@@ -32,7 +32,7 @@ def transform_aabb(aabb_pos, aabb_size, pos: wp.vec3, ori: wp.mat33) -> AABB:
   aabb.min = wp.vec3(1000000000.0, 1000000000.0, 1000000000.0)
 
   for i in range(8):
-    corner = wp.vec3(aabb_size[0], aabb_size[1], aabb_size[2])
+    corner = wp.vec3(aabb_size[0] * 0.5, aabb_size[1] * 0.5, aabb_size[2] * 0.5)
     if i % 2 == 0:
       corner.x = -corner.x
     if (i // 2) % 2 == 0:
@@ -116,23 +116,6 @@ def find_overlaps_brute_force_batched(
   return overlaps
 
 
-class MultiIndexList:
-  def __init__(self):
-    self.data = {}
-
-  def __setitem__(self, key, value):
-    worldId, i = key
-    if worldId not in self.data:
-      self.data[worldId] = []
-    if i >= len(self.data[worldId]):
-      self.data[worldId].extend([None] * (i - len(self.data[worldId]) + 1))
-    self.data[worldId][i] = value
-
-  def __getitem__(self, key):
-    worldId, i = key
-    return self.data[worldId][i]  # Raises KeyError if not found
-
-
 class BroadPhaseTest(parameterized.TestCase):
   def test_broadphase_sweep_and_prune(self):
     """Tests broadphase_sweep_and_prune."""
@@ -182,10 +165,6 @@ class BroadPhaseTest(parameterized.TestCase):
 
     mjx.broadphase_sweep_and_prune(mx, dx)
 
-    np.testing.assert_equal(
-      dx.broadphase_result_count.numpy()[0], 8, "broadphase_result_count"
-    )
-
     m = mx
     d = dx
     aabbs = m.geom_aabb.numpy()
@@ -198,6 +177,12 @@ class BroadPhaseTest(parameterized.TestCase):
 
     brute_force_overlaps = find_overlaps_brute_force_batched(
       d.nworld, m.ngeom, aabbs, pos, rot, m.geom_bodyid.numpy()
+    )
+
+    np.testing.assert_equal(
+      dx.broadphase_result_count.numpy()[0],
+      len(brute_force_overlaps[0]),
+      "broadphase_result_count",
     )
 
     mjx.broadphase_sweep_and_prune(m, d)
