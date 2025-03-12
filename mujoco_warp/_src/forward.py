@@ -1,4 +1,4 @@
-# Copyright 2025 The Physics-Next Project Developers
+# Copyright 2025 The Newton Developers
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,26 +15,26 @@
 
 from typing import Optional
 
-import warp as wp
 import mujoco
+import warp as wp
 
+from . import collision_driver
 from . import constraint
 from . import math
 from . import passive
 from . import smooth
 from . import solver
-from . import collision_driver
-
-from .types import array2df, array3df
-from .types import Model
-from .types import Data
-from .types import MJ_MINVAL
-from .types import DisableBit
-from .types import JointType
-from .types import DynType
-from .types import BiasType
-from .types import GainType
 from .support import xfrc_accumulate
+from .types import MJ_MINVAL
+from .types import BiasType
+from .types import Data
+from .types import DisableBit
+from .types import DynType
+from .types import GainType
+from .types import JointType
+from .types import Model
+from .types import array2df
+from .types import array3df
 from .warp_util import event_scope
 from .warp_util import kernel
 

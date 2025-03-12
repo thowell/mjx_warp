@@ -1,4 +1,4 @@
-# Copyright 2025 The Physics-Next Project Developers
+# Copyright 2025 The Newton Developers
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,8 +17,8 @@ import functools
 from typing import Callable, Optional
 
 import warp as wp
-from warp.context import Module, get_module
-
+from warp.context import Module
+from warp.context import get_module
 
 _STACK = None
 

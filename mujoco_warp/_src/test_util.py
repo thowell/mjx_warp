@@ -1,4 +1,4 @@
-# Copyright 2025 The Physics-Next Project Developers
+# Copyright 2025 The Newton Developers
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,11 +18,10 @@
 import time
 from typing import Callable, Tuple
 
-from etils import epath
+import mujoco
 import numpy as np
 import warp as wp
-
-import mujoco
+from etils import epath
 
 from . import io
 from . import types
@@ -30,7 +29,7 @@ from . import warp_util
 
 
 def fixture(fname: str, keyframe: int = -1, sparse: bool = True):
-  path = epath.resource_path("mujoco.mjx") / "test_data" / fname
+  path = epath.resource_path("mujoco_warp") / "test_data" / fname
   mjm = mujoco.MjModel.from_xml_path(path.as_posix())
   mjm.opt.jacobian = sparse
   mjd = mujoco.MjData(mjm)

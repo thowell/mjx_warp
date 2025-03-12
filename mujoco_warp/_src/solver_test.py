@@ -1,16 +1,16 @@
 """Tests for solver functions."""
 
+import mujoco
+import numpy as np
+import warp as wp
 from absl.testing import absltest
 from absl.testing import parameterized
 from etils import epath
-import mujoco
-from . import io
-from . import smooth
-from . import solver
-import numpy as np
-import warp as wp
 
-# tolerance for difference between MuJoCo and MJX smooth calculations - mostly
+import mujoco_warp as mjwarp
+from . import solver
+
+# tolerance for difference between MuJoCo and MJWarp smooth calculations - mostly
 # due to float precision
 _TOLERANCE = 5e-3
 
@@ -34,7 +34,7 @@ class SolverTest(parameterized.TestCase):
     njmax: int = 512,
     keyframe: int = 0,
   ):
-    path = epath.resource_path("mujoco.mjx") / "test_data" / fname
+    path = epath.resource_path("mujoco_warp") / "test_data" / fname
     mjm = mujoco.MjModel.from_xml_path(path.as_posix())
     mjm.opt.jacobian = is_sparse
     mjm.opt.iterations = iterations
@@ -45,8 +45,8 @@ class SolverTest(parameterized.TestCase):
     mjd = mujoco.MjData(mjm)
     mujoco.mj_resetDataKeyframe(mjm, mjd, keyframe)
     mujoco.mj_step(mjm, mjd)
-    m = io.put_model(mjm)
-    d = io.put_data(mjm, mjd, nworld=nworld, njmax=njmax)
+    m = mjwarp.put_model(mjm)
+    d = mjwarp.put_data(mjm, mjd, nworld=nworld, njmax=njmax)
     return mjm, mjd, m, d
 
   @parameterized.parameters(
@@ -55,7 +55,7 @@ class SolverTest(parameterized.TestCase):
     (mujoco.mjtCone.mjCONE_PYRAMIDAL, mujoco.mjtSolver.mjSOL_NEWTON, 2, 4, True),
   )
   def test_solve(self, cone, solver_, iterations, ls_iterations, sparse):
-    """Tests MJX solve."""
+    """Tests solve."""
     for keyframe in range(3):
       mjm, mjd, m, d = self._load(
         "humanoid/humanoid.xml",
@@ -78,27 +78,27 @@ class SolverTest(parameterized.TestCase):
 
       solver._create_context(m, d)
 
-      mjx_cost = d.efc.cost.numpy()[0] - d.efc.gauss.numpy()[0]
+      mjwarp_cost = d.efc.cost.numpy()[0] - d.efc.gauss.numpy()[0]
 
-      _assert_eq(mjx_cost, mj_cost, name="cost")
+      _assert_eq(mjwarp_cost, mj_cost, name="cost")
 
       qacc_warmstart = mjd.qacc_warmstart.copy()
       mujoco.mj_forward(mjm, mjd)
       mjd.qacc_warmstart = qacc_warmstart
 
-      m = io.put_model(mjm)
-      d = io.put_data(mjm, mjd, njmax=mjd.nefc)
+      m = mjwarp.put_model(mjm)
+      d = mjwarp.put_data(mjm, mjd, njmax=mjd.nefc)
       d.qacc.zero_()
       d.qfrc_constraint.zero_()
       d.efc.force.zero_()
 
       if solver_ == mujoco.mjtSolver.mjSOL_CG:
-        smooth.factor_m(m, d)
-      solver.solve(m, d)
+        mjwarp.factor_m(m, d)
+      mjwarp.solve(m, d)
 
       mj_cost = cost(mjd.qacc)
-      mjx_cost = cost(d.qacc.numpy()[0])
-      self.assertLessEqual(mjx_cost, mj_cost * 1.025)
+      mjwarp_cost = cost(d.qacc.numpy()[0])
+      self.assertLessEqual(mjwarp_cost, mj_cost * 1.025)
 
       if m.opt.solver == mujoco.mjtSolver.mjSOL_NEWTON:
         _assert_eq(d.qacc.numpy()[0], mjd.qacc, "qacc")
@@ -110,7 +110,7 @@ class SolverTest(parameterized.TestCase):
     (mujoco.mjtCone.mjCONE_PYRAMIDAL, mujoco.mjtSolver.mjSOL_NEWTON, 2, 4),
   )
   def test_solve_batch(self, cone, solver_, iterations, ls_iterations):
-    """Tests MJX solve."""
+    """Tests solve (batch)."""
     mjm0, mjd0, _, _ = self._load(
       "humanoid/humanoid.xml",
       is_sparse=False,
@@ -232,19 +232,19 @@ class SolverTest(parameterized.TestCase):
     d.efc.worldid = wp.from_numpy(efc_worldid, dtype=wp.int32)
 
     if solver_ == mujoco.mjtSolver.mjSOL_CG:
-      m0 = io.put_model(mjm0)
-      d0 = io.put_data(mjm0, mjd0)
-      smooth.factor_m(m0, d0)
+      m0 = mjwarp.put_model(mjm0)
+      d0 = mjwarp.put_data(mjm0, mjd0)
+      mjwarp.factor_m(m0, d0)
       qLD0 = d0.qLD.numpy()
 
-      m1 = io.put_model(mjm1)
-      d1 = io.put_data(mjm1, mjd1)
-      smooth.factor_m(m1, d1)
+      m1 = mjwarp.put_model(mjm1)
+      d1 = mjwarp.put_data(mjm1, mjd1)
+      mjwarp.factor_m(m1, d1)
       qLD1 = d1.qLD.numpy()
 
-      m2 = io.put_model(mjm2)
-      d2 = io.put_data(mjm2, mjd2)
-      smooth.factor_m(m2, d2)
+      m2 = mjwarp.put_model(mjm2)
+      d2 = mjwarp.put_data(mjm2, mjd2)
+      mjwarp.factor_m(m2, d2)
       qLD2 = d2.qLD.numpy()
 
       qLD = np.vstack([qLD0, qLD1, qLD2])
@@ -263,16 +263,16 @@ class SolverTest(parameterized.TestCase):
       return cost
 
     mj_cost0 = cost(mjm0, mjd0, mjd0.qacc)
-    mjx_cost0 = cost(mjm0, mjd0, d.qacc.numpy()[0])
-    self.assertLessEqual(mjx_cost0, mj_cost0 * 1.025)
+    mjwarp_cost0 = cost(mjm0, mjd0, d.qacc.numpy()[0])
+    self.assertLessEqual(mjwarp_cost0, mj_cost0 * 1.025)
 
     mj_cost1 = cost(mjm1, mjd1, mjd1.qacc)
-    mjx_cost1 = cost(mjm1, mjd1, d.qacc.numpy()[1])
-    self.assertLessEqual(mjx_cost1, mj_cost1 * 1.025)
+    mjwarp_cost1 = cost(mjm1, mjd1, d.qacc.numpy()[1])
+    self.assertLessEqual(mjwarp_cost1, mj_cost1 * 1.025)
 
     mj_cost2 = cost(mjm2, mjd2, mjd2.qacc)
-    mjx_cost2 = cost(mjm2, mjd2, d.qacc.numpy()[2])
-    self.assertLessEqual(mjx_cost2, mj_cost2 * 1.025)
+    mjwarp_cost2 = cost(mjm2, mjd2, d.qacc.numpy()[2])
+    self.assertLessEqual(mjwarp_cost2, mj_cost2 * 1.025)
 
     if m.opt.solver == mujoco.mjtSolver.mjSOL_NEWTON:
       _assert_eq(d.qacc.numpy()[0], mjd0.qacc, "qacc0")

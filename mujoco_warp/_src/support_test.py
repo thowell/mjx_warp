@@ -1,4 +1,4 @@
-# Copyright 2025 The Physics-Next Project Developers
+# Copyright 2025 The Newton Developers
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,19 +15,19 @@
 
 """Tests for support functions."""
 
-from absl.testing import absltest
-from absl.testing import parameterized
 import mujoco
-from mujoco import mjx
 import numpy as np
 import warp as wp
+from absl.testing import absltest
+from absl.testing import parameterized
+
+import mujoco_warp as mjwarp
+
 from . import test_util
-from .support import xfrc_accumulate
-from .io import make_data
 
 wp.config.verify_cuda = True
 
-# tolerance for difference between MuJoCo and mjWarp support calculations - mostly
+# tolerance for difference between MuJoCo and MJWarp support calculations - mostly
 # due to float precision
 _TOLERANCE = 5e-5
 
@@ -50,7 +50,7 @@ class SupportTest(parameterized.TestCase):
 
     res = wp.zeros((1, mjm.nv), dtype=wp.float32)
     vec = wp.from_numpy(np.expand_dims(mj_vec, axis=0), dtype=wp.float32)
-    mjx.mul_m(m, d, res, vec)
+    mjwarp.mul_m(m, d, res, vec)
 
     _assert_eq(res.numpy()[0], mj_res, f"mul_m ({'sparse' if sparse else 'dense'})")
 
@@ -61,7 +61,7 @@ class SupportTest(parameterized.TestCase):
     xfrc = np.random.randn(*d.xfrc_applied.numpy().shape)
     d.xfrc_applied = wp.from_numpy(xfrc, dtype=wp.spatial_vector)
     qfrc = wp.zeros((1, mjm.nv), dtype=wp.float32)
-    xfrc_accumulate(m, d, qfrc)
+    mjwarp.xfrc_accumulate(m, d, qfrc)
 
     qfrc_expected = np.zeros(m.nv)
     xfrc = xfrc[0]
@@ -74,7 +74,7 @@ class SupportTest(parameterized.TestCase):
   def test_make_put_data(self):
     """Tests that make_put_data and put_data are producing the same shapes for all warp arrays."""
     mjm, mjd, m, d = test_util.fixture("pendula.xml")
-    md = make_data(mjm)
+    md = mjwarp.make_data(mjm)
 
     # same number of fields
     self.assertEqual(len(d.__dict__), len(md.__dict__))

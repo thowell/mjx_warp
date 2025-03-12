@@ -1,4 +1,4 @@
-# Copyright 2025 The Physics-Next Project Developers
+# Copyright 2025 The Newton Developers
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,14 +16,13 @@
 """Tests for broad phase functions."""
 
 import mujoco
-from mujoco import mjx
-import warp as wp
 import numpy as np
-from absl.testing import absltest
-from absl.testing import parameterized
+import warp as wp
+from absl.testing import absltest, parameterized
 
-from . import test_util
-from . import collision_driver
+import mujoco_warp as mjwarp
+
+from . import collision_driver, test_util
 from .collision_driver import AABB
 
 
@@ -161,10 +160,10 @@ class BroadPhaseTest(parameterized.TestCase):
     d = mujoco.MjData(m)
     mujoco.mj_forward(m, d)
 
-    mx = mjx.put_model(m)
-    dx = mjx.put_data(m, d)
+    mx = mjwarp.put_model(m)
+    dx = mjwarp.put_data(m, d)
 
-    mjx.broadphase_sweep_and_prune(mx, dx)
+    mjwarp.broadphase_sweep_and_prune(mx, dx)
 
     m = mx
     d = dx
@@ -186,7 +185,7 @@ class BroadPhaseTest(parameterized.TestCase):
       "broadphase_result_count",
     )
 
-    mjx.broadphase_sweep_and_prune(m, d)
+    mjwarp.broadphase_sweep_and_prune(m, d)
 
     result = d.broadphase_pairs
     broadphase_result_count = d.broadphase_result_count
@@ -246,7 +245,7 @@ class BroadPhaseTest(parameterized.TestCase):
     np.testing.assert_allclose(d2.broadphase_pairs.numpy()[0, 2][1], 2)
 
     # two worlds and four collisions
-    d3 = mjx.make_data(mjm, nworld=2)
+    d3 = mjwarp.make_data(mjm, nworld=2)
     d3.geom_xpos = wp.array(
       np.vstack(
         [np.expand_dims(mjd1.geom_xpos, axis=0), np.expand_dims(mjd2.geom_xpos, axis=0)]

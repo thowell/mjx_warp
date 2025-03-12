@@ -1,4 +1,4 @@
-# Copyright 2025 The Physics-Next Project Developers
+# Copyright 2025 The Newton Developers
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,19 +24,19 @@ from etils import epath
 import warp as wp
 
 import mujoco
-from mujoco import mjx
+import mujoco_warp as mjwarp
 
 _FUNCTION = flags.DEFINE_enum(
   "function",
   "kinematics",
-  [n for n, _ in inspect.getmembers(mjx, inspect.isfunction)],
+  [n for n, _ in inspect.getmembers(mjwarp, inspect.isfunction)],
   "the function to run",
 )
 _MJCF = flags.DEFINE_string(
   "mjcf", None, "path to model `.xml` or `.mjb`", required=True
 )
 _BASE_PATH = flags.DEFINE_string(
-  "base_path", None, "base path, defaults to mujoco.mjx resource path"
+  "base_path", None, "base path, defaults to mujoco_warp resource path"
 )
 _NSTEP = flags.DEFINE_integer("nstep", 1000, "number of steps per rollout")
 _BATCH_SIZE = flags.DEFINE_integer("batch_size", 4096, "number of parallel rollouts")
@@ -67,7 +67,7 @@ def _main(argv: Sequence[str]):
   """Runs testpeed function."""
   wp.init()
 
-  path = epath.resource_path("mujoco.mjx") / "test_data"
+  path = epath.resource_path("mujoco_warp") / "test_data"
   path = _BASE_PATH.value or path
   f = epath.Path(path) / _MJCF.value
   if f.suffix == ".mjb":
@@ -94,8 +94,8 @@ def _main(argv: Sequence[str]):
   )
   print(f"Data ncon: {d.ncon} nefc: {d.nefc}")
   print(f"Rolling out {_NSTEP.value} steps at dt = {m.opt.timestep:.3f}...")
-  jit_time, run_time, trace, steps = mjx.benchmark(
-    mjx.__dict__[_FUNCTION.value],
+  jit_time, run_time, trace, steps = mjwarp.benchmark(
+    mjwarp.__dict__[_FUNCTION.value],
     m,
     d,
     _NSTEP.value,
