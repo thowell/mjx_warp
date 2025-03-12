@@ -20,6 +20,8 @@ import warp as wp
 from warp.context import Module
 from warp.context import get_module
 
+from . import types
+
 _STACK = None
 
 
@@ -134,3 +136,38 @@ def kernel(
     module = get_module(".".join([f.__module__] + outer_functions))
 
   return wp.kernel(f, enable_backward=enable_backward, module=module)
+
+@wp.kernel
+def _copy_2df(dest: types.array2df, src: types.array2df):
+  i, j = wp.tid()
+  dest[i, j] = src[i, j]
+
+@wp.kernel
+def _copy_3df(dest: types.array3df, src: types.array3df):
+  i, j, k = wp.tid()
+  dest[i, j, k] = src[i, j, k]
+
+@wp.kernel
+def _copy_2dvec10f(dest: wp.array2d(dtype=types.vec10f), src: wp.array2d(dtype=types.vec10f)):
+  i, j = wp.tid()
+  dest[i, j] = src[i, j]
+
+
+def kernel_copy(dest: wp.array, src: wp.array):
+  if src.shape != dest.shape:
+    raise ValueError("only same shape copying allowed")
+  
+  if src.dtype != dest.dtype:
+    raise ValueError("only same dtype copying allowed")
+
+
+  if src.ndim == 2 and src.dtype == wp.float32:
+    kernel = _copy_2df
+  elif src.ndim == 3 and src.dtype == wp.float32:
+    kernel = _copy_3df
+  elif src.ndim == 2 and src.dtype == types.vec10f:
+    kernel = _copy_2dvec10f
+  else:
+    raise NotImplementedError("copy not supported for these array types")
+
+  wp.launch(kernel=kernel, dim=src.shape, inputs=[dest, src])

@@ -320,6 +320,7 @@ class Model:
   body_rootid: wp.array(dtype=wp.int32, ndim=1)
   body_inertia: wp.array(dtype=wp.vec3, ndim=1)
   body_mass: wp.array(dtype=wp.float32, ndim=1)
+  subtree_mass: wp.array(dtype=wp.float32, ndim=1)
   body_invweight0: wp.array(dtype=wp.float32, ndim=2)
   body_geomnum: wp.array(dtype=wp.int32, ndim=1)
   body_geomadr: wp.array(dtype=wp.int32, ndim=1)

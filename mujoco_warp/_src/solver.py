@@ -6,6 +6,7 @@ from . import support
 from . import types
 from .warp_util import event_scope
 from .warp_util import kernel
+from .warp_util import kernel_copy
 
 
 def _create_context(m: types.Model, d: types.Data, grad: bool = True):
@@ -190,7 +191,7 @@ def _update_gradient(m: types.Model, d: types.Data):
       d.efc.J[efcid, dofi] * d.efc.J[efcid, dofj] * efc_D,
     )
 
-  @kernel(module="unique")
+  @kernel
   def _cholesky(d: types.Data):
     worldid = wp.tid()
     mat_tile = wp.tile_load(d.efc.h[worldid], shape=(TILE, TILE))
@@ -693,7 +694,7 @@ def solve(m: types.Model, d: types.Data):
       )
 
   # warmstart
-  wp.copy(d.qacc, d.qacc_warmstart)
+  kernel_copy(d.qacc, d.qacc_warmstart)
 
   _create_context(m, d, grad=True)
 
@@ -721,4 +722,4 @@ def solve(m: types.Model, d: types.Data):
     wp.launch(_done, dim=(d.nworld,), inputs=[m, d, i])
     # TODO(team): return if all done
 
-  wp.copy(d.qacc_warmstart, d.qacc)
+  kernel_copy(d.qacc_warmstart, d.qacc)
