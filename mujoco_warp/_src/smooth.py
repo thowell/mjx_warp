@@ -230,7 +230,6 @@ def com_pos(m: Model, d: Data):
     elif jnt_type == wp.static(JointType.HINGE.value):  # hinge
       res[dofid] = wp.spatial_vector(xaxis, wp.cross(xaxis, offset))
 
-
   wp.launch(subtree_com_init, dim=(d.nworld, m.nbody), inputs=[m, d])
 
   body_treeadr = m.body_treeadr.numpy()

@@ -17,16 +17,14 @@ from warp.jax_experimental.ffi import jax_callable
 import mujoco_warp as mjwarp
 from mujoco_warp._src.warp_util import kernel_copy
 
-os.environ["XLA_FLAGS"] = (
-    "--xla_gpu_graph_min_graph_size=1"
-)
+os.environ["XLA_FLAGS"] = "--xla_gpu_graph_min_graph_size=1"
 
 NWORLDS = 8192
 UNROLL_LENGTH = 1000
 
 wp.clear_kernel_cache()
 
-path = epath.resource_path("mujoco_warp") / "test_data" / 'humanoid/humanoid.xml'
+path = epath.resource_path("mujoco_warp") / "test_data" / "humanoid/humanoid.xml"
 mjm = mujoco.MjModel.from_xml_path(path.as_posix())
 mjm.opt.iterations = 1
 mjm.opt.ls_iterations = 4
@@ -39,23 +37,30 @@ m = mjwarp.put_model(mjm)
 d = mjwarp.put_data(mjm, mjd, nworld=NWORLDS, nconmax=131012, njmax=131012 * 4)
 
 
-def warp_step(qpos_in: wp.array(dtype=wp.float32, ndim=2),
-              qvel_in: wp.array(dtype=wp.float32, ndim=2),
-              qpos_out: wp.array(dtype=wp.float32, ndim=2),
-              qvel_out: wp.array(dtype=wp.float32, ndim=2)):
+def warp_step(
+  qpos_in: wp.array(dtype=wp.float32, ndim=2),
+  qvel_in: wp.array(dtype=wp.float32, ndim=2),
+  qpos_out: wp.array(dtype=wp.float32, ndim=2),
+  qvel_out: wp.array(dtype=wp.float32, ndim=2),
+):
   kernel_copy(d.qpos, qpos_in)
   kernel_copy(d.qvel, qvel_in)
   mjwarp.step(m, d)
   kernel_copy(qpos_out, d.qpos)
   kernel_copy(qvel_out, d.qvel)
 
-warp_step_fn = jax_callable(warp_step, num_outputs=2, output_dims={'qpos_out': (NWORLDS, mjm.nq), 'qvel_out': (NWORLDS, mjm.nv)})
+
+warp_step_fn = jax_callable(
+  warp_step,
+  num_outputs=2,
+  output_dims={"qpos_out": (NWORLDS, mjm.nq), "qvel_out": (NWORLDS, mjm.nv)},
+)
 
 jax_qpos = jp.tile(jp.array(m.qpos0), (8192, 1))
 jax_qvel = jp.zeros((8192, m.nv))
 
-def unroll(qpos, qvel):
 
+def unroll(qpos, qvel):
   def step(carry, _):
     qpos, qvel = carry
     qpos, qvel = warp_step_fn(qpos, qvel)
@@ -64,6 +69,7 @@ def unroll(qpos, qvel):
   (qpos, qvel), _ = jax.lax.scan(step, (qpos, qvel), length=UNROLL_LENGTH)
 
   return qpos, qvel
+
 
 jax_unroll_fn = jax.jit(unroll).lower(jax_qpos, jax_qvel).compile()
 
