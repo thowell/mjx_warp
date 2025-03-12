@@ -1,4 +1,4 @@
-# Copyright 2025 The Physics-Next Project Developers
+# Copyright 2025 The Newton Developers
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,14 +15,14 @@
 
 import warp as wp
 
-from .warp_util import event_scope
+from .support import group_key
+from .support import where
+from .types import MJ_MINVAL
 from .types import Data
 from .types import DisableBit
-from .types import MJ_MINVAL
 from .types import Model
 from .types import vec5
-from .support import where
-from .support import group_key
+from .warp_util import event_scope
 
 
 @wp.func

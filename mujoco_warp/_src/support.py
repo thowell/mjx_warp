@@ -1,4 +1,4 @@
-# Copyright 2025 The Physics-Next Project Developers
+# Copyright 2025 The Newton Developers
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,13 +13,15 @@
 # limitations under the License.
 # ==============================================================================
 
+from typing import Any
+
 import mujoco
 import warp as wp
-from .types import Model
-from .types import Data
-from .types import array2df
+
 from .types import NUM_GEOM_TYPES
-from typing import Any
+from .types import Data
+from .types import Model
+from .types import array2df
 from .types import array3df
 from .warp_util import event_scope
 from .warp_util import kernel
@@ -113,40 +115,25 @@ def mul_m(
     )
 
 
-@wp.kernel
-def process_level(
-  body_tree: wp.array(ndim=1, dtype=int),
-  body_parentid: wp.array(ndim=1, dtype=int),
-  dof_bodyid: wp.array(ndim=1, dtype=int),
-  mask: wp.array2d(dtype=wp.bool),
-  beg: int,
-):
-  dofid, tid_y = wp.tid()
-  j = beg + tid_y
-  el = body_tree[j]
-  parent_id = body_parentid[el]
-  parent_val = mask[dofid, parent_id]
-  mask[dofid, el] = parent_val or (dof_bodyid[dofid] == el)
+@event_scope
+def xfrc_accumulate(m: Model, d: Data, qfrc: array2df):
+  @wp.kernel
+  def _accumulate(m: Model, d: Data, qfrc: array2df):
+    worldid, dofid = wp.tid()
+    cdof = d.cdof[worldid, dofid]
+    rotational_cdof = wp.vec3(cdof[0], cdof[1], cdof[2])
+    jac = wp.spatial_vector(cdof[3], cdof[4], cdof[5], cdof[0], cdof[1], cdof[2])
 
+    dof_bodyid = m.dof_bodyid[dofid]
+    accumul = float(0.0)
 
-@wp.kernel
-def compute_qfrc(
-  d: Data,
-  m: Model,
-  mask: wp.array2d(dtype=wp.bool),
-  qfrc_total: array2df,
-):
-  worldid, dofid = wp.tid()
-  accumul = float(0.0)
-  cdof_vec = d.cdof[worldid, dofid]
-  rotational_cdof = wp.vec3(cdof_vec[0], cdof_vec[1], cdof_vec[2])
-
-  jac = wp.spatial_vector(
-    cdof_vec[3], cdof_vec[4], cdof_vec[5], cdof_vec[0], cdof_vec[1], cdof_vec[2]
-  )
-
-  for bodyid in range(m.nbody):
-    if mask[dofid, bodyid]:
+    for bodyid in range(dof_bodyid, m.nbody):
+      # any body that is in the subtree of dof_bodyid is part of the jacobian
+      parentid = bodyid
+      while parentid != 0 and parentid != dof_bodyid:
+        parentid = m.body_parentid[parentid]
+      if parentid == 0:
+        continue  # body is not part of the subtree
       offset = d.xipos[worldid, bodyid] - d.subtree_com[worldid, m.body_rootid[bodyid]]
       cross_term = wp.cross(rotational_cdof, offset)
       accumul += wp.dot(jac, d.xfrc_applied[worldid, bodyid]) + wp.dot(
@@ -158,30 +145,9 @@ def compute_qfrc(
         ),
       )
 
-  qfrc_total[worldid, dofid] = accumul
+    qfrc[worldid, dofid] += accumul
 
-
-@event_scope
-def xfrc_accumulate(m: Model, d: Data) -> array2df:
-  body_treeadr_np = m.body_treeadr.numpy()
-  mask = wp.zeros((m.nv, m.nbody), dtype=wp.bool)
-
-  for i in range(len(body_treeadr_np)):
-    beg = body_treeadr_np[i]
-    end = m.nbody if i == len(body_treeadr_np) - 1 else body_treeadr_np[i + 1]
-
-    if end > beg:
-      wp.launch(
-        kernel=process_level,
-        dim=[m.nv, (end - beg)],
-        inputs=[m.body_tree, m.body_parentid, m.dof_bodyid, mask, beg],
-      )
-
-  qfrc_total = wp.zeros((d.nworld, m.nv), dtype=float)
-
-  wp.launch(kernel=compute_qfrc, dim=(d.nworld, m.nv), inputs=[d, m, mask, qfrc_total])
-
-  return qfrc_total
+  wp.launch(kernel=_accumulate, dim=(d.nworld, m.nv), inputs=[m, d, qfrc])
 
 
 @wp.func

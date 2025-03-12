@@ -1,4 +1,4 @@
-# Copyright 2025 The Physics-Next Project Developers
+# Copyright 2025 The Newton Developers
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,14 +15,16 @@
 
 """Tests for constraint functions."""
 
+import mujoco
+import numpy as np
 from absl.testing import absltest
 from absl.testing import parameterized
-from . import test_util
-import mujoco
-from mujoco import mjx
-import numpy as np
 
-# tolerance for difference between MuJoCo and MJX constraint calculations,
+import mujoco_warp as mjwarp
+
+from . import test_util
+
+# tolerance for difference between MuJoCo and MJWarp constraint calculations,
 # mostly due to float precision
 _TOLERANCE = 5e-5
 
@@ -43,15 +45,15 @@ class ConstraintTest(parameterized.TestCase):
       mujoco.mj_resetDataKeyframe(mjm, mjd, key)
 
       mujoco.mj_forward(mjm, mjd)
-      m = mjx.put_model(mjm)
-      d = mjx.put_data(mjm, mjd)
-      mjx.make_constraint(m, d)
+      m = mjwarp.put_model(mjm)
+      d = mjwarp.put_data(mjm, mjd)
+      mjwarp.make_constraint(m, d)
 
-      _assert_eq(d.efc_J.numpy()[: mjd.nefc, :].reshape(-1), mjd.efc_J, "efc_J")
-      _assert_eq(d.efc_D.numpy()[: mjd.nefc], mjd.efc_D, "efc_D")
-      _assert_eq(d.efc_aref.numpy()[: mjd.nefc], mjd.efc_aref, "efc_aref")
-      _assert_eq(d.efc_pos.numpy()[: mjd.nefc], mjd.efc_pos, "efc_pos")
-      _assert_eq(d.efc_margin.numpy()[: mjd.nefc], mjd.efc_margin, "efc_margin")
+      _assert_eq(d.efc.J.numpy()[: mjd.nefc, :].reshape(-1), mjd.efc_J, "efc_J")
+      _assert_eq(d.efc.D.numpy()[: mjd.nefc], mjd.efc_D, "efc_D")
+      _assert_eq(d.efc.aref.numpy()[: mjd.nefc], mjd.efc_aref, "efc_aref")
+      _assert_eq(d.efc.pos.numpy()[: mjd.nefc], mjd.efc_pos, "efc_pos")
+      _assert_eq(d.efc.margin.numpy()[: mjd.nefc], mjd.efc_margin, "efc_margin")
 
 
 if __name__ == "__main__":

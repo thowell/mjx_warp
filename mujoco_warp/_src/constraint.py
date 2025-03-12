@@ -1,4 +1,4 @@
-# Copyright 2025 The Physics-Next Project Developers
+# Copyright 2025 The Newton Developers
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@
 # ==============================================================================
 
 import warp as wp
+
 from . import types
 from .warp_util import event_scope
 
@@ -66,10 +67,10 @@ def _update_efc_row(
   imp = wp.select(imp_x > 1.0, imp, dmax)
 
   # Update constraints
-  d.efc_D[efcid] = 1.0 / wp.max(invweight * (1.0 - imp) / imp, types.MJ_MINVAL)
-  d.efc_aref[efcid] = -k * imp * pos_aref - b * Jqvel
-  d.efc_pos[efcid] = pos_aref + margin
-  d.efc_margin[efcid] = margin
+  d.efc.D[efcid] = 1.0 / wp.max(invweight * (1.0 - imp) / imp, types.MJ_MINVAL)
+  d.efc.aref[efcid] = -k * imp * pos_aref - b * Jqvel
+  d.efc.pos[efcid] = pos_aref + margin
+  d.efc.margin[efcid] = margin
 
 
 @wp.func
@@ -116,12 +117,12 @@ def _efc_limit_slide_hinge(
 
   if active:
     efcid = wp.atomic_add(d.nefc_total, 0, 1)
-    d.efc_worldid[efcid] = worldid
+    d.efc.worldid[efcid] = worldid
 
     dofadr = m.jnt_dofadr[jntid]
 
     J = float(dist_min < dist_max) * 2.0 - 1.0
-    d.efc_J[efcid, dofadr] = J
+    d.efc.J[efcid, dofadr] = J
     Jqvel = J * d.qvel[worldid, dofadr]
 
     _update_efc_row(
@@ -160,7 +161,7 @@ def _efc_contact_pyramidal(
   if active:
     efcid = wp.atomic_add(d.nefc_total, 0, 1)
     worldid = d.contact.worldid[conid]
-    d.efc_worldid[efcid] = worldid
+    d.efc.worldid[efcid] = worldid
 
     body1 = m.geom_bodyid[d.contact.geom[conid][0]]
     body2 = m.geom_bodyid[d.contact.geom[conid][1]]
@@ -190,7 +191,7 @@ def _efc_contact_pyramidal(
       else:
         J = diff_0 - diff_i * d.contact.friction[conid][dimid2 - 1]
 
-      d.efc_J[efcid, i] = J
+      d.efc.J[efcid, i] = J
       Jqvel += J * d.qvel[worldid, i]
 
     _update_efc_row(
@@ -215,7 +216,7 @@ def make_constraint(m: types.Model, d: types.Data):
 
   if not (m.opt.disableflags & types.DisableBit.CONSTRAINT.value):
     d.nefc_total.zero_()
-    d.efc_J.zero_()
+    d.efc.J.zero_()
 
     refsafe = not m.opt.disableflags & types.DisableBit.REFSAFE.value
 

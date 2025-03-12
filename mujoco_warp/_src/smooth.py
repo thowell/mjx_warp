@@ -1,4 +1,4 @@
-# Copyright 2025 The Physics-Next Project Developers
+# Copyright 2025 The Newton Developers
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,14 +14,15 @@
 # ==============================================================================
 
 import warp as wp
-from . import math
 
-from .types import Model
+from . import math
 from .types import Data
+from .types import JointType
+from .types import Model
+from .types import TrnType
 from .types import array2df
 from .types import array3df
 from .types import vec10
-from .types import JointType, TrnType
 from .warp_util import event_scope
 from .warp_util import kernel
 
@@ -403,19 +404,15 @@ def factor_m(m: Model, d: Data):
 def rne(m: Model, d: Data):
   """Computes inverse dynamics using Newton-Euler algorithm."""
 
-  cacc = wp.zeros(shape=(d.nworld, m.nbody), dtype=wp.spatial_vector)
-  cfrc = wp.zeros(shape=(d.nworld, m.nbody), dtype=wp.spatial_vector)
-
   @kernel
-  def cacc_gravity(m: Model, cacc: wp.array(dtype=wp.spatial_vector, ndim=2)):
+  def cacc_gravity(m: Model, d: Data):
     worldid = wp.tid()
-    cacc[worldid, 0] = wp.spatial_vector(wp.vec3(0.0), -m.opt.gravity)
+    d.rne_cacc[worldid, 0] = wp.spatial_vector(wp.vec3(0.0), -m.opt.gravity)
 
   @kernel
   def cacc_level(
     m: Model,
     d: Data,
-    cacc: wp.array(dtype=wp.spatial_vector, ndim=2),
     leveladr: int,
   ):
     worldid, nodeid = wp.tid()
@@ -423,54 +420,52 @@ def rne(m: Model, d: Data):
     dofnum = m.body_dofnum[bodyid]
     pid = m.body_parentid[bodyid]
     dofadr = m.body_dofadr[bodyid]
-    local_cacc = cacc[worldid, pid]
+    local_cacc = d.rne_cacc[worldid, pid]
     for i in range(dofnum):
       local_cacc += d.cdof_dot[worldid, dofadr + i] * d.qvel[worldid, dofadr + i]
-    cacc[worldid, bodyid] = local_cacc
+    d.rne_cacc[worldid, bodyid] = local_cacc
 
   @kernel
-  def frc_fn(
-    d: Data,
-    cfrc: wp.array(dtype=wp.spatial_vector, ndim=2),
-    cacc: wp.array(dtype=wp.spatial_vector, ndim=2),
-  ):
+  def frc_fn(d: Data):
     worldid, bodyid = wp.tid()
-    frc = math.inert_vec(d.cinert[worldid, bodyid], cacc[worldid, bodyid])
+    frc = math.inert_vec(d.cinert[worldid, bodyid], d.rne_cacc[worldid, bodyid])
     frc += math.motion_cross_force(
       d.cvel[worldid, bodyid],
       math.inert_vec(d.cinert[worldid, bodyid], d.cvel[worldid, bodyid]),
     )
-    cfrc[worldid, bodyid] += frc
+    d.rne_cfrc[worldid, bodyid] = frc
 
   @kernel
-  def cfrc_fn(m: Model, cfrc: wp.array(dtype=wp.spatial_vector, ndim=2), leveladr: int):
+  def cfrc_fn(m: Model, d: Data, leveladr: int):
     worldid, nodeid = wp.tid()
     bodyid = m.body_tree[leveladr + nodeid]
     pid = m.body_parentid[bodyid]
-    wp.atomic_add(cfrc[worldid], pid, cfrc[worldid, bodyid])
+    wp.atomic_add(d.rne_cfrc[worldid], pid, d.rne_cfrc[worldid, bodyid])
 
   @kernel
-  def qfrc_bias(m: Model, d: Data, cfrc: wp.array(dtype=wp.spatial_vector, ndim=2)):
+  def qfrc_bias(m: Model, d: Data):
     worldid, dofid = wp.tid()
     bodyid = m.dof_bodyid[dofid]
-    d.qfrc_bias[worldid, dofid] = wp.dot(d.cdof[worldid, dofid], cfrc[worldid, bodyid])
+    d.qfrc_bias[worldid, dofid] = wp.dot(
+      d.cdof[worldid, dofid], d.rne_cfrc[worldid, bodyid]
+    )
 
-  wp.launch(cacc_gravity, dim=[d.nworld], inputs=[m, cacc])
+  wp.launch(cacc_gravity, dim=[d.nworld], inputs=[m, d])
 
   body_treeadr = m.body_treeadr.numpy()
   for i in range(len(body_treeadr)):
     beg = body_treeadr[i]
     end = m.nbody if i == len(body_treeadr) - 1 else body_treeadr[i + 1]
-    wp.launch(cacc_level, dim=(d.nworld, end - beg), inputs=[m, d, cacc, beg])
+    wp.launch(cacc_level, dim=(d.nworld, end - beg), inputs=[m, d, beg])
 
-  wp.launch(frc_fn, dim=[d.nworld, m.nbody], inputs=[d, cfrc, cacc])
+  wp.launch(frc_fn, dim=[d.nworld, m.nbody], inputs=[d])
 
   for i in reversed(range(len(body_treeadr))):
     beg = body_treeadr[i]
     end = m.nbody if i == len(body_treeadr) - 1 else body_treeadr[i + 1]
-    wp.launch(cfrc_fn, dim=[d.nworld, end - beg], inputs=[m, cfrc, beg])
+    wp.launch(cfrc_fn, dim=[d.nworld, end - beg], inputs=[m, d, beg])
 
-  wp.launch(qfrc_bias, dim=[d.nworld, m.nv], inputs=[m, d, cfrc])
+  wp.launch(qfrc_bias, dim=[d.nworld, m.nv], inputs=[m, d])
 
 
 @event_scope

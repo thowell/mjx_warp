@@ -1,9 +1,9 @@
 import warp as wp
 
 from . import math
-from .types import Model
 from .types import Data
 from .types import JointType
+from .types import Model
 from .warp_util import event_scope
 from .warp_util import kernel
 

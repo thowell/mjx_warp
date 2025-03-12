@@ -1,4 +1,4 @@
-# Copyright 2025 The Physics-Next Project Developers
+# Copyright 2025 The Newton Developers
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,13 +15,13 @@
 
 import warp as wp
 
-from .types import Model
-from .types import Data
-from .types import GeomType
-from .math import make_frame
 from .math import closest_segment_to_segment_points
+from .math import make_frame
 from .math import normalize_with_norm
 from .support import group_key
+from .types import Data
+from .types import GeomType
+from .types import Model
 
 
 @wp.struct

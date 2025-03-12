@@ -1,4 +1,4 @@
-# Copyright 2025 The Physics-Next Project Developers
+# Copyright 2025 The Newton Developers
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,10 +15,11 @@
 """Tests the collision driver."""
 
 import mujoco
-from mujoco import mjx
 import numpy as np
 from absl.testing import absltest
 from absl.testing import parameterized
+
+import mujoco_warp as mjwarp
 
 
 class PrimitiveTest(parameterized.TestCase):
@@ -102,9 +103,9 @@ class PrimitiveTest(parameterized.TestCase):
     m = mujoco.MjModel.from_xml_string(self._MJCFS[name])
     d = mujoco.MjData(m)
     mujoco.mj_forward(m, d)
-    mx = mjx.put_model(m)
-    dx = mjx.put_data(m, d)
-    mjx.collision(mx, dx)
+    mx = mjwarp.put_model(m)
+    dx = mjwarp.put_data(m, d)
+    mjwarp.collision(mx, dx)
     mujoco.mj_collision(m, d)
     self.assertEqual(d.ncon, dx.ncon.numpy()[0])
     for i in range(d.ncon):
