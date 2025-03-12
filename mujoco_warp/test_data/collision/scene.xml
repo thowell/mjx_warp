@@ -1,0 +1,25 @@
+<mujoco>
+  <asset>
+    <model name="sphere" file="sphere.xml"/>
+    <model name="capsule" file="capsule.xml"/>
+    <model name="box" file="box.xml"/>
+  </asset>
+  <worldbody>
+    <geom name="floor" size="10 10 .001" type="plane"/>
+    <replicate count="2">
+      <frame>
+        <attach model="sphere" body="sphere" prefix="_"/>
+      </frame>
+    </replicate>
+    <replicate count="2">
+      <frame>
+        <attach model="capsule" body="capsule" prefix="_"/>
+      </frame>
+    </replicate>
+    <replicate count="2">
+      <frame>
+        <attach model="box" body="box" prefix="_"/>
+      </frame>
+    </replicate>
+  </worldbody>
+</mujoco>
