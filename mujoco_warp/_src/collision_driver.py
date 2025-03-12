@@ -292,7 +292,7 @@ def broadphase_sweep_and_prune_kernel(
 
       if pairid >= d.nconmax:
         return
-      
+
       pair = _geom_pair(m, idx1, idx2)
       key = group_key(m.geom_type[idx1], m.geom_type[idx2])
       d.collision_pair[pairid] = pair
@@ -504,7 +504,7 @@ def nxn_broadphase(m: Model, d: Data):
 
       if pairid >= d.nconmax:
         return
-      
+
       pair = _geom_pair(m, geom1, geom2)
       key = group_key(type1, type2)
       d.collision_pair[pairid] = pair

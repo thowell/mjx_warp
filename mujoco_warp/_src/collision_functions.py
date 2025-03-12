@@ -344,7 +344,7 @@ def create_collision_function_kernel(type1, type2):
     d: Data,
   ):
     tid = wp.tid()
-    
+
     if tid >= d.ncollision[0] or d.collision_type[tid] != key:
       return
 

@@ -182,9 +182,7 @@ class BroadPhaseTest(parameterized.TestCase):
     )
 
     ncollision = dx.ncollision.numpy()[0]
-    np.testing.assert_equal(
-      ncollision, len(brute_force_overlaps[0]), "ncollision"
-    )
+    np.testing.assert_equal(ncollision, len(brute_force_overlaps[0]), "ncollision")
 
     mjwarp.broadphase_sweep_and_prune(m, d)
 
