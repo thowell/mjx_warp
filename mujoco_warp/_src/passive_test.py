@@ -23,7 +23,7 @@ import mujoco_warp as mjwarp
 
 from . import test_util
 
-# tolerance for difference between MuJoCo and MJX smooth calculations - mostly
+# tolerance for difference between MuJoCo and MJWarp passive force calculations - mostly
 # due to float precision
 _TOLERANCE = 5e-5
 

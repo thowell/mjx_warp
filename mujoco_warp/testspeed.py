@@ -18,12 +18,12 @@
 import inspect
 from typing import Sequence
 
+import mujoco
+import warp as wp
 from absl import app
 from absl import flags
 from etils import epath
-import warp as wp
 
-import mujoco
 import mujoco_warp as mjwarp
 
 _FUNCTION = flags.DEFINE_enum(

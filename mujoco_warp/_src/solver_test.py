@@ -8,6 +8,7 @@ from absl.testing import parameterized
 from etils import epath
 
 import mujoco_warp as mjwarp
+
 from . import solver
 
 # tolerance for difference between MuJoCo and MJWarp smooth calculations - mostly

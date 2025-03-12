@@ -19,12 +19,13 @@ import logging
 import time
 from typing import Sequence
 
-import warp as wp
-from absl import app, flags
-import numpy as np
-
 import mujoco
 import mujoco.viewer
+import numpy as np
+import warp as wp
+from absl import app
+from absl import flags
+
 import mujoco_warp as mjwarp
 
 _MODEL_PATH = flags.DEFINE_string(

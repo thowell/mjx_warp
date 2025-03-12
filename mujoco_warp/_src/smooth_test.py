@@ -27,7 +27,7 @@ from . import test_util
 
 wp.config.verify_cuda = True
 
-# tolerance for difference between MuJoCo and mjWarp smooth calculations - mostly
+# tolerance for difference between MuJoCo and MJWarp smooth calculations - mostly
 # due to float precision
 _TOLERANCE = 5e-5
 

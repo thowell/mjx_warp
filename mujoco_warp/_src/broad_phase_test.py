@@ -18,11 +18,13 @@
 import mujoco
 import numpy as np
 import warp as wp
-from absl.testing import absltest, parameterized
+from absl.testing import absltest
+from absl.testing import parameterized
 
 import mujoco_warp as mjwarp
 
-from . import collision_driver, test_util
+from . import collision_driver
+from . import test_util
 from .collision_driver import AABB
 
 
