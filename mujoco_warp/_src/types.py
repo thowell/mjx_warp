@@ -1,4 +1,4 @@
-# Copyright 2025 The Newton Developers
+# Copyright 2025 The Physics-Next Project Developers
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,10 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-import enum
-
-import mujoco
 import warp as wp
+import enum
+import mujoco
 
 MJ_MINVAL = mujoco.mjMINVAL
 MJ_MINIMP = mujoco.mjMINIMP  # minimum constraint impedance
@@ -40,6 +39,8 @@ class DisableBit(enum.IntFlag):
     ACTUATION:    apply actuation forces
     REFSAFE:      integrator safety: make ref[0]>=2*timestep
     SENSOR:       sensors
+    EULERDAMP:    implicit damping for Euler integration
+    FILTERPARENT: disable collisions between parent and child bodies
   """
 
   CONSTRAINT = mujoco.mjtDisableBit.mjDSBL_CONSTRAINT
@@ -169,7 +170,6 @@ class GeomType(enum.IntEnum):
     CYLINDER: cylinder
     BOX: box
     MESH: mesh
-    SDF: signed distance field
   """
 
   PLANE = mujoco.mjtGeom.mjGEOM_PLANE
@@ -202,22 +202,43 @@ array3df = wp.array3d(dtype=wp.float32)
 
 @wp.struct
 class Option:
-  timestep: float
-  tolerance: float
-  ls_tolerance: float
-  gravity: wp.vec3
+  """Physics options.
+
+  Attributes:
+    cone: type of friction cone
+    disableflags: bit flags for disabling standard features
+    gravity: gravitational acceleration (3,)
+    impratio: ratio of friction-to-normal contact impedance
+    integrator: integration mode
+    is_sparse: whether to use sparse representations (warp only)
+    iterations: number of main solver iterations
+    ls_iterations: maximum number of CG/Newton linesearch iterations
+    ls_tolerance: CG/Newton linesearch tolerance
+    solver: solver algorithm
+    timestep: timestep
+    tolerance: main solver tolerance
+  """
   cone: int  # mjtCone
-  solver: int  # mjtSolver
+  disableflags: int
+  gravity: wp.vec3
+  impratio: wp.float32
+  integrator: int  # mjtIntegrator
+  is_sparse: bool  # warp only
   iterations: int
   ls_iterations: int
-  disableflags: int
-  integrator: int  # mjtIntegrator
-  impratio: wp.float32
-  is_sparse: bool  # warp only
+  ls_tolerance: float
+  solver: int  # mjtSolver
+  timestep: float
+  tolerance: float
 
 
 @wp.struct
 class Statistic:
+  """Model statistics (in qpos0).
+
+  Attributes:
+    meaninertia: mean diagonal inertia
+  """
   meaninertia: float
 
 
@@ -393,9 +414,25 @@ class Model:
   exclude_signature: wp.array(dtype=wp.int32, ndim=1)
   actuator_affine_bias_gain: bool
 
-
+  
 @wp.struct
 class Contact:
+  """Contact data.
+
+  Attributes:
+    dist: distance between nearest points; neg: penetration
+    pos: position of contact point: midpoint between geoms
+    frame: normal is in [0-2], points from geom[0] to geom[1]
+    includemargin: include if dist<includemargin=margin-gap
+    friction: tangent1, 2, spin, roll1, 2
+    solref: constraint solver reference, normal direction
+    solreffriction: constraint solver reference, friction directions
+    solimp: constraint solver impedance
+    dim: contact space dimensionality: 1, 3, 4 or 6
+    geom: geom ids; -1 for flex
+    efc_address: address in efc; -1: not included
+    worldid: world id (warp only)
+  """
   dist: wp.array(dtype=wp.float32, ndim=1)
   pos: wp.array(dtype=wp.vec3f, ndim=1)
   frame: wp.array(dtype=wp.mat33f, ndim=1)
@@ -412,59 +449,163 @@ class Contact:
 
 @wp.struct
 class Data:
-  nworld: int
-  nefc_total: wp.array(dtype=wp.int32, ndim=1)  # warp only
-  nconmax: int
-  njmax: int
-  time: float
-  qpos: wp.array(dtype=wp.float32, ndim=2)
-  qvel: wp.array(dtype=wp.float32, ndim=2)
-  qacc_warmstart: wp.array(dtype=wp.float32, ndim=2)
+  """ Data. """
+
+  ## VARIABLE sizes
+  # number of detected contacts
   ncon: wp.array(dtype=wp.int32, ndim=1)
+  # number of limit constraints
   nl: int
+  # number of constraints
   nefc: wp.array(dtype=wp.int32, ndim=1)
-  ctrl: wp.array(dtype=wp.float32, ndim=2)
-  mocap_pos: wp.array(dtype=wp.vec3, ndim=2)
-  mocap_quat: wp.array(dtype=wp.quat, ndim=2)
-  qacc: wp.array(dtype=wp.float32, ndim=2)
-  xanchor: wp.array(dtype=wp.vec3, ndim=2)
-  xaxis: wp.array(dtype=wp.vec3, ndim=2)
-  xmat: wp.array(dtype=wp.mat33, ndim=2)
-  xpos: wp.array(dtype=wp.vec3, ndim=2)
-  xquat: wp.array(dtype=wp.quat, ndim=2)
-  xipos: wp.array(dtype=wp.vec3, ndim=2)
-  ximat: wp.array(dtype=wp.mat33, ndim=2)
-  subtree_com: wp.array(dtype=wp.vec3, ndim=2)
-  geom_xpos: wp.array(dtype=wp.vec3, ndim=2)
-  geom_xmat: wp.array(dtype=wp.mat33, ndim=2)
-  site_xpos: wp.array(dtype=wp.vec3, ndim=2)
-  site_xmat: wp.array(dtype=wp.mat33, ndim=2)
-  cinert: wp.array(dtype=vec10, ndim=2)
-  cdof: wp.array(dtype=wp.spatial_vector, ndim=2)
-  crb: wp.array(dtype=vec10, ndim=2)
-  qM: wp.array(dtype=wp.float32, ndim=3)
-  qLD: wp.array(dtype=wp.float32, ndim=3)
+
+  ## GLOBAL properties
+  # simulation time
+  time: float
+
+  ## STATE
+  # position (nq x 1)
+  qpos: wp.array(dtype=wp.float32, ndim=2)
+  # velocity (nv x 1)
+  qvel: wp.array(dtype=wp.float32, ndim=2)
+  # actuator activation (na x 1)
   act: wp.array(dtype=wp.float32, ndim=2)
-  act_dot: wp.array(dtype=wp.float32, ndim=2)
-  qLDiagInv: wp.array(dtype=wp.float32, ndim=2)
-  actuator_velocity: wp.array(dtype=wp.float32, ndim=2)
-  actuator_force: wp.array(dtype=wp.float32, ndim=2)
-  actuator_length: wp.array(dtype=wp.float32, ndim=2)
-  actuator_moment: wp.array(dtype=wp.float32, ndim=3)
-  cvel: wp.array(dtype=wp.spatial_vector, ndim=2)
-  cdof_dot: wp.array(dtype=wp.spatial_vector, ndim=2)
+  # acceleration used for warmstart (nv x 1)
+  qacc_warmstart: wp.array(dtype=wp.float32, ndim=2)
+
+  ## CONTROL
+  # control (nu x 1)
+  ctrl: wp.array(dtype=wp.float32, ndim=2)
+  # applied generalized force (nv x 1)
   qfrc_applied: wp.array(dtype=wp.float32, ndim=2)
-  qfrc_bias: wp.array(dtype=wp.float32, ndim=2)
-  qfrc_constraint: wp.array(dtype=wp.float32, ndim=2)
-  qfrc_passive: wp.array(dtype=wp.float32, ndim=2)
-  qfrc_spring: wp.array(dtype=wp.float32, ndim=2)
-  qfrc_damper: wp.array(dtype=wp.float32, ndim=2)
-  qfrc_actuator: wp.array(dtype=wp.float32, ndim=2)
-  qfrc_smooth: wp.array(dtype=wp.float32, ndim=2)
-  qacc_smooth: wp.array(dtype=wp.float32, ndim=2)
+  # applied Cartesian force/torque (nbody x 6)
   xfrc_applied: wp.array(dtype=wp.spatial_vector, ndim=2)
+
+  ## MOCAP DATA
+  # position of mocap bodies (nmocap x 3)
+  mocap_pos: wp.array(dtype=wp.vec3, ndim=2)
+  # orientation of mocap bodies (nmocap x 4)
+  mocap_quat: wp.array(dtype=wp.quat, ndim=2)
+
+  ## DYNAMICS
+  # acceleration (nv x 1) 
+  qacc: wp.array(dtype=wp.float32, ndim=2)
+  # time-derivative of actuator activation (na x 1)
+  act_dot: wp.array(dtype=wp.float32, ndim=2)
+
+  ##-------------------- POSITION dependent
+  
+  ## COMPUTED by mj_fwdPosition/mj_kinematics
+  # Cartesian position of body frame (nbody x 3)
+  xpos: wp.array(dtype=wp.vec3, ndim=2)
+  # Cartesian orientation of body frame (nbody x 4)
+  xquat: wp.array(dtype=wp.quat, ndim=2)
+  # Cartesian orientation of body frame (nbody x 9)
+  xmat: wp.array(dtype=wp.mat33, ndim=2)
+  # Cartesian position of body com (nbody x 3)
+  xipos: wp.array(dtype=wp.vec3, ndim=2)
+  # Cartesian orientation of body inertia (nbody x 9)
+  ximat: wp.array(dtype=wp.mat33, ndim=2)
+  # Cartesian position of joint anchor (njnt x 3)
+  xanchor: wp.array(dtype=wp.vec3, ndim=2)
+  # Cartesian joint axis (njnt x 3)
+  xaxis: wp.array(dtype=wp.vec3, ndim=2)
+  # Cartesian geom position (ngeom x 3)
+  geom_xpos: wp.array(dtype=wp.vec3, ndim=2)
+  # Cartesian geom orientation (ngeom x 9)
+  geom_xmat: wp.array(dtype=wp.mat33, ndim=2)
+  # Cartesian site position (nsite x 3)
+  site_xpos: wp.array(dtype=wp.vec3, ndim=2)
+  # Cartesian site orientation (nsite x 9)
+  site_xmat: wp.array(dtype=wp.mat33, ndim=2)
+
+  ## COMPUTED by fwd_position/com_pos
+  # center of mass of each subtree (nbody x 3)
+  subtree_com: wp.array(dtype=wp.vec3, ndim=2)
+  # com-based motion axis of each dof (rot:lin) (nv x 6)
+  cdof: wp.array(dtype=wp.spatial_vector, ndim=2)
+  # com-based body inertia and mass (nbody x 10)
+  cinert: wp.array(dtype=vec10, ndim=2)
+
+  ## COMPUTED by fwd_position/transmission
+  # actuator lengths (nu x 1)
+  actuator_length: wp.array(dtype=wp.float32, ndim=2)
+  # actuator moments (nJmom x 1)
+  actuator_moment: wp.array(dtype=wp.float32, ndim=3)
+
+  ## COMPUTED by fwd_position/crb
+  # com-based composite inertia and mass (nbody x 10)
+  crb: wp.array(dtype=vec10, ndim=2)
+  # total inertia (sparse) (nM x 1)
+  qM: wp.array(dtype=wp.float32, ndim=3)
+
+  ## COMPUTED by fwd_position/factor_m
+  # L'*D*L factorization of M (sparse) (nM x 1)
+  qLD: wp.array(dtype=wp.float32, ndim=3)
+  # 1/diag(D) (nv x 1)
+  qLDiagInv: wp.array(dtype=wp.float32, ndim=2)
+
+  ##-------------------- POSITION, VELOCITY dependent
+  ## COMPUTED by fwd_velocity
+  # actuator velocities (nu x 1)
+  actuator_velocity: wp.array(dtype=wp.float32, ndim=2)
+  
+  ## COMPUTED by fwd_velocity/com_vel
+  # com-based velocity (rot:lin) (nbody x 6)
+  cvel: wp.array(dtype=wp.spatial_vector, ndim=2)
+  # time-derivative of cdof (rot:lin) (nv x 6)
+  cdof_dot: wp.array(dtype=wp.spatial_vector, ndim=2)
+  
+  ## COMPUTED by fwd_velocity/rne (without acceleration)
+  # C(qpos,qvel) (nv x 1)
+  qfrc_bias: wp.array(dtype=wp.float32, ndim=2)
+
+  ## COMPUTED by fwd_velocity/passive
+  # passive spring force (nv x 1)
+  qfrc_spring: wp.array(dtype=wp.float32, ndim=2)
+  # passive damper force (nv x 1)
+  qfrc_damper: wp.array(dtype=wp.float32, ndim=2)
+  # total passive force (nv x 1)
+  qfrc_passive: wp.array(dtype=wp.float32, ndim=2)
+
+  ## -------------------- POSITION, VELOCITY, CONTROL/ACCELERATION dependent
+  
+  ## COMPUTED by fwd_actuation
+  # actuator force in actuation space (nu x 1)
+  actuator_force: wp.array(dtype=wp.float32, ndim=2)
+  # actuator force (nv x 1)
+  qfrc_actuator: wp.array(dtype=wp.float32, ndim=2)
+
+  ## COMPUTED by fwd_acceleration
+  # net unconstrained force (nv x 1)
+  qfrc_smooth: wp.array(dtype=wp.float32, ndim=2)
+  # unconstrained acceleration (nv x 1)
+  qacc_smooth: wp.array(dtype=wp.float32, ndim=2)
+
+  ## COMPUTED by _qfrc_constraint
+  # constraint force (nv x 1)
+  qfrc_constraint: wp.array(dtype=wp.float32, ndim=2)
+
+  ##-------------------- arena-allocated: POSITION dependent
+
+  ## COMPUTED by collision
+  # array of all detected contacts (ncon x 1)
   contact: Contact
+  
+  ## COMPUTED by make_constraint
+  # constraint data
   efc: Constraint
+
+  ##-------------------- Warp only
+  # sizes
+  nworld: int
+  nconmax: int
+  nefc_total: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  njmax: int
+
+  # applied forces
+  qfrc_applied: wp.array(dtype=wp.float32, ndim=2)
+  xfrc_applied: wp.array(dtype=wp.spatial_vector, ndim=2)
 
   # arrays used for smooth.rne
   rne_cacc: wp.array(dtype=wp.spatial_vector, ndim=2)
