@@ -1,6 +1,6 @@
 # MJWarp
 
-MuJoCo implemented in Warp.
+MuJoCo implemented in NVIDIA Warp.
 
 # Installing for development
 
