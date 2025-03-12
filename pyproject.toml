@@ -56,3 +56,7 @@ select = [
 [tool.ruff.lint.isort]
 force-single-line = true
 single-line-exclusions = ["typing"]
+
+[tool.setuptools.packages.find]
+include = ["mujoco_warp"]
+exclude = ["contrib*"]
