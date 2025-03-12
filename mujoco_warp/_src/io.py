@@ -1,4 +1,4 @@
-# Copyright 2025 The Physics-Next Project Developers
+# Copyright 2025 The Newton Developers
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,9 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 
-import warp as wp
 import mujoco
 import numpy as np
+import warp as wp
 
 from . import support
 from . import types

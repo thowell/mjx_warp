@@ -1,4 +1,4 @@
-# Copyright 2025 The Physics-Next Project Developers
+# Copyright 2025 The Newton Developers
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,15 +15,15 @@
 
 """Tests for passive force functions."""
 
-from absl.testing import absltest
 import numpy as np
 import warp as wp
+from absl.testing import absltest
 
-from mujoco import mjx
+import mujoco_warp as mjwarp
 
 from . import test_util
 
-# tolerance for difference between MuJoCo and MJX smooth calculations - mostly
+# tolerance for difference between MuJoCo and MJWarp passive force calculations - mostly
 # due to float precision
 _TOLERANCE = 5e-5
 
@@ -36,13 +36,13 @@ def _assert_eq(a, b, name):
 
 class PassiveTest(absltest.TestCase):
   def test_passive(self):
-    """Tests MJX passive."""
+    """Tests passive."""
     _, mjd, m, d = test_util.fixture("pendula.xml")
 
     for arr in (d.qfrc_spring, d.qfrc_damper, d.qfrc_passive):
       arr.zero_()
 
-    mjx.passive(m, d)
+    mjwarp.passive(m, d)
 
     _assert_eq(d.qfrc_spring.numpy()[0], mjd.qfrc_spring, "qfrc_spring")
     _assert_eq(d.qfrc_damper.numpy()[0], mjd.qfrc_damper, "qfrc_damper")

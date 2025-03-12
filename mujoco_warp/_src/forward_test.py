@@ -1,4 +1,4 @@
-# Copyright 2025 The Physics-Next Project Developers
+# Copyright 2025 The Newton Developers
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,21 +15,18 @@
 
 """Tests for forward dynamics functions."""
 
+import mujoco
 import numpy as np
 import warp as wp
 from absl.testing import absltest
 from absl.testing import parameterized
 from etils import epath
 
-
-import mujoco
-from mujoco import mjx
+import mujoco_warp as mjwarp
 
 wp.config.verify_cuda = True
 
-wp.config.verify_cuda = True
-
-# tolerance for difference between MuJoCo and MJX smooth calculations - mostly
+# tolerance for difference between MuJoCo and mjwarp smooth calculations - mostly
 # due to float precision
 _TOLERANCE = 5e-5
 
@@ -42,7 +39,7 @@ def _assert_eq(a, b, name):
 
 class ForwardTest(absltest.TestCase):
   def _load(self, fname: str, is_sparse: bool = True):
-    path = epath.resource_path("mujoco.mjx") / "test_data" / fname
+    path = epath.resource_path("mujoco_warp") / "test_data" / fname
     mjm = mujoco.MjModel.from_xml_path(path.as_posix())
     mjm.opt.jacobian = is_sparse
     mjd = mujoco.MjData(mjm)
@@ -50,16 +47,15 @@ class ForwardTest(absltest.TestCase):
     mjd.qvel = np.random.uniform(low=-0.01, high=0.01, size=mjd.qvel.shape)
     mjd.ctrl = np.random.normal(scale=1, size=mjd.ctrl.shape)
     mujoco.mj_forward(mjm, mjd)
-    m = mjx.put_model(mjm)
-    d = mjx.put_data(mjm, mjd)
+    m = mjwarp.put_model(mjm)
+    d = mjwarp.put_data(mjm, mjd)
     return mjm, mjd, m, d
 
   def test_fwd_velocity(self):
-    """Tests MJX fwd_velocity."""
     _, mjd, m, d = self._load("humanoid/humanoid.xml", is_sparse=False)
 
     d.actuator_velocity.zero_()
-    mjx.fwd_velocity(m, d)
+    mjwarp.fwd_velocity(m, d)
 
     _assert_eq(
       d.actuator_velocity.numpy()[0], mjd.actuator_velocity, "actuator_velocity"
@@ -67,7 +63,6 @@ class ForwardTest(absltest.TestCase):
     _assert_eq(d.qfrc_bias.numpy()[0], mjd.qfrc_bias, "qfrc_bias")
 
   def test_fwd_actuation(self):
-    """Tests MJX fwd_actuation."""
     mjm, mjd, m, d = self._load("humanoid/humanoid.xml", is_sparse=False)
 
     mujoco.mj_fwdActuation(mjm, mjd)
@@ -75,27 +70,26 @@ class ForwardTest(absltest.TestCase):
     for arr in (d.actuator_force, d.qfrc_actuator):
       arr.zero_()
 
-    mjx.fwd_actuation(m, d)
+    mjwarp.fwd_actuation(m, d)
 
     _assert_eq(d.ctrl.numpy()[0], mjd.ctrl, "ctrl")
     _assert_eq(d.actuator_force.numpy()[0], mjd.actuator_force, "actuator_force")
     _assert_eq(d.qfrc_actuator.numpy()[0], mjd.qfrc_actuator, "qfrc_actuator")
 
   def test_fwd_acceleration(self):
-    """Tests MJX fwd_acceleration."""
     _, mjd, m, d = self._load("humanoid/humanoid.xml", is_sparse=False)
 
     for arr in (d.qfrc_smooth, d.qacc_smooth):
       arr.zero_()
 
-    mjx.factor_m(m, d)  # for dense, get tile cholesky factorization
-    mjx.fwd_acceleration(m, d)
+    mjwarp.factor_m(m, d)  # for dense, get tile cholesky factorization
+    mjwarp.fwd_acceleration(m, d)
 
     _assert_eq(d.qfrc_smooth.numpy()[0], mjd.qfrc_smooth, "qfrc_smooth")
     _assert_eq(d.qacc_smooth.numpy()[0], mjd.qacc_smooth, "qacc_smooth")
 
   def test_eulerdamp(self):
-    path = epath.resource_path("mujoco.mjx") / "test_data/pendula.xml"
+    path = epath.resource_path("mujoco_warp") / "test_data/pendula.xml"
     mjm = mujoco.MjModel.from_xml_path(path.as_posix())
     self.assertTrue((mjm.dof_damping > 0).any())
 
@@ -104,10 +98,10 @@ class ForwardTest(absltest.TestCase):
     mjd.qacc[:] = 1.0
     mujoco.mj_forward(mjm, mjd)
 
-    m = mjx.put_model(mjm)
-    d = mjx.put_data(mjm, mjd)
+    m = mjwarp.put_model(mjm)
+    d = mjwarp.put_data(mjm, mjd)
 
-    mjx.euler(m, d)
+    mjwarp.euler(m, d)
     mujoco.mj_Euler(mjm, mjd)
 
     _assert_eq(d.qpos.numpy()[0], mjd.qpos, "qpos")
@@ -120,17 +114,17 @@ class ForwardTest(absltest.TestCase):
     mjd.qacc[:] = 1.0
     mujoco.mj_forward(mjm, mjd)
 
-    m = mjx.put_model(mjm)
-    d = mjx.put_data(mjm, mjd)
+    m = mjwarp.put_model(mjm)
+    d = mjwarp.put_data(mjm, mjd)
 
-    mjx.euler(m, d)
+    mjwarp.euler(m, d)
     mujoco.mj_Euler(mjm, mjd)
 
     _assert_eq(d.qpos.numpy()[0], mjd.qpos, "qpos")
     _assert_eq(d.act.numpy()[0], mjd.act, "act")
 
   def test_disable_eulerdamp(self):
-    path = epath.resource_path("mujoco.mjx") / "test_data/pendula.xml"
+    path = epath.resource_path("mujoco_warp") / "test_data/pendula.xml"
     mjm = mujoco.MjModel.from_xml_path(path.as_posix())
     mjm.opt.disableflags = mjm.opt.disableflags | mujoco.mjtDisableBit.mjDSBL_EULERDAMP
 
@@ -139,17 +133,17 @@ class ForwardTest(absltest.TestCase):
     mjd.qvel[:] = 1.0
     mjd.qacc[:] = 1.0
 
-    m = mjx.put_model(mjm)
-    d = mjx.put_data(mjm, mjd)
+    m = mjwarp.put_model(mjm)
+    d = mjwarp.put_data(mjm, mjd)
 
-    mjx.euler(m, d)
+    mjwarp.euler(m, d)
 
     np.testing.assert_allclose(d.qvel.numpy()[0], 1 + mjm.opt.timestep)
 
 
 class ImplicitIntegratorTest(parameterized.TestCase):
   def _load(self, fname: str, disableFlags: int):
-    path = epath.resource_path("mujoco.mjx") / "test_data" / fname
+    path = epath.resource_path("mujoco_warp") / "test_data" / fname
     mjm = mujoco.MjModel.from_xml_path(path.as_posix())
     mjm.opt.jacobian = 0
     mjm.opt.integrator = mujoco.mjtIntegrator.mjINT_IMPLICITFAST
@@ -177,21 +171,21 @@ class ImplicitIntegratorTest(parameterized.TestCase):
 
     mjd.ctrl = np.random.normal(scale=10, size=mjd.ctrl.shape)
     mjd.act = np.random.normal(scale=10, size=mjd.act.shape)
-    m = mjx.put_model(mjm)
-    d = mjx.put_data(mjm, mjd)
+    m = mjwarp.put_model(mjm)
+    d = mjwarp.put_data(mjm, mjd)
     return mjm, mjd, m, d
 
   @parameterized.parameters(
     0,
-    mjx.DisableBit.PASSIVE.value,
-    mjx.DisableBit.ACTUATION.value,
-    mjx.DisableBit.PASSIVE.value & mjx.DisableBit.ACTUATION.value,
+    mjwarp.DisableBit.PASSIVE.value,
+    mjwarp.DisableBit.ACTUATION.value,
+    mjwarp.DisableBit.PASSIVE.value & mjwarp.DisableBit.ACTUATION.value,
   )
   def test_implicit(self, disableFlags):
     np.random.seed(0)
     mjm, mjd, m, d = self._load("pendula.xml", disableFlags)
 
-    mjx.implicit(m, d)
+    mjwarp.implicit(m, d)
     mujoco.mj_implicit(mjm, mjd)
 
     _assert_eq(d.qpos.numpy()[0], mjd.qpos, "qpos")

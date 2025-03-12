@@ -1,4 +1,4 @@
-# Copyright 2025 The Physics-Next Project Developers
+# Copyright 2025 The Newton Developers
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,13 +19,14 @@ import logging
 import time
 from typing import Sequence
 
-import warp as wp
-from absl import app, flags
-import numpy as np
-
 import mujoco
 import mujoco.viewer
-from mujoco import mjx
+import numpy as np
+import warp as wp
+from absl import app
+from absl import flags
+
+import mujoco_warp as mjwarp
 
 _MODEL_PATH = flags.DEFINE_string(
   "mjcf", None, "Path to a MuJoCo MJCF file.", required=True
@@ -62,20 +63,20 @@ def _main(argv: Sequence[str]) -> None:
     print("Engine: MuJoCo C")
   else:  # mjwarp
     print("Engine: MuJoCo Warp")
-    m = mjx.put_model(mjm)
-    d = mjx.put_data(mjm, mjd)
+    m = mjwarp.put_model(mjm)
+    d = mjwarp.put_data(mjm, mjd)
 
     if _CLEAR_KERNEL_CACHE.value:
       wp.clear_kernel_cache()
 
     start = time.time()
     print("Compiling the model physics step...")
-    mjx.step(m, d)
+    mjwarp.step(m, d)
     # double warmup to work around issues with compilation during graph capture:
-    mjx.step(m, d)
+    mjwarp.step(m, d)
     # capture the whole smooth.kinematic() function as a CUDA graph
     with wp.ScopedCapture() as capture:
-      mjx.step(m, d)
+      mjwarp.step(m, d)
     graph = capture.graph
     elapsed = time.time() - start
     print(f"Compilation took {elapsed}s.")
@@ -100,7 +101,7 @@ def _main(argv: Sequence[str]) -> None:
           wp.capture_launch(graph)
           wp.synchronize()
 
-        mjx.get_data_into(mjd, mjm, d)
+        mjwarp.get_data_into(mjd, mjm, d)
 
       viewer.sync()
 

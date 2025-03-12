@@ -1,4 +1,4 @@
-# Copyright 2025 The Physics-Next Project Developers
+# Copyright 2025 The Newton Developers
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,17 +15,19 @@
 
 """Tests for smooth dynamics functions."""
 
+import mujoco
 import numpy as np
 import warp as wp
 from absl.testing import absltest
 from absl.testing import parameterized
-import mujoco
-from mujoco import mjx
+
+import mujoco_warp as mjwarp
+
 from . import test_util
 
 wp.config.verify_cuda = True
 
-# tolerance for difference between MuJoCo and mjWarp smooth calculations - mostly
+# tolerance for difference between MuJoCo and MJWarp smooth calculations - mostly
 # due to float precision
 _TOLERANCE = 5e-5
 
@@ -44,7 +46,7 @@ class SmoothTest(parameterized.TestCase):
     for arr in (d.xanchor, d.xaxis, d.xquat, d.xpos):
       arr.zero_()
 
-    mjx.kinematics(m, d)
+    mjwarp.kinematics(m, d)
 
     _assert_eq(d.xanchor.numpy()[0], mjd.xanchor, "xanchor")
     _assert_eq(d.xaxis.numpy()[0], mjd.xaxis, "xaxis")
@@ -65,7 +67,7 @@ class SmoothTest(parameterized.TestCase):
     for arr in (d.subtree_com, d.cinert, d.cdof):
       arr.zero_()
 
-    mjx.com_pos(m, d)
+    mjwarp.com_pos(m, d)
     _assert_eq(d.subtree_com.numpy()[0], mjd.subtree_com, "subtree_com")
     _assert_eq(d.cinert.numpy()[0], mjd.cinert, "cinert")
     _assert_eq(d.cdof.numpy()[0], mjd.cdof, "cdof")
@@ -76,7 +78,7 @@ class SmoothTest(parameterized.TestCase):
 
     d.crb.zero_()
 
-    mjx.crb(m, d)
+    mjwarp.crb(m, d)
     _assert_eq(d.crb.numpy()[0], mjd.crb, "crb")
     _assert_eq(d.qM.numpy()[0, 0], mjd.qM, "qM")
 
@@ -87,12 +89,12 @@ class SmoothTest(parameterized.TestCase):
     for arr in (d.qLD, d.qLDiagInv):
       arr.zero_()
 
-    mjx.factor_m(m, d)
+    mjwarp.factor_m(m, d)
     _assert_eq(d.qLD.numpy()[0, 0], mjd.qLD, "qLD (sparse)")
     _assert_eq(d.qLDiagInv.numpy()[0], mjd.qLDiagInv, "qLDiagInv")
 
   def test_factor_m_dense(self):
-    """Tests MJX factor_m (dense)."""
+    """Tests mjwarp factor_m (dense)."""
     # TODO(team): switch this to pendula.xml and merge with above test
     # after mmacklin's tile_cholesky fixes are in
     _, mjd, m, d = test_util.fixture("humanoid/humanoid.xml", sparse=False)
@@ -100,7 +102,7 @@ class SmoothTest(parameterized.TestCase):
     qLD = d.qLD.numpy()[0].copy()
     d.qLD.zero_()
 
-    mjx.factor_m(m, d)
+    mjwarp.factor_m(m, d)
     _assert_eq(d.qLD.numpy()[0], qLD, "qLD (dense)")
 
   @parameterized.parameters(True, False)
@@ -123,7 +125,7 @@ class SmoothTest(parameterized.TestCase):
 
     d.qacc_smooth.zero_()
 
-    mjx.solve_m(m, d, d.qacc_smooth, d.qfrc_smooth)
+    mjwarp.solve_m(m, d, d.qacc_smooth, d.qfrc_smooth)
     _assert_eq(d.qacc_smooth.numpy()[0], qacc_smooth[0], "qacc_smooth")
 
   def test_rne(self):
@@ -132,7 +134,7 @@ class SmoothTest(parameterized.TestCase):
 
     d.qfrc_bias.zero_()
 
-    mjx.rne(m, d)
+    mjwarp.rne(m, d)
     _assert_eq(d.qfrc_bias.numpy()[0], mjd.qfrc_bias, "qfrc_bias")
 
   def test_com_vel(self):
@@ -142,7 +144,7 @@ class SmoothTest(parameterized.TestCase):
     for arr in (d.cvel, d.cdof_dot):
       arr.zero_()
 
-    mjx.com_vel(m, d)
+    mjwarp.com_vel(m, d)
     _assert_eq(d.cvel.numpy()[0], mjd.cvel, "cvel")
     _assert_eq(d.cdof_dot.numpy()[0], mjd.cdof_dot, "cdof_dot")
 
@@ -162,7 +164,7 @@ class SmoothTest(parameterized.TestCase):
       mjd.moment_colind,
     )
 
-    mjx._src.smooth.transmission(m, d)
+    mjwarp._src.smooth.transmission(m, d)
     _assert_eq(d.actuator_length.numpy()[0], mjd.actuator_length, "actuator_length")
     _assert_eq(d.actuator_moment.numpy()[0], actuator_moment, "actuator_moment")
 

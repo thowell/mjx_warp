@@ -1,4 +1,4 @@
-# Copyright 2025 The Physics-Next Project Developers
+# Copyright 2025 The Newton Developers
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,14 +14,15 @@
 # ==============================================================================
 
 import warp as wp
-from . import math
 
-from .types import Model
+from . import math
 from .types import Data
+from .types import JointType
+from .types import Model
+from .types import TrnType
 from .types import array2df
 from .types import array3df
 from .types import vec10
-from .types import JointType, TrnType
 from .warp_util import event_scope
 from .warp_util import kernel
 

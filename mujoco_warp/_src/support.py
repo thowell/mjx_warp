@@ -1,4 +1,4 @@
-# Copyright 2025 The Physics-Next Project Developers
+# Copyright 2025 The Newton Developers
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,13 +13,15 @@
 # limitations under the License.
 # ==============================================================================
 
+from typing import Any
+
 import mujoco
 import warp as wp
-from .types import Model
-from .types import Data
-from .types import array2df
+
 from .types import NUM_GEOM_TYPES
-from typing import Any
+from .types import Data
+from .types import Model
+from .types import array2df
 from .types import array3df
 from .warp_util import event_scope
 from .warp_util import kernel

@@ -1,5 +1,6 @@
-import warp as wp
 import mujoco
+import warp as wp
+
 from . import smooth
 from . import support
 from . import types
