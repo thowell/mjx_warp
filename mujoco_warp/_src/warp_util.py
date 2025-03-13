@@ -158,6 +158,18 @@ def _copy_2dvec10f(
   dest[i, j] = src[i, j]
 
 
+@wp.kernel
+def _copy_2dvec3f(dest: wp.array2d(dtype=wp.vec3f), src: wp.array2d(dtype=wp.vec3f)):
+  i, j = wp.tid()
+  dest[i, j] = src[i, j]
+
+
+@wp.kernel
+def _copy_2dmat33f(dest: wp.array2d(dtype=wp.mat33f), src: wp.array2d(dtype=wp.mat33f)):
+  i, j = wp.tid()
+  dest[i, j] = src[i, j]
+
+
 def kernel_copy(dest: wp.array, src: wp.array):
   if src.shape != dest.shape:
     raise ValueError("only same shape copying allowed")
@@ -169,6 +181,10 @@ def kernel_copy(dest: wp.array, src: wp.array):
     kernel = _copy_2df
   elif src.ndim == 3 and src.dtype == wp.float32:
     kernel = _copy_3df
+  elif src.ndim == 2 and src.dtype == wp.vec3f:
+    kernel = _copy_2dvec3f
+  elif src.ndim == 2 and src.dtype == wp.mat33f:
+    kernel = _copy_2dmat33f
   elif src.ndim == 2 and src.dtype == types.vec10f:
     kernel = _copy_2dvec10f
   else:
