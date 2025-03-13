@@ -383,6 +383,7 @@ def narrowphase(m: Model, d: Data):
   # we need to figure out how to keep the overhead of this small - not launching anything
   # for pair types without collisions, as well as updating the launch dimensions.
 
+  # TODO(team): investigate a single kernel launch for all collision functions
   # TODO only generate collision kernels we actually need
   if len(_collision_kernels) == 0:
     for type1, type2 in _collision_functions.keys():
