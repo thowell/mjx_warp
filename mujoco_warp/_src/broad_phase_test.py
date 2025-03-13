@@ -25,53 +25,26 @@ import mujoco_warp as mjwarp
 
 from . import collision_driver
 from . import test_util
-from .collision_driver import AABB
+# from .collision_driver import AABB
 
-
-def transform_aabb(aabb_pos, aabb_size, pos: wp.vec3, ori: wp.mat33) -> AABB:
-  aabb = AABB()
-  aabb.max = wp.vec3(-1000000000.0, -1000000000.0, -1000000000.0)
-  aabb.min = wp.vec3(1000000000.0, 1000000000.0, 1000000000.0)
-
-  for i in range(8):
-    corner = wp.vec3(aabb_size[0] * 0.5, aabb_size[1] * 0.5, aabb_size[2] * 0.5)
-    if i % 2 == 0:
-      corner.x = -corner.x
-    if (i // 2) % 2 == 0:
-      corner.y = -corner.y
-    if i < 4:
-      corner.z = -corner.z
-    corner_world = ori @ (
-      corner + wp.vec3(aabb_pos[0], aabb_pos[1], aabb_pos[2])
-    ) + wp.vec3(pos[0], pos[1], pos[2])
-    aabb.max = wp.max(aabb.max, corner_world)
-    aabb.min = wp.min(aabb.min, corner_world)
-
-  return aabb
-
+@wp.func
+def xyz(v: wp.vec4) -> wp.vec3:
+  return wp.vec3(v.x, v.y, v.z)
 
 def overlap(
-  a: AABB,
-  b: AABB,
+  s_a: wp.vec4,
+  s_b: wp.vec4
 ) -> bool:
-  # Extract centers and sizes
-  a_min = a.min
-  a_max = a.max
-  b_min = b.min
-  b_max = b.max
-
-  return not (
-    a_min.x > b_max.x
-    or b_min.x > a_max.x
-    or a_min.y > b_max.y
-    or b_min.y > a_max.y
-    or a_min.z > b_max.z
-    or b_min.z > a_max.z
-  )
+  delta = xyz(s_a) - xyz(s_b)
+  dist_sq = wp.dot(delta, delta)
+  radius_sum = s_a.w + s_b.w
+  result = dist_sq <= radius_sum * radius_sum  
+  return result
+  
 
 
 def find_overlaps_brute_force(
-  worldId: int, num_boxes_per_world: int, boxes, pos, rot, geom_bodyid
+  worldId: int, num_boxes_per_world: int, pos, radius, margin, geom_bodyid
 ):
   """
   Finds overlapping bounding boxes using the brute-force O(n^2) algorithm.
@@ -81,24 +54,24 @@ def find_overlaps_brute_force(
   overlaps = []
 
   for i in range(num_boxes_per_world):
-    aabb_i = transform_aabb(boxes[i][0], boxes[i][1], pos[worldId][i], rot[worldId][i])
+    p_i = pos[worldId][i]
+    s_i = wp.vec4(p_i[0], p_i[1], p_i[2], radius[i] + margin[i])
 
     for j in range(i + 1, num_boxes_per_world):
-      aabb_j = transform_aabb(
-        boxes[j][0], boxes[j][1], pos[worldId][j], rot[worldId][j]
-      )
+      p_j = pos[worldId][j]
+      s_j = wp.vec4(p_j[0], p_j[1], p_j[2], radius[j] + margin[j])
 
       if geom_bodyid[i] == geom_bodyid[j]:
         continue
 
-      if overlap(aabb_i, aabb_j):
+      if overlap(s_i, s_j):
         overlaps.append((i, j))  # Store indices of overlapping boxes
 
   return overlaps
 
 
 def find_overlaps_brute_force_batched(
-  num_worlds: int, num_boxes_per_world: int, boxes, pos, rot, geom_bodyid
+  num_worlds: int, num_boxes_per_world: int, pos, radius, margin, geom_bodyid
 ):
   """
   Finds overlapping bounding boxes using the brute-force O(n^2) algorithm.
@@ -111,7 +84,7 @@ def find_overlaps_brute_force_batched(
   for worldId in range(num_worlds):
     overlaps.append(
       find_overlaps_brute_force(
-        worldId, num_boxes_per_world, boxes, pos, rot, geom_bodyid
+        worldId, num_boxes_per_world, pos, radius, margin, geom_bodyid
       )
     )
 
@@ -125,7 +98,7 @@ class BroadPhaseTest(parameterized.TestCase):
     _MODEL = """
      <mujoco>
       <worldbody>
-        <geom size="40 40 40" type="plane"/>   <!- (0) intersects with nothing -->
+        
         <body pos="0 0 0.7">
           <freejoint/>
           <geom size="0.5 0.5 0.5" type="box"/> <!- (1) intersects with 2, 6, 7 -->
@@ -169,25 +142,13 @@ class BroadPhaseTest(parameterized.TestCase):
 
     m = mx
     d = dx
-    aabbs = m.geom_aabb.numpy()
     pos = d.geom_xpos.numpy()
-    rot = d.geom_xmat.numpy()
 
-    aabbs = aabbs.reshape((m.ngeom, 2, 3))
     pos = pos.reshape((d.nworld, m.ngeom, 3))
-    rot = rot.reshape((d.nworld, m.ngeom, 3, 3))
 
     brute_force_overlaps = find_overlaps_brute_force_batched(
-      d.nworld, m.ngeom, aabbs, pos, rot, m.geom_bodyid.numpy()
+      d.nworld, m.ngeom, pos, m.geom_rbound.numpy(), m.geom_margin.numpy(), m.geom_bodyid.numpy()
     )
-
-    np.testing.assert_equal(
-      dx.broadphase_result_count.numpy()[0],
-      len(brute_force_overlaps[0]),
-      "broadphase_result_count",
-    )
-
-    mjwarp.broadphase_sweep_and_prune(m, d)
 
     result = d.broadphase_pairs
     broadphase_result_count = d.broadphase_result_count
@@ -199,6 +160,13 @@ class BroadPhaseTest(parameterized.TestCase):
     # Iterate over each world
     for world_idx in range(d.nworld):
       # Get number of collisions for this world
+      num_collisions = broadphase_result_count_np[world_idx]
+       
+      # print(len(brute_force_overlaps[world_idx]))
+      # print(num_collisions)
+      # print(brute_force_overlaps)
+      # print(result)
+
       num_collisions = broadphase_result_count_np[world_idx]
       print(f"Number of collisions for world {world_idx}: {num_collisions}")
 

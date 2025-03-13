@@ -74,12 +74,11 @@ def broadphase_project_spheres_onto_sweep_direction_kernel(
   sphere_radius = r + m.geom_margin[i]
 
   center = wp.dot(direction, c)
-  d_val = 0.5 * sphere_radius
-  f = center - d_val
+  f = center - sphere_radius
 
   # Store results in the data arrays
   d.box_projections_lower[worldId, i] = f
-  d.box_projections_upper[worldId, i] = center + d_val
+  d.box_projections_upper[worldId, i] = center + sphere_radius
   d.box_sorting_indexer[worldId, i] = i
 
   if i == 0:
@@ -139,7 +138,7 @@ def reorder_bounding_spheres_kernel(
   # Get the bounding volume
   c = d.geom_xpos[worldId, mapped]
   r = m.geom_rbound[mapped]
-  margin = wp.abs(m.geom_margin[mapped])
+  margin = m.geom_margin[mapped]
 
   # Reorder the box into the sorted array
   if r == 0.0:
@@ -392,7 +391,7 @@ def create_segmented_sort_kernel(ngeom: int):
 def broadphase_sweep_and_prune(m: Model, d: Data):
   """Broad-phase collision detection via sweep-and-prune."""
 
-  # Use randomfixed direction vector for now
+  # Use random fixed direction vector for now
   direction = wp.vec3(0.5935, 0.7790, 0.1235)
   direction = wp.normalize(direction)
 
