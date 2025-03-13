@@ -246,15 +246,61 @@ class Statistic:
 
 @wp.struct
 class Constraint:
-  # efc
+  """Constraint data.
+  
+  Attributes:
+    worldid: world id (njmax,)
+    J: constraint Jacobian (njmax, nv)
+    pos: constraint position (equality, contact) (njmax,)
+    margin: inclusion margin (contact) (njmax,)
+    D: constraint mass (njmax,)
+    aref: reference pseudo-acceleration (njmax,)
+    force: constraint force in constraint space (njmax,)
+    Jaref: Jac*qacc - aref (njmax,)
+    Ma: M*qacc (nworld, nv)
+    grad: gradient of master cost (nworld, nv)
+    grad_dot: dot(grad, grad) (nworld,)
+    Mgrad: M / grad (nworld, nv)
+    search: linesearch vector (nworld, nv)
+    search_dot: dot(search, search) (nworld,)
+    gauss: gauss Cost (nworld,)
+    cost: constraint + Gauss cost (nworld,)
+    prev_cost: cost from previous iter (nworld,)
+    solver_niter: number of solver iterations (nworld,)
+    active: active (quadratic) constraints (njmax,)
+    gtol: linesearch termination tolerance (nworld,)
+    mv: qM @ search (nworld, nv)
+    jv: efc_J @ search (njmax,)
+    quad: [0.5 * Jaref * Jaref * efc_D, jv * Jaref * efc_D, 0.5 * jv * jv * efc_D] (njmax, 3)
+    quad_gauss: [gauss, search.T @ Ma - search.T @ qfrc_smooth, 0.5 * search.T @ mv] (nworld, 3)
+    h: cone hessian (nworld, nv, nv)
+    alpha: step size that reduces f(x + alpha * p) given search direction p (nworld,)
+    prev_grad: previous grad (nworld, nv)
+    prev_Mgrad: previous Mgrad (nworld, nv)
+    beta: polak-ribiere beta (nworld,)
+    beta_num: numerator of beta (nworld,)
+    beta_den: denominator of beta (nworld,)
+    done: solver done (nworld,)
+    ls_done: linesearch done (nworld,)
+    p0: initial point (nworld, 3)
+    lo: low point bounding the line search interval (nworld, 3)
+    lo_alpha: alpha for low point (nworld,)
+    hi: high point bounding the line search interval (nworld, 3)
+    hi_alpha: alpha for high point (nworld,)
+    lo_next: next low point (nworld, 3)
+    lo_next_alpha: alpha for next low point (nworld,)
+    hi_next: next high point (nworld, 3)
+    hi_next_alpha: alpha for next high point (nworld,)
+    mid: loss at mid_alpha (nworld, 3)
+    mid_alpha: midpoint between lo_alpha and hi_alpha (nworld,)
+  """
+  worldid: wp.array(dtype=wp.int32, ndim=1)
   J: wp.array(dtype=wp.float32, ndim=2)
-  D: wp.array(dtype=wp.float32, ndim=1)
   pos: wp.array(dtype=wp.float32, ndim=1)
+  margin: wp.array(dtype=wp.float32, ndim=1)
+  D: wp.array(dtype=wp.float32, ndim=1)
   aref: wp.array(dtype=wp.float32, ndim=1)
   force: wp.array(dtype=wp.float32, ndim=1)
-  margin: wp.array(dtype=wp.float32, ndim=1)
-  worldid: wp.array(dtype=wp.int32, ndim=1)  # warp only
-  # solver context
   Jaref: wp.array(dtype=wp.float32, ndim=1)
   Ma: wp.array(dtype=wp.float32, ndim=2)
   grad: wp.array(dtype=wp.float32, ndim=2)
@@ -280,7 +326,6 @@ class Constraint:
   beta_num: wp.array(dtype=wp.float32, ndim=1)
   beta_den: wp.array(dtype=wp.float32, ndim=1)
   done: wp.array(dtype=wp.int32, ndim=1)
-  # linesearch
   ls_done: wp.array(dtype=bool, ndim=1)
   p0: wp.array(dtype=wp.vec3, ndim=1)
   lo: wp.array(dtype=wp.vec3, ndim=1)
@@ -315,23 +360,23 @@ class Model:
     stat: model statistics
     qpos0: qpos values at default pose (nq,)
     qpos_spring: reference pose for springs (nq,)
-    body_tree: TODO (warp only)
-    body_treeadr: TODO (warp only)
-    actuator_moment_offset_nv: TODO (warp only)
-    actuator_moment_offset_nu: TODO (warp only)
-    actuator_moment_tileadr: TODO (warp only)
-    actuator_moment_tilesize_nv: TODO (warp only)
-    actuator_moment_tilesize_nu: TODO (warp only)
-    qM_fullm_i: TODO (warp only)
-    qM_fullm_j: TODO (warp only)
-    qM_mulm_i: TODO (warp only)
-    qM_mulm_j: TODO (warp only)
-    qM_madr_ij: TODO (warp only)
-    qLD_update_tree: TODO (warp only)
-    qLD_update_treeadr: TODO (warp only)
-    qLD_tile: TODO (warp only)
-    qLD_tileadr: TODO (warp only)
-    qLD_tilesize: TODO (warp only)
+    body_tree: BFS ordering of body ids
+    body_treeadr: starting index of each body tree level
+    actuator_moment_offset_nv: tiling configuration
+    actuator_moment_offset_nu: tiling configuration
+    actuator_moment_tileadr: tiling configuration
+    actuator_moment_tilesize_nv: tiling configuration
+    actuator_moment_tilesize_nu: tiling configuration
+    qM_fullm_i: sparse mass matrix addressing
+    qM_fullm_j: sparse mass matrix addressing
+    qM_mulm_i: sparse mass matrix addressing
+    qM_mulm_j: sparse mass matrix addressing
+    qM_madr_ij: sparse mass matrix addressing
+    qLD_update_tree: dof tree ordering of qLD updates for sparse factor m
+    qLD_update_treeadr: starting index of each dof tree level
+    qLD_tile: tiling configuration
+    qLD_tileadr: tiling configuration
+    qLD_tilesize: tiling configuration
     body_parentid: id of body's parent (nbody,)
     body_rootid: id of root above body (nbody,)
     body_weldid: id of body that this body is welded to (nbody,)
@@ -365,7 +410,7 @@ class Model:
     jnt_range: joint limits (njnt, 2)
     jnt_actfrcrange: range of total actuator force (njnt, 2)
     jnt_margin: min distance for limit detection (njnt,)
-    jnt_limited_slide_hinge_adr: TODO (warp only)
+    jnt_limited_slide_hinge_adr: joint address of limited/slide/hinge joints
     dof_bodyid: id of dof's body (nv,)
     dof_jntid: id of dof's joint (nv,)
     dof_parentid: id of dof's parent; -1: none (nv,)
@@ -373,8 +418,8 @@ class Model:
     dof_armature: dof armature inertia/mass (nv,)
     dof_damping: damping coefficient (nv,)
     dof_invweight0: diag. inverse inertia in qpos0 (nv,)
-    dof_tri_row: TODO (warp only)
-    dof_tri_col: TODO (warp only)
+    dof_tri_row: np.tril_indices(mjm.nv)[0]
+    dof_tri_col: np.tril_indices(mjm.nv)[1]
     geom_type: geometric type (mjtGeom) (ngeom,)
     geom_contype: geom contact type (ngeom,)
     geom_conaffinity: geom contact affinity (ngeom,)
@@ -416,7 +461,7 @@ class Model:
     actuator_actrange: range of activations (nu, 2)
     actuator_gear: scale length and transmitted force (nu, 6)
     exclude_signature: body1 << 16 + body2 (nexclude,)
-    actuator_affine_bias_gain: TODO (warp only)
+    actuator_affine_bias_gain: any actuators have affine bias or gain
   """
   
   nq: int
@@ -535,7 +580,7 @@ class Model:
   actuator_actrange: wp.array(dtype=wp.vec2, ndim=1)
   actuator_gear: wp.array(dtype=wp.spatial_vector, ndim=1)
   exclude_signature: wp.array(dtype=wp.int32, ndim=1)
-  actuator_affine_bias_gain: bool # Warp only?
+  actuator_affine_bias_gain: bool # warp only
 
 
 @wp.struct
@@ -554,7 +599,7 @@ class Contact:
     dim: contact space dimensionality: 1, 3, 4 or 6
     geom: geom ids; -1 for flex
     efc_address: address in efc; -1: not included
-    worldid: world id (warp only)
+    worldid: world id
   """
   dist: wp.array(dtype=wp.float32, ndim=1)
   pos: wp.array(dtype=wp.vec3f, ndim=1)
@@ -575,81 +620,81 @@ class Data:
   """Dynamic state that updates each step.
   
   Attributes:
-    ncon: number of detected contacts
-    nl: number of limit constraints
-    nefc: number of constraints
-    time: simulation time
-    qpos: position (nq, 1)
-    qvel: velocity (nv, 1)
-    act: actuator activation (na, 1)
-    qacc_warmstart: acceleration used for warmstart (nv, 1)
-    ctrl: control (nu, 1)
-    qfrc_applied: applied generalized force (nv, 1)
-    xfrc_applied: applied Cartesian force/torque (nbody, 6)
-    mocap_pos: position of mocap bodies (nmocap, 3)
-    mocap_quat: orientation of mocap bodies (nmocap, 4)
-    qacc: acceleration (nv, 1)
-    act_dot: time-derivative of actuator activation (na, 1)
-    xpos: Cartesian position of body frame (nbody, 3)
-    xquat: Cartesian orientation of body frame (nbody, 4)
-    xmat: Cartesian orientation of body frame (nbody, 3, 3)
-    xipos: Cartesian position of body com (nbody, 3)
-    ximat: Cartesian orientation of body inertia (nbody, 3, 3)
-    xanchor: Cartesian position of joint anchor (njnt, 3)
-    xaxis: Cartesian joint axis (njnt, 3)
-    geom_xpos: Cartesian geom position (ngeom, 3)
-    geom_xmat: Cartesian geom orientation (ngeom, 3, 3)
-    site_xpos: Cartesian site position (nsite, 3)
-    site_xmat: Cartesian site orientation (nsite, 3, 3)
-    subtree_com: center of mass of each subtree (nbody, 3)
-    cdof: com-based motion axis of each dof (rot:lin) (nv, 6)
-    cinert: com-based body inertia and mass (nbody, 10)
-    actuator_length: actuator lengths (nu, 1)
-    actuator_moment: actuator moments (nJmom, 1)
-    crb: com-based composite inertia and mass (nbody, 10)
-    qM: total inertia (sparse) (nM, 1)
-    qLD: L'*D*L factorization of M (sparse) (nM, 1)
-    qLDiagInv: 1/diag(D) (nv, 1)
-    actuator_velocity: actuator velocities (nu, 1)
-    cvel: com-based velocity (rot:lin) (nbody, 6)
-    cdof_dot: time-derivative of cdof (rot:lin) (nv, 6)
-    qfrc_bias: C(qpos,qvel) (nv, 1)
-    qfrc_spring: passive spring force (nv, 1)
-    qfrc_damper: passive damper force (nv, 1)
-    qfrc_passive: total passive force (nv, 1)
-    actuator_force: actuator force in actuation space (nu, 1)
-    qfrc_actuator: actuator force (nv, 1)
-    qfrc_smooth: net unconstrained force (nv, 1)
-    qacc_smooth: unconstrained acceleration (nv, 1)
-    qfrc_constraint: constraint force (nv, 1)
-    contact: array of all detected contacts (ncon, 1)
+    ncon: number of detected contacts ()
+    nl: number of limit constraints ()
+    nefc: number of constraints (nworld,)
+    time: simulation time ()
+    qpos: position (nworld, nq)
+    qvel: velocity (nworld, nv)
+    act: actuator activation (nworld, na)
+    qacc_warmstart: acceleration used for warmstart (nworld, nv)
+    ctrl: control (nworld, nu)
+    qfrc_applied: applied generalized force (nworld, nv)
+    xfrc_applied: applied Cartesian force/torque (nworld, nbody, 6)
+    mocap_pos: position of mocap bodies (nworld, nmocap, 3)
+    mocap_quat: orientation of mocap bodies (nworld, nmocap, 4)
+    qacc: acceleration (nworld, nv)
+    act_dot: time-derivative of actuator activation (nworld, na)
+    xpos: Cartesian position of body frame (nworld, nbody, 3)
+    xquat: Cartesian orientation of body frame (nworld, nbody, 4)
+    xmat: Cartesian orientation of body frame (nworld, nbody, 3, 3)
+    xipos: Cartesian position of body com (nworld, nbody, 3)
+    ximat: Cartesian orientation of body inertia (nworld, nbody, 3, 3)
+    xanchor: Cartesian position of joint anchor (nworld, njnt, 3)
+    xaxis: Cartesian joint axis (nworld, njnt, 3)
+    geom_xpos: Cartesian geom position (nworld, ngeom, 3)
+    geom_xmat: Cartesian geom orientation (nworld, ngeom, 3, 3)
+    site_xpos: Cartesian site position (nworld, nsite, 3)
+    site_xmat: Cartesian site orientation (nworld, nsite, 3, 3)
+    subtree_com: center of mass of each subtree (nworld, nbody, 3)
+    cdof: com-based motion axis of each dof (rot:lin) (nworld, nv, 6)
+    cinert: com-based body inertia and mass (nworld, nbody, 10)
+    actuator_length: actuator lengths (nworld, nu)
+    actuator_moment: actuator moments (nworld, nu, nv)
+    crb: com-based composite inertia and mass (nworld, nbody, 10)
+    qM: total inertia (sparse) (nworld, 1, nM) or (nworld, nv, nv) if dense
+    qLD: L'*D*L factorization of M (sparse) (nworld, 1, nM) or (nworld, nv, nv) if dense
+    qLDiagInv: 1/diag(D) (nworld, nv)
+    actuator_velocity: actuator velocities (nworld, nu)
+    cvel: com-based velocity (rot:lin) (nworld, nbody, 6)
+    cdof_dot: time-derivative of cdof (rot:lin) (nworld, nv, 6)
+    qfrc_bias: C(qpos,qvel) (nworld, nv)
+    qfrc_spring: passive spring force (nworld, nv)
+    qfrc_damper: passive damper force (nworld, nv)
+    qfrc_passive: total passive force (nworld, nv)
+    actuator_force: actuator force in actuation space (nworld, nu)
+    qfrc_actuator: actuator force (nworld, nv)
+    qfrc_smooth: net unconstrained force (nworld, nv)
+    qacc_smooth: unconstrained acceleration (nworld, nv)
+    qfrc_constraint: constraint force (nworld, nv)
+    contact: contact data
     efc: constraint data
-    nworld: number of worlds
-    nconmax: maximum number of contacts
-    nefc_total: total number of constraints
-    njmax: maximum number of joints
-    rne_cacc: arrays used for smooth.rne
-    rne_cfrc: arrays used for smooth.rne
-    qfrc_integration: temporary array for integration
-    qacc_integration: temporary array for integration
-    act_vel_integration: temporary array for integration
-    qM_integration: temporary array for integration
-    qLD_integration: temporary array for integration
-    qLDiagInv_integration: temporary array for integration
-    max_num_overlaps_per_world: maximum number of overlaps per world
-    broadphase_pairs: TODO
-    broadphase_result_count: TODO
-    boxes_sorted: TODO
-    box_projections_lower: TODO
-    box_projections_upper: TODO
-    box_sorting_indexer: TODO
-    ranges: TODO
-    cumulative_sum: TODO
-    segment_indices: TODO
-    dyn_geom_aabb: TODO
-    narrowphase_candidate_worldid: TODO
-    narrowphase_candidate_geom: TODO
-    narrowphase_candidate_group_count: TODO
+    nworld: number of worlds ()
+    nconmax: maximum number of contacts ()
+    nefc_total: total number of constraints ()
+    njmax: maximum number of joints ()
+    rne_cacc: arrays used for smooth.rne (nworld, nbody, 6)
+    rne_cfrc: arrays used for smooth.rne (nworld, nbody, 6)
+    qfrc_integration: temporary array for integration (nworld, nv)
+    qacc_integration: temporary array for integration (nworld, nv)
+    act_vel_integration: temporary array for integration (nworld, nu)
+    qM_integration: temporary array for integration (same shape as qM)
+    qLD_integration: temporary array for integration (same shape as qLD)
+    qLDiagInv_integration: temporary array for integration (nworld, nv)
+    max_num_overlaps_per_world: maximum number of broadphase overlaps per world ()
+    broadphase_pairs: pairs of potentially colliding geometries (nworld, max_num_overlaps_per_world, 2)
+    broadphase_result_count: count of broadphase results (nworld,)
+    boxes_sorted: min, max of sorted bounding boxes (nworld, ngeom, 2)
+    box_projections_lower: broadphase context (2*nworld, ngeom)
+    box_projections_upper: broadphase context (nworld, ngeom)
+    box_sorting_indexer: broadphase context (2*nworld, ngeom)
+    ranges: broadphase context (nworld, ngeom)
+    cumulative_sum: broadphase context (nworld*ngeom,)
+    segment_indices: broadphase context (nworld+1,)
+    dyn_geom_aabb: dynamic geometry axis-aligned bounding boxes (nworld, ngeom, 2)
+    narrowphase_candidate_worldid: world IDs for narrowphase candidates (ngroups, max_num_overlaps_per_world*nworld)
+    narrowphase_candidate_geom: geometry pairs for narrowphase (ngroups, max_num_overlaps_per_world*nworld, 2)
+    narrowphase_candidate_group_count: candidate pair counts for each collision type (ngroups,)
   """
 
   ncon: wp.array(dtype=wp.int32, ndim=1)
