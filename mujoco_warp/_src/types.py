@@ -491,6 +491,5 @@ class Data:
 
   # collision driver
   collision_pair: wp.array(dtype=wp.vec2i, ndim=1)
-  collision_type: wp.array(dtype=wp.int32, ndim=1)
   collision_worldid: wp.array(dtype=wp.int32, ndim=1)
   ncollision: wp.array(dtype=wp.int32, ndim=1)

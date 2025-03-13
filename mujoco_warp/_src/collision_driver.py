@@ -294,9 +294,7 @@ def broadphase_sweep_and_prune_kernel(
         return
 
       pair = _geom_pair(m, idx1, idx2)
-      key = group_key(m.geom_type[idx1], m.geom_type[idx2])
       d.collision_pair[pairid] = pair
-      d.collision_type[pairid] = key
       d.collision_worldid[pairid] = worldId
 
     threadId += num_threads
@@ -506,9 +504,7 @@ def nxn_broadphase(m: Model, d: Data):
         return
 
       pair = _geom_pair(m, geom1, geom2)
-      key = group_key(type1, type2)
       d.collision_pair[pairid] = pair
-      d.collision_type[pairid] = key
       d.collision_worldid[pairid] = worldid
 
   wp.launch(
