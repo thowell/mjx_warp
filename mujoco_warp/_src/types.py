@@ -392,6 +392,7 @@ class Model:
     body_ipos: local position of center of mass (nbody, 3)
     body_iquat: local orientation of inertia ellipsoid (nbody, 4)
     body_mass: mass (nbody,)
+    subtree_mass: mass of subtree (nbody,)
     body_inertia: diagonal inertia in ipos/iquat frame (nbody, 3)
     body_invweight0: mean inv inert in qpos0 (trn, rot) (nbody, 2)
     body_contype: OR over all geom contypes (nbody,)
@@ -511,6 +512,7 @@ class Model:
   body_ipos: wp.array(dtype=wp.vec3, ndim=1)
   body_iquat: wp.array(dtype=wp.quat, ndim=1)
   body_mass: wp.array(dtype=wp.float32, ndim=1)
+  subtree_mass: wp.array(dtype=wp.float32, ndim=1)
   body_inertia: wp.array(dtype=wp.vec3, ndim=1)
   body_invweight0: wp.array(dtype=wp.float32, ndim=2)
   body_contype: wp.array(dtype=wp.int32, ndim=1)
@@ -681,9 +683,6 @@ class Data:
     qM_integration: temporary array for integration (same shape as qM)
     qLD_integration: temporary array for integration (same shape as qLD)
     qLDiagInv_integration: temporary array for integration (nworld, nv)
-    max_num_overlaps_per_world: maximum number of broadphase overlaps per world ()
-    broadphase_pairs: pairs of potentially colliding geometries (nworld, max_num_overlaps_per_world, 2)
-    broadphase_result_count: count of broadphase results (nworld,)
     boxes_sorted: min, max of sorted bounding boxes (nworld, ngeom, 2)
     box_projections_lower: broadphase context (2*nworld, ngeom)
     box_projections_upper: broadphase context (nworld, ngeom)
@@ -692,9 +691,10 @@ class Data:
     cumulative_sum: broadphase context (nworld*ngeom,)
     segment_indices: broadphase context (nworld+1,)
     dyn_geom_aabb: dynamic geometry axis-aligned bounding boxes (nworld, ngeom, 2)
-    narrowphase_candidate_worldid: world IDs for narrowphase candidates (ngroups, max_num_overlaps_per_world*nworld)
-    narrowphase_candidate_geom: geometry pairs for narrowphase (ngroups, max_num_overlaps_per_world*nworld, 2)
-    narrowphase_candidate_group_count: candidate pair counts for each collision type (ngroups,)
+    collision_pair: collision pairs from broadphase (nconmax,)
+    collision_type: collision types from broadphase (nconmax,)
+    collision_worldid: collision world ids from broadphase (nconmax,)
+    ncollision: collision count from broadphase ()
   """
 
   ncon: wp.array(dtype=wp.int32, ndim=1)
@@ -758,9 +758,8 @@ class Data:
   qM_integration: wp.array(dtype=wp.float32, ndim=3)
   qLD_integration: wp.array(dtype=wp.float32, ndim=3)
   qLDiagInv_integration: wp.array(dtype=wp.float32, ndim=2)
-  max_num_overlaps_per_world: int
-  broadphase_pairs: wp.array(dtype=wp.vec2i, ndim=2)
-  broadphase_result_count: wp.array(dtype=wp.int32, ndim=1)
+  
+  # sweep and prune broadphase arrays
   boxes_sorted: wp.array(dtype=wp.vec3, ndim=3)
   box_projections_lower: wp.array(dtype=wp.float32, ndim=2)
   box_projections_upper: wp.array(dtype=wp.float32, ndim=2)
@@ -769,6 +768,9 @@ class Data:
   cumulative_sum: wp.array(dtype=wp.int32, ndim=1)
   segment_indices: wp.array(dtype=wp.int32, ndim=1)
   dyn_geom_aabb: wp.array(dtype=wp.vec3, ndim=3)
-  narrowphase_candidate_worldid: wp.array(dtype=wp.int32, ndim=2)
-  narrowphase_candidate_geom: wp.array(dtype=wp.vec2i, ndim=2)
-  narrowphase_candidate_group_count: wp.array(dtype=wp.int32, ndim=1)
+
+  # collision driver
+  collision_pair: wp.array(dtype=wp.vec2i, ndim=1)
+  collision_type: wp.array(dtype=wp.int32, ndim=1)
+  collision_worldid: wp.array(dtype=wp.int32, ndim=1)
+  ncollision: wp.array(dtype=wp.int32, ndim=1)
