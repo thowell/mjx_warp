@@ -169,6 +169,7 @@ def _copy_2dmat33f(dest: wp.array2d(dtype=wp.mat33f), src: wp.array2d(dtype=wp.m
   i, j = wp.tid()
   dest[i, j] = src[i, j]
 
+# TODO(team): remove kernel_copy once wp.copy is supported in cuda subgraphs
 
 def kernel_copy(dest: wp.array, src: wp.array):
   if src.shape != dest.shape:
