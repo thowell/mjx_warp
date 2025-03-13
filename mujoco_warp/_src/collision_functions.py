@@ -30,11 +30,11 @@ class Geom:
   rot: wp.mat33
   normal: wp.vec3
   size: wp.vec3
+  # TODO(team): mesh fields: vertadr, vertnum
 
 
 @wp.func
 def _geom(
-  t: int,
   gid: int,
   m: Model,
   geom_xpos: wp.array(dtype=wp.vec3),
@@ -45,9 +45,7 @@ def _geom(
   rot = geom_xmat[gid]
   geom.rot = rot
   geom.size = m.geom_size[gid]
-
-  if t == int(GeomType.PLANE.value):
-    geom.normal = wp.vec3(rot[0, 2], rot[1, 2], rot[2, 2])
+  geom.normal = wp.vec3(rot[0, 2], rot[1, 2], rot[2, 2])  # plane
 
   return geom
 
@@ -253,8 +251,8 @@ def _narrowphase(
   type1 = m.geom_type[g1]
   type2 = m.geom_type[g2]
 
-  geom1 = _geom(type1, g1, m, d.geom_xpos[worldid], d.geom_xmat[worldid])
-  geom2 = _geom(type2, g2, m, d.geom_xpos[worldid], d.geom_xmat[worldid])
+  geom1 = _geom(g1, m, d.geom_xpos[worldid], d.geom_xmat[worldid])
+  geom2 = _geom(g2, m, d.geom_xpos[worldid], d.geom_xmat[worldid])
 
   margin = wp.max(m.geom_margin[g1], m.geom_margin[g2])
 
