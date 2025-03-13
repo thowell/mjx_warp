@@ -344,12 +344,14 @@ def create_collision_function_kernel(type1, type2):
     d: Data,
   ):
     tid = wp.tid()
-    num_candidate_contacts = d.narrowphase_candidate_group_count[key]
-    if tid >= num_candidate_contacts:
+
+    if tid >= d.ncollision[0] or d.collision_type[tid] != key:
       return
 
-    geoms = d.narrowphase_candidate_geom[key, tid]
-    worldid = d.narrowphase_candidate_worldid[key, tid]
+    geoms = d.collision_pair[tid]
+    worldid = d.collision_worldid[tid]
+
+    # TODO(team): per-world maximum number of collisions?
 
     g1 = geoms[0]
     g2 = geoms[1]
@@ -383,6 +385,7 @@ def narrowphase(m: Model, d: Data):
   # we need to figure out how to keep the overhead of this small - not launching anything
   # for pair types without collisions, as well as updating the launch dimensions.
 
+  # TODO(team): investigate a single kernel launch for all collision functions
   # TODO only generate collision kernels we actually need
   if len(_collision_kernels) == 0:
     for type1, type2 in _collision_functions.keys():

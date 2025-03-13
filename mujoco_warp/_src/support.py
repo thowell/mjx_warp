@@ -179,7 +179,10 @@ def bisection(x: wp.array(dtype=int), v: int, a_: int, b_: int) -> int:
 
 @wp.func
 def group_key(type1: wp.int32, type2: wp.int32) -> wp.int32:
-  return type1 + type2 * NUM_GEOM_TYPES
+  if type1 > type2:
+    return type2 + type1 * NUM_GEOM_TYPES
+  else:
+    return type1 + type2 * NUM_GEOM_TYPES
 
 
 @wp.func

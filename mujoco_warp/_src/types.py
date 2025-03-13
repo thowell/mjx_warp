@@ -479,10 +479,7 @@ class Data:
   qLD_integration: wp.array(dtype=wp.float32, ndim=3)
   qLDiagInv_integration: wp.array(dtype=wp.float32, ndim=2)
 
-  # broadphase arrays
-  max_num_overlaps_per_world: int
-  broadphase_pairs: wp.array(dtype=wp.vec2i, ndim=2)
-  broadphase_result_count: wp.array(dtype=wp.int32, ndim=1)
+  # sweep and prune broadphase arrays
   boxes_sorted: wp.array(dtype=wp.vec3, ndim=3)
   box_projections_lower: wp.array(dtype=wp.float32, ndim=2)
   box_projections_upper: wp.array(dtype=wp.float32, ndim=2)
@@ -492,7 +489,8 @@ class Data:
   segment_indices: wp.array(dtype=wp.int32, ndim=1)
   dyn_geom_aabb: wp.array(dtype=wp.vec3, ndim=3)
 
-  # narrowphase temp arrays
-  narrowphase_candidate_worldid: wp.array(dtype=wp.int32, ndim=2)
-  narrowphase_candidate_geom: wp.array(dtype=wp.vec2i, ndim=2)
-  narrowphase_candidate_group_count: wp.array(dtype=wp.int32, ndim=1)
+  # collision driver
+  collision_pair: wp.array(dtype=wp.vec2i, ndim=1)
+  collision_type: wp.array(dtype=wp.int32, ndim=1)
+  collision_worldid: wp.array(dtype=wp.int32, ndim=1)
+  ncollision: wp.array(dtype=wp.int32, ndim=1)
