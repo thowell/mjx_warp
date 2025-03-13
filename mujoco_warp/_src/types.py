@@ -482,7 +482,6 @@ class Data:
   max_num_overlaps_per_world: int
   broadphase_pairs: wp.array(dtype=wp.vec2i, ndim=2)
   broadphase_result_count: wp.array(dtype=wp.int32, ndim=1)
-  #boxes_sorted: wp.array(dtype=wp.vec3, ndim=3)
   spheres_sorted: wp.array(dtype=wp.vec4, ndim=2)
   box_projections_lower: wp.array(dtype=wp.float32, ndim=2)
   box_projections_upper: wp.array(dtype=wp.float32, ndim=2)
@@ -490,7 +489,6 @@ class Data:
   ranges: wp.array(dtype=wp.int32, ndim=2)
   cumulative_sum: wp.array(dtype=wp.int32, ndim=1)
   segment_indices: wp.array(dtype=wp.int32, ndim=1)
-  #dyn_geom_aabb: wp.array(dtype=wp.vec3, ndim=3)
 
   # narrowphase temp arrays
   narrowphase_candidate_worldid: wp.array(dtype=wp.int32, ndim=2)

@@ -563,7 +563,7 @@ def broadphase(m: Model, d: Data):
   # broadphase collision
 
   # TODO(team): determine ngeom to switch from n^2 to sap
-  if m.ngeom <= 1:
+  if m.ngeom <= 100:
     nxn_broadphase(m, d)
   else:
     broadphase_sweep_and_prune(m, d)
