@@ -15,7 +15,6 @@
 
 import warp as wp
 
-from .support import group_key
 from .support import where
 from .types import MJ_MINVAL
 from .types import Data

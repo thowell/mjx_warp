@@ -18,7 +18,6 @@ import warp as wp
 from .math import closest_segment_to_segment_points
 from .math import make_frame
 from .math import normalize_with_norm
-from .support import group_key
 from .types import Data
 from .types import GeomType
 from .types import Model
