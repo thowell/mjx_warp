@@ -46,7 +46,7 @@ def mul_m(
 
     def tile_mul(adr: int, size: int, tilesize: int):
       # TODO(team): speed up kernel compile time (14s on 2023 Macbook Pro)
-      @kernel(module="unique")
+      @kernel
       def mul(m: Model, d: Data, leveladr: int, res: array3df, vec: array3df):
         worldid, nodeid = wp.tid()
         dofid = m.qLD_tile[leveladr + nodeid]

@@ -25,6 +25,7 @@ from .types import array3df
 from .types import vec10
 from .warp_util import event_scope
 from .warp_util import kernel
+from .warp_util import kernel_copy
 
 
 @event_scope
@@ -56,7 +57,6 @@ def kinematics(m: Model, d: Data):
     elif jntnum == 1 and m.jnt_type[jntadr] == wp.static(JointType.FREE.value):
       # free joint
       qadr = m.jnt_qposadr[jntadr]
-      # TODO(erikfrey): would it be better to use some kind of wp.copy here?
       xpos = wp.vec3(qpos[qadr], qpos[qadr + 1], qpos[qadr + 2])
       xquat = wp.quat(qpos[qadr + 3], qpos[qadr + 4], qpos[qadr + 5], qpos[qadr + 6])
       d.xanchor[worldid, jntadr] = xpos
@@ -149,13 +149,6 @@ def com_pos(m: Model, d: Data):
   """Map inertias and motion dofs to global frame centered at subtree-CoM."""
 
   @kernel
-  def mass_subtree_acc(m: Model, mass_subtree: wp.array(dtype=float), leveladr: int):
-    nodeid = wp.tid()
-    bodyid = m.body_tree[leveladr + nodeid]
-    pid = m.body_parentid[bodyid]
-    wp.atomic_add(mass_subtree, pid, mass_subtree[bodyid])
-
-  @kernel
   def subtree_com_init(m: Model, d: Data):
     worldid, bodyid = wp.tid()
     d.subtree_com[worldid, bodyid] = d.xipos[worldid, bodyid] * m.body_mass[bodyid]
@@ -168,9 +161,9 @@ def com_pos(m: Model, d: Data):
     wp.atomic_add(d.subtree_com, worldid, pid, d.subtree_com[worldid, bodyid])
 
   @kernel
-  def subtree_div(mass_subtree: wp.array(dtype=float), d: Data):
+  def subtree_div(m: Model, d: Data):
     worldid, bodyid = wp.tid()
-    d.subtree_com[worldid, bodyid] /= mass_subtree[bodyid]
+    d.subtree_com[worldid, bodyid] /= m.subtree_mass[bodyid]
 
   @kernel
   def cinert(m: Model, d: Data):
@@ -237,21 +230,16 @@ def com_pos(m: Model, d: Data):
     elif jnt_type == wp.static(JointType.HINGE.value):  # hinge
       res[dofid] = wp.spatial_vector(xaxis, wp.cross(xaxis, offset))
 
-  body_treeadr = m.body_treeadr.numpy()
-  mass_subtree = wp.clone(m.body_mass)
-  for i in reversed(range(len(body_treeadr))):
-    beg = body_treeadr[i]
-    end = m.nbody if i == len(body_treeadr) - 1 else body_treeadr[i + 1]
-    wp.launch(mass_subtree_acc, dim=(end - beg,), inputs=[m, mass_subtree, beg])
-
   wp.launch(subtree_com_init, dim=(d.nworld, m.nbody), inputs=[m, d])
+
+  body_treeadr = m.body_treeadr.numpy()
 
   for i in reversed(range(len(body_treeadr))):
     beg = body_treeadr[i]
     end = m.nbody if i == len(body_treeadr) - 1 else body_treeadr[i + 1]
     wp.launch(subtree_com_acc, dim=(d.nworld, end - beg), inputs=[m, d, beg])
 
-  wp.launch(subtree_div, dim=(d.nworld, m.nbody), inputs=[mass_subtree, d])
+  wp.launch(subtree_div, dim=(d.nworld, m.nbody), inputs=[m, d])
   wp.launch(cinert, dim=(d.nworld, m.nbody), inputs=[m, d])
   wp.launch(cdof, dim=(d.nworld, m.njnt), inputs=[m, d])
 
@@ -260,7 +248,7 @@ def com_pos(m: Model, d: Data):
 def crb(m: Model, d: Data):
   """Composite rigid body inertia algorithm."""
 
-  wp.copy(d.crb, d.cinert)
+  kernel_copy(d.crb, d.cinert)
 
   @kernel
   def crb_accumulate(m: Model, d: Data, leveladr: int):
@@ -341,7 +329,7 @@ def _factor_i_sparse(m: Model, d: Data, M: array3df, L: array3df, D: array2df):
     worldid, dofid = wp.tid()
     D[worldid, dofid] = 1.0 / L[worldid, 0, m.dof_Madr[dofid]]
 
-  wp.copy(L, M)
+  kernel_copy(L, M)
 
   qLD_update_treeadr = m.qLD_update_treeadr.numpy()
 
@@ -362,7 +350,7 @@ def _factor_i_dense(m: Model, d: Data, M: wp.array, L: wp.array):
   block_dim = 32
 
   def tile_cholesky(adr: int, size: int, tilesize: int):
-    @kernel(module="unique")
+    @kernel
     def cholesky(m: Model, leveladr: int, M: array3df, L: array3df):
       worldid, nodeid = wp.tid()
       dofid = m.qLD_tile[leveladr + nodeid]
@@ -632,7 +620,7 @@ def _solve_LD_sparse(
     i, k, Madr_ki = update[0], update[1], update[2]
     wp.atomic_sub(x[worldid], k, L[worldid, 0, Madr_ki] * x[worldid, i])
 
-  wp.copy(x, y)
+  kernel_copy(x, y)
 
   qLD_update_treeadr = m.qLD_update_treeadr.numpy()
 

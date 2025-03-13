@@ -37,6 +37,7 @@ from .types import array2df
 from .types import array3df
 from .warp_util import event_scope
 from .warp_util import kernel
+from .warp_util import kernel_copy
 
 
 def _advance(
@@ -179,7 +180,7 @@ def euler(m: Model, d: Data):
         d.qfrc_smooth[worldId, tid] + d.qfrc_constraint[worldId, tid]
       )
 
-    wp.copy(d.qM_integration, d.qM)
+    kernel_copy(d.qM_integration, d.qM)
     wp.launch(add_damping_sum_qfrc_kernel_sparse, dim=(d.nworld, m.nv), inputs=[m, d])
     smooth.factor_solve_i(
       m,
@@ -312,7 +313,7 @@ def implicit(m: Model, d: Data):
     def qderiv_actuator_damping_tiled(
       adr: int, size: int, tilesize_nv: int, tilesize_nu: int
     ):
-      @kernel(module="unique")
+      @kernel
       def qderiv_actuator_fused_kernel(
         m: Model, d: Data, damping: wp.array(dtype=wp.float32), leveladr: int
       ):
@@ -443,7 +444,7 @@ def fwd_velocity(m: Model, d: Data):
       tilesize_nu: int,
       tilesize_nv: int,
     ):
-      @kernel(module="unique")
+      @kernel
       def _actuator_velocity(
         m: Model, d: Data, leveladr: int, velocity: array3df, qvel: array3df
       ):
@@ -572,7 +573,7 @@ def fwd_actuation(m: Model, d: Data):
   else:
 
     def qfrc_actuator(adr: int, size: int, tilesize_nu: int, tilesize_nv: int):
-      @kernel(module="unique")
+      @kernel
       def qfrc_actuator_kernel(
         m: Model,
         d: Data,
@@ -664,7 +665,7 @@ def forward(m: Model, d: Data):
   # TODO(team): sensor.sensor_acc
 
   if d.njmax == 0:
-    wp.copy(d.qacc, d.qacc_smooth)
+    kernel_copy(d.qcc, d.qacc_smooth)
   else:
     solver.solve(m, d)
 

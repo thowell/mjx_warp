@@ -222,6 +222,13 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.body_rootid = wp.array(mjm.body_rootid, dtype=wp.int32, ndim=1)
   m.body_inertia = wp.array(mjm.body_inertia, dtype=wp.vec3, ndim=1)
   m.body_mass = wp.array(mjm.body_mass, dtype=wp.float32, ndim=1)
+
+  subtree_mass = np.copy(mjm.body_mass)
+  # TODO(team): should this be [mjm.nbody - 1, 0) ?
+  for i in range(mjm.nbody - 1, -1, -1):
+    subtree_mass[mjm.body_parentid[i]] += subtree_mass[i]
+
+  m.subtree_mass = wp.array(subtree_mass, dtype=wp.float32, ndim=1)
   m.body_invweight0 = wp.array(mjm.body_invweight0, dtype=wp.float32, ndim=2)
   m.body_geomnum = wp.array(mjm.body_geomnum, dtype=wp.int32, ndim=1)
   m.body_geomadr = wp.array(mjm.body_geomadr, dtype=wp.int32, ndim=1)
