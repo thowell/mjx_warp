@@ -1,6 +1,6 @@
-# mjWarp
+# MJWarp
 
-MuJoCo implemented in Warp.
+MuJoCo implemented in NVIDIA Warp.
 
 # Installing for development
 
@@ -32,13 +32,13 @@ Should print out something like `XX passed in XX.XXs` at the end!
 Benchmark as follows:
 
 ```bash
-mjx-testspeed --function=step --mjcf=humanoid/humanoid.xml --batch_size=8192
+mjwarp-testspeed --function=step --mjcf=humanoid/humanoid.xml --batch_size=8192
 ```
 
 To get a full trace of the physics steps (e.g. timings of the subcomponents) run the following:
 
 ```bash
-mjx-testspeed --function=step --mjcf=humanoid/humanoid.xml --batch_size=8192 --event_trace=True
+mjwarp-testspeed --function=step --mjcf=humanoid/humanoid.xml --batch_size=8192 --event_trace=True
 ```
 
 `humanoid.xml` has been carefully optimized for MJX in the following ways:
