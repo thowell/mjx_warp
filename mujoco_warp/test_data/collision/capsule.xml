@@ -1,8 +1,0 @@
-<mujoco>
-  <worldbody>
-    <body name="capsule">
-      <freejoint/>
-      <geom type="capsule" size="0.1 0.2"/>
-    </body>
-  </worldbody>
-</mujoco>

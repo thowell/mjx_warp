@@ -1,8 +1,0 @@
-<mujoco>
-  <worldbody>
-    <body name="box">
-      <freejoint/>
-      <geom type="box" size="0.1 0.1 0.1"/>
-    </body>
-  </worldbody>
-</mujoco>
