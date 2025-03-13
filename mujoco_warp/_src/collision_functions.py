@@ -347,9 +347,11 @@ def create_collision_function_kernel(type1, type2):
 
     if tid >= d.ncollision[0] or d.collision_type[tid] != key:
       return
-
+    
     geoms = d.collision_pair[tid]
     worldid = d.collision_worldid[tid]
+
+    # TODO(team): per-world maximum number of collisions?
 
     g1 = geoms[0]
     g2 = geoms[1]
