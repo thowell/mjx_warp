@@ -18,129 +18,35 @@ import warp as wp
 from .math import closest_segment_to_segment_points
 from .math import make_frame
 from .math import normalize_with_norm
-from .support import group_key
 from .types import Data
 from .types import GeomType
 from .types import Model
 
 
 @wp.struct
-class GeomPlane:
+class Geom:
   pos: wp.vec3
   rot: wp.mat33
   normal: wp.vec3
-
-
-@wp.struct
-class GeomSphere:
-  pos: wp.vec3
-  rot: wp.mat33
-  radius: float
-
-
-@wp.struct
-class GeomCapsule:
-  pos: wp.vec3
-  rot: wp.mat33
-  radius: float
-  halfsize: float
-
-
-@wp.struct
-class GeomEllipsoid:
-  pos: wp.vec3
-  rot: wp.mat33
   size: wp.vec3
+  # TODO(team): mesh fields: vertadr, vertnum
 
 
-@wp.struct
-class GeomCylinder:
-  pos: wp.vec3
-  rot: wp.mat33
-  radius: float
-  halfsize: float
+@wp.func
+def _geom(
+  gid: int,
+  m: Model,
+  geom_xpos: wp.array(dtype=wp.vec3),
+  geom_xmat: wp.array(dtype=wp.mat33),
+) -> Geom:
+  geom = Geom()
+  geom.pos = geom_xpos[gid]
+  rot = geom_xmat[gid]
+  geom.rot = rot
+  geom.size = m.geom_size[gid]
+  geom.normal = wp.vec3(rot[0, 2], rot[1, 2], rot[2, 2])  # plane
 
-
-@wp.struct
-class GeomBox:
-  pos: wp.vec3
-  rot: wp.mat33
-  size: wp.vec3
-
-
-@wp.struct
-class GeomMesh:
-  pos: wp.vec3
-  rot: wp.mat33
-  vertadr: int
-  vertnum: int
-
-
-def get_info(t):
-  @wp.func
-  def _get_info(
-    gid: int,
-    m: Model,
-    geom_xpos: wp.array(dtype=wp.vec3),
-    geom_xmat: wp.array(dtype=wp.mat33),
-  ):
-    pos = geom_xpos[gid]
-    rot = geom_xmat[gid]
-    size = m.geom_size[gid]
-    if wp.static(t == GeomType.SPHERE.value):
-      sphere = GeomSphere()
-      sphere.pos = pos
-      sphere.rot = rot
-      sphere.radius = size[0]
-      return sphere
-    elif wp.static(t == GeomType.BOX.value):
-      box = GeomBox()
-      box.pos = pos
-      box.rot = rot
-      box.size = size
-      return box
-    elif wp.static(t == GeomType.PLANE.value):
-      plane = GeomPlane()
-      plane.pos = pos
-      plane.rot = rot
-      plane.normal = wp.vec3(rot[0, 2], rot[1, 2], rot[2, 2])
-      return plane
-    elif wp.static(t == GeomType.CAPSULE.value):
-      capsule = GeomCapsule()
-      capsule.pos = pos
-      capsule.rot = rot
-      capsule.radius = size[0]
-      capsule.halfsize = size[1]
-      return capsule
-    elif wp.static(t == GeomType.ELLIPSOID.value):
-      ellipsoid = GeomEllipsoid()
-      ellipsoid.pos = pos
-      ellipsoid.rot = rot
-      ellipsoid.size = size
-      return ellipsoid
-    elif wp.static(t == GeomType.CYLINDER.value):
-      cylinder = GeomCylinder()
-      cylinder.pos = pos
-      cylinder.rot = rot
-      cylinder.radius = size[0]
-      cylinder.halfsize = size[1]
-      return cylinder
-    elif wp.static(t == GeomType.MESH.value):
-      mesh = GeomMesh()
-      mesh.pos = pos
-      mesh.rot = rot
-      dataid = m.geom_dataid[gid]
-      if dataid >= 0:
-        mesh.vertadr = m.mesh_vertadr[dataid]
-        mesh.vertnum = m.mesh_vertnum[dataid]
-      else:
-        mesh.vertadr = 0
-        mesh.vertnum = 0
-      return mesh
-    else:
-      wp.static(RuntimeError("Unsupported type", t))
-
-  return _get_info
+  return geom
 
 
 @wp.func
@@ -175,14 +81,14 @@ def _plane_sphere(
 
 @wp.func
 def plane_sphere(
-  plane: GeomPlane,
-  sphere: GeomSphere,
+  plane: Geom,
+  sphere: Geom,
   worldid: int,
   d: Data,
   margin: float,
   geom_indices: wp.vec2i,
 ):
-  dist, pos = _plane_sphere(plane.normal, plane.pos, sphere.pos, sphere.radius)
+  dist, pos = _plane_sphere(plane.normal, plane.pos, sphere.pos, sphere.size[0])
 
   write_contact(d, dist, pos, make_frame(plane.normal), margin, geom_indices, worldid)
 
@@ -212,8 +118,8 @@ def _sphere_sphere(
 
 @wp.func
 def sphere_sphere(
-  sphere1: GeomSphere,
-  sphere2: GeomSphere,
+  sphere1: Geom,
+  sphere2: Geom,
   worldid: int,
   d: Data,
   margin: float,
@@ -221,9 +127,9 @@ def sphere_sphere(
 ):
   _sphere_sphere(
     sphere1.pos,
-    sphere1.radius,
+    sphere1.size[0],
     sphere2.pos,
-    sphere2.radius,
+    sphere2.size[0],
     worldid,
     d,
     margin,
@@ -233,8 +139,8 @@ def sphere_sphere(
 
 @wp.func
 def capsule_capsule(
-  cap1: GeomCapsule,
-  cap2: GeomCapsule,
+  cap1: Geom,
+  cap2: Geom,
   worldid: int,
   d: Data,
   margin: float,
@@ -242,8 +148,8 @@ def capsule_capsule(
 ):
   axis1 = wp.vec3(cap1.rot[0, 2], cap1.rot[1, 2], cap1.rot[2, 2])
   axis2 = wp.vec3(cap2.rot[0, 2], cap2.rot[1, 2], cap2.rot[2, 2])
-  length1 = cap1.halfsize
-  length2 = cap2.halfsize
+  length1 = cap1.size[1]
+  length2 = cap2.size[1]
   seg1 = axis1 * length1
   seg2 = axis2 * length2
 
@@ -254,13 +160,13 @@ def capsule_capsule(
     cap2.pos + seg2,
   )
 
-  _sphere_sphere(pt1, cap1.radius, pt2, cap2.radius, worldid, d, margin, geom_indices)
+  _sphere_sphere(pt1, cap1.size[0], pt2, cap2.size[0], worldid, d, margin, geom_indices)
 
 
 @wp.func
 def plane_capsule(
-  plane: GeomPlane,
-  cap: GeomCapsule,
+  plane: Geom,
+  cap: Geom,
   worldid: int,
   d: Data,
   margin: float,
@@ -280,19 +186,19 @@ def plane_capsule(
 
   c = wp.cross(n, b)
   frame = wp.mat33(n[0], n[1], n[2], b[0], b[1], b[2], c[0], c[1], c[2])
-  segment = axis * cap.halfsize
+  segment = axis * cap.size[1]
 
-  dist1, pos1 = _plane_sphere(n, plane.pos, cap.pos + segment, cap.radius)
+  dist1, pos1 = _plane_sphere(n, plane.pos, cap.pos + segment, cap.size[0])
   write_contact(d, dist1, pos1, frame, margin, geom_indices, worldid)
 
-  dist2, pos2 = _plane_sphere(n, plane.pos, cap.pos - segment, cap.radius)
+  dist2, pos2 = _plane_sphere(n, plane.pos, cap.pos - segment, cap.size[0])
   write_contact(d, dist2, pos2, frame, margin, geom_indices, worldid)
 
 
 @wp.func
 def plane_box(
-  plane: GeomPlane,
-  box: GeomBox,
+  plane: Geom,
+  box: Geom,
   worldid: int,
   d: Data,
   margin: float,
@@ -305,9 +211,9 @@ def plane_box(
   # test all corners, pick bottom 4
   for i in range(8):
     # get corner in local coordinates
-    corner.x = wp.select(i & 1, -box.size.x, box.size.x)
-    corner.y = wp.select(i & 2, -box.size.y, box.size.y)
-    corner.z = wp.select(i & 4, -box.size.z, box.size.z)
+    corner.x = wp.where(i & 1, box.size.x, -box.size.x)
+    corner.y = wp.where(i & 2, box.size.y, -box.size.y)
+    corner.z = wp.where(i & 4, box.size.z, -box.size.z)
 
     # get corner in global coordinates relative to box center
     corner = box.rot * corner
@@ -326,69 +232,43 @@ def plane_box(
       break
 
 
-_collision_functions = {
-  (GeomType.PLANE.value, GeomType.SPHERE.value): plane_sphere,
-  (GeomType.SPHERE.value, GeomType.SPHERE.value): sphere_sphere,
-  (GeomType.PLANE.value, GeomType.CAPSULE.value): plane_capsule,
-  (GeomType.PLANE.value, GeomType.BOX.value): plane_box,
-  (GeomType.CAPSULE.value, GeomType.CAPSULE.value): capsule_capsule,
-}
+@wp.kernel
+def _narrowphase(
+  m: Model,
+  d: Data,
+):
+  tid = wp.tid()
 
+  if tid >= d.ncollision[0]:
+    return
 
-def create_collision_function_kernel(type1, type2):
-  key = group_key(type1, type2)
+  geoms = d.collision_pair[tid]
+  worldid = d.collision_worldid[tid]
 
-  @wp.kernel
-  def _collision_function_kernel(
-    m: Model,
-    d: Data,
-  ):
-    tid = wp.tid()
-    num_candidate_contacts = d.narrowphase_candidate_group_count[key]
-    if tid >= num_candidate_contacts:
-      return
+  g1 = geoms[0]
+  g2 = geoms[1]
+  type1 = m.geom_type[g1]
+  type2 = m.geom_type[g2]
 
-    geoms = d.narrowphase_candidate_geom[key, tid]
-    worldid = d.narrowphase_candidate_worldid[key, tid]
+  geom1 = _geom(g1, m, d.geom_xpos[worldid], d.geom_xmat[worldid])
+  geom2 = _geom(g2, m, d.geom_xpos[worldid], d.geom_xmat[worldid])
 
-    g1 = geoms[0]
-    g2 = geoms[1]
+  margin = wp.max(m.geom_margin[g1], m.geom_margin[g2])
 
-    geom1 = wp.static(get_info(type1))(
-      g1,
-      m,
-      d.geom_xpos[worldid],
-      d.geom_xmat[worldid],
-    )
-    geom2 = wp.static(get_info(type2))(
-      g2,
-      m,
-      d.geom_xpos[worldid],
-      d.geom_xmat[worldid],
-    )
-
-    margin = wp.max(m.geom_margin[g1], m.geom_margin[g2])
-
-    wp.static(_collision_functions[(type1, type2)])(
-      geom1, geom2, worldid, d, margin, geoms
-    )
-
-  return _collision_function_kernel
-
-
-_collision_kernels = {}
+  # TODO(team): static loop unrolling to remove unnecessary branching
+  if type1 == int(GeomType.PLANE.value) and type2 == int(GeomType.SPHERE.value):
+    plane_sphere(geom1, geom2, worldid, d, margin, geoms)
+  elif type1 == int(GeomType.SPHERE.value) and type2 == int(GeomType.SPHERE.value):
+    sphere_sphere(geom1, geom2, worldid, d, margin, geoms)
+  elif type1 == int(GeomType.PLANE.value) and type2 == int(GeomType.CAPSULE.value):
+    plane_capsule(geom1, geom2, worldid, d, margin, geoms)
+  elif type1 == int(GeomType.PLANE.value) and type2 == int(GeomType.BOX.value):
+    plane_box(geom1, geom2, worldid, d, margin, geoms)
+  elif type1 == int(GeomType.CAPSULE.value) and type2 == int(GeomType.CAPSULE.value):
+    capsule_capsule(geom1, geom2, worldid, d, margin, geoms)
 
 
 def narrowphase(m: Model, d: Data):
   # we need to figure out how to keep the overhead of this small - not launching anything
   # for pair types without collisions, as well as updating the launch dimensions.
-
-  # TODO only generate collision kernels we actually need
-  if len(_collision_kernels) == 0:
-    for type1, type2 in _collision_functions.keys():
-      _collision_kernels[(type1, type2)] = create_collision_function_kernel(
-        type1, type2
-      )
-
-  for collision_kernel in _collision_kernels.values():
-    wp.launch(collision_kernel, dim=d.nconmax, inputs=[m, d])
+  wp.launch(_narrowphase, dim=d.nconmax, inputs=[m, d])

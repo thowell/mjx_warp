@@ -150,16 +150,28 @@ class BroadPhaseTest(parameterized.TestCase):
       d.nworld, m.ngeom, pos, m.geom_rbound.numpy(), m.geom_margin.numpy(), m.geom_bodyid.numpy()
     )
 
+<<<<<<< HEAD
     result = d.broadphase_pairs
     broadphase_result_count = d.broadphase_result_count
 
     # Get numpy arrays from result and broadphase_result_count
     result_np = result.numpy()
     broadphase_result_count_np = broadphase_result_count.numpy()
+=======
+    ncollision = dx.ncollision.numpy()[0]
+    np.testing.assert_equal(ncollision, len(brute_force_overlaps[0]), "ncollision")
+
+    mjwarp.broadphase_sweep_and_prune(m, d)
+
+    # Get numpy arrays from result and ncollision
+    result_np = d.collision_pair.numpy()
+    worldid_np = d.collision_worldid.numpy()
+>>>>>>> main
 
     # Iterate over each world
     for world_idx in range(d.nworld):
       # Get number of collisions for this world
+<<<<<<< HEAD
       num_collisions = broadphase_result_count_np[world_idx]
        
       # print(len(brute_force_overlaps[world_idx]))
@@ -170,12 +182,17 @@ class BroadPhaseTest(parameterized.TestCase):
       num_collisions = broadphase_result_count_np[world_idx]
       print(f"Number of collisions for world {world_idx}: {num_collisions}")
 
+=======
+      num_collisions = np.sum(worldid_np[:ncollision] == world_idx)
+>>>>>>> main
       list = brute_force_overlaps[world_idx]
       np.testing.assert_equal(len(list), num_collisions, "num_collisions")
 
       # Print each collision pair
-      for i in range(num_collisions):
-        pair = result_np[world_idx][i]
+      for i in range(ncollision):
+        if worldid_np[i] != world_idx:
+          continue
+        pair = result_np[i]
 
         # Convert pair to tuple for comparison
         # TODO(team): confirm ordering is correct
@@ -194,25 +211,26 @@ class BroadPhaseTest(parameterized.TestCase):
     # one world and zero collisions
     mjm, _, m, d0 = test_util.fixture("broadphase.xml", keyframe=0)
     collision_driver.nxn_broadphase(m, d0)
-    np.testing.assert_allclose(d0.broadphase_result_count.numpy()[0], 0)
+    np.testing.assert_allclose(d0.ncollision.numpy()[0], 0)
 
     # one world and one collision
     _, mjd1, _, d1 = test_util.fixture("broadphase.xml", keyframe=1)
     collision_driver.nxn_broadphase(m, d1)
-    np.testing.assert_allclose(d1.broadphase_result_count.numpy()[0], 1)
-    np.testing.assert_allclose(d1.broadphase_pairs.numpy()[0, 0][0], 0)
-    np.testing.assert_allclose(d1.broadphase_pairs.numpy()[0, 0][1], 1)
+
+    np.testing.assert_allclose(d1.ncollision.numpy()[0], 1)
+    np.testing.assert_allclose(d1.collision_pair.numpy()[0][0], 0)
+    np.testing.assert_allclose(d1.collision_pair.numpy()[0][1], 1)
 
     # one world and three collisions
     _, mjd2, _, d2 = test_util.fixture("broadphase.xml", keyframe=2)
     collision_driver.nxn_broadphase(m, d2)
-    np.testing.assert_allclose(d2.broadphase_result_count.numpy()[0], 3)
-    np.testing.assert_allclose(d2.broadphase_pairs.numpy()[0, 0][0], 0)
-    np.testing.assert_allclose(d2.broadphase_pairs.numpy()[0, 0][1], 1)
-    np.testing.assert_allclose(d2.broadphase_pairs.numpy()[0, 1][0], 0)
-    np.testing.assert_allclose(d2.broadphase_pairs.numpy()[0, 1][1], 2)
-    np.testing.assert_allclose(d2.broadphase_pairs.numpy()[0, 2][0], 1)
-    np.testing.assert_allclose(d2.broadphase_pairs.numpy()[0, 2][1], 2)
+    np.testing.assert_allclose(d2.ncollision.numpy()[0], 3)
+    np.testing.assert_allclose(d2.collision_pair.numpy()[0][0], 0)
+    np.testing.assert_allclose(d2.collision_pair.numpy()[0][1], 1)
+    np.testing.assert_allclose(d2.collision_pair.numpy()[1][0], 0)
+    np.testing.assert_allclose(d2.collision_pair.numpy()[1][1], 2)
+    np.testing.assert_allclose(d2.collision_pair.numpy()[2][0], 1)
+    np.testing.assert_allclose(d2.collision_pair.numpy()[2][1], 2)
 
     # two worlds and four collisions
     d3 = mjwarp.make_data(mjm, nworld=2)
@@ -224,30 +242,29 @@ class BroadPhaseTest(parameterized.TestCase):
     )
 
     collision_driver.nxn_broadphase(m, d3)
-    np.testing.assert_allclose(d3.broadphase_result_count.numpy()[0], 1)
-    np.testing.assert_allclose(d3.broadphase_pairs.numpy()[0, 0][0], 0)
-    np.testing.assert_allclose(d3.broadphase_pairs.numpy()[0, 0][1], 1)
-    np.testing.assert_allclose(d3.broadphase_result_count.numpy()[1], 3)
-    np.testing.assert_allclose(d3.broadphase_pairs.numpy()[1, 0][0], 0)
-    np.testing.assert_allclose(d3.broadphase_pairs.numpy()[1, 0][1], 1)
-    np.testing.assert_allclose(d3.broadphase_pairs.numpy()[1, 1][0], 0)
-    np.testing.assert_allclose(d3.broadphase_pairs.numpy()[1, 1][1], 2)
-    np.testing.assert_allclose(d3.broadphase_pairs.numpy()[1, 2][0], 1)
-    np.testing.assert_allclose(d3.broadphase_pairs.numpy()[1, 2][1], 2)
+    np.testing.assert_allclose(d3.ncollision.numpy()[0], 4)
+    np.testing.assert_allclose(d3.collision_pair.numpy()[0][0], 0)
+    np.testing.assert_allclose(d3.collision_pair.numpy()[0][1], 1)
+    np.testing.assert_allclose(d3.collision_pair.numpy()[1][0], 0)
+    np.testing.assert_allclose(d3.collision_pair.numpy()[1][1], 1)
+    np.testing.assert_allclose(d3.collision_pair.numpy()[2][0], 0)
+    np.testing.assert_allclose(d3.collision_pair.numpy()[2][1], 2)
+    np.testing.assert_allclose(d3.collision_pair.numpy()[3][0], 1)
+    np.testing.assert_allclose(d3.collision_pair.numpy()[3][1], 2)
 
     # one world and zero collisions: contype and conaffinity incompatibility
     _, _, m4, d4 = test_util.fixture("broadphase.xml", keyframe=1)
     m4.geom_contype = wp.array(np.array([0, 0, 0]), dtype=wp.int32)
     m4.geom_conaffinity = wp.array(np.array([1, 1, 1]), dtype=wp.int32)
     collision_driver.nxn_broadphase(m4, d4)
-    np.testing.assert_allclose(d4.broadphase_result_count.numpy()[0], 0)
+    np.testing.assert_allclose(d4.ncollision.numpy()[0], 0)
 
     # one world and one collision: geomtype ordering
     _, _, _, d5 = test_util.fixture("broadphase.xml", keyframe=3)
     collision_driver.nxn_broadphase(m, d5)
-    np.testing.assert_allclose(d5.broadphase_result_count.numpy()[0], 1)
-    np.testing.assert_allclose(d5.broadphase_pairs.numpy()[0, 0][0], 3)
-    np.testing.assert_allclose(d5.broadphase_pairs.numpy()[0, 0][1], 2)
+    np.testing.assert_allclose(d5.ncollision.numpy()[0], 1)
+    np.testing.assert_allclose(d5.collision_pair.numpy()[0][0], 3)
+    np.testing.assert_allclose(d5.collision_pair.numpy()[0][1], 2)
 
     # TODO(team): test margin
 

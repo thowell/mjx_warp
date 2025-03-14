@@ -21,6 +21,7 @@ from . import support
 from . import types
 from .warp_util import event_scope
 from .warp_util import kernel
+from .warp_util import kernel_copy
 
 
 def _create_context(m: types.Model, d: types.Data, grad: bool = True):
@@ -205,7 +206,7 @@ def _update_gradient(m: types.Model, d: types.Data):
       d.efc.J[efcid, dofi] * d.efc.J[efcid, dofj] * efc_D,
     )
 
-  @kernel(module="unique")
+  @kernel
   def _cholesky(d: types.Data):
     worldid = wp.tid()
     mat_tile = wp.tile_load(d.efc.h[worldid], shape=(TILE, TILE))
@@ -279,7 +280,7 @@ def _eval_pt(quad: wp.vec3, alpha: wp.float32) -> wp.vec3:
 
 @wp.func
 def _safe_div(x: wp.float32, y: wp.float32) -> wp.float32:
-  return x / wp.select(y == 0.0, y, types.MJ_MINVAL)
+  return x / wp.where(y != 0.0, y, types.MJ_MINVAL)
 
 
 @event_scope
@@ -395,10 +396,10 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
     plo = lo[worldid]
     plo_alpha = lo_alpha[worldid]
     lo_less = plo[1] < pp0[1]
-    lo[worldid] = wp.select(lo_less, pp0, plo)
-    lo_alpha[worldid] = wp.select(lo_less, 0.0, plo_alpha)
-    hi[worldid] = wp.select(lo_less, plo, pp0)
-    hi_alpha[worldid] = wp.select(lo_less, plo_alpha, 0.0)
+    lo[worldid] = wp.where(lo_less, plo, pp0)
+    lo_alpha[worldid] = wp.where(lo_less, plo_alpha, 0.0)
+    hi[worldid] = wp.where(lo_less, pp0, plo)
+    hi_alpha[worldid] = wp.where(lo_less, 0.0, plo_alpha)
 
   @kernel
   def _next_alpha_gauss(
@@ -512,28 +513,28 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
 
     # swap lo:
     swap_lo_lo_next = _in_bracket(plo, plo_next)
-    plo = wp.select(swap_lo_lo_next, plo, plo_next)
-    plo_alpha = wp.select(swap_lo_lo_next, plo_alpha, plo_next_alpha)
+    plo = wp.where(swap_lo_lo_next, plo_next, plo)
+    plo_alpha = wp.where(swap_lo_lo_next, plo_next_alpha, plo_alpha)
     swap_lo_mid = _in_bracket(plo, pmid)
-    plo = wp.select(swap_lo_mid, plo, pmid)
-    plo_alpha = wp.select(swap_lo_mid, plo_alpha, pmid_alpha)
+    plo = wp.where(swap_lo_mid, pmid, plo)
+    plo_alpha = wp.where(swap_lo_mid, pmid_alpha, plo_alpha)
     swap_lo_hi_next = _in_bracket(plo, phi_next)
-    plo = wp.select(swap_lo_hi_next, plo, phi_next)
-    plo_alpha = wp.select(swap_lo_hi_next, plo_alpha, phi_next_alpha)
+    plo = wp.where(swap_lo_hi_next, phi_next, plo)
+    plo_alpha = wp.where(swap_lo_hi_next, phi_next_alpha, plo_alpha)
     lo[worldid] = plo
     lo_alpha[worldid] = plo_alpha
     swap_lo = swap_lo_lo_next or swap_lo_mid or swap_lo_hi_next
 
     # swap hi:
     swap_hi_hi_next = _in_bracket(phi, phi_next)
-    phi = wp.select(swap_hi_hi_next, phi, phi_next)
-    phi_alpha = wp.select(swap_hi_hi_next, phi_alpha, phi_next_alpha)
+    phi = wp.where(swap_hi_hi_next, phi_next, phi)
+    phi_alpha = wp.where(swap_hi_hi_next, phi_next_alpha, phi_alpha)
     swap_hi_mid = _in_bracket(phi, pmid)
-    phi = wp.select(swap_hi_mid, phi, pmid)
-    phi_alpha = wp.select(swap_hi_mid, phi_alpha, pmid_alpha)
+    phi = wp.where(swap_hi_mid, pmid, phi)
+    phi_alpha = wp.where(swap_hi_mid, pmid_alpha, phi_alpha)
     swap_hi_lo_next = _in_bracket(phi, plo_next)
-    phi = wp.select(swap_hi_lo_next, phi, plo_next)
-    phi_alpha = wp.select(swap_hi_lo_next, phi_alpha, plo_next_alpha)
+    phi = wp.where(swap_hi_lo_next, plo_next, phi)
+    phi_alpha = wp.where(swap_hi_lo_next, plo_next_alpha, phi_alpha)
     hi[worldid] = phi
     hi_alpha[worldid] = phi_alpha
     swap_hi = swap_hi_hi_next or swap_hi_mid or swap_hi_lo_next
@@ -552,8 +553,8 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
     alpha = 0.0
     improved = plo[0] < pp0[0] or phi[0] < pp0[0]
     plo_better = plo[0] < phi[0]
-    alpha = wp.select(improved and plo_better, alpha, plo_alpha)
-    alpha = wp.select(improved and not plo_better, alpha, phi_alpha)
+    alpha = wp.where(improved and plo_better, plo_alpha, alpha)
+    alpha = wp.where(improved and not plo_better, phi_alpha, alpha)
     d.efc.alpha[worldid] = alpha
 
   @kernel
@@ -708,7 +709,7 @@ def solve(m: types.Model, d: types.Data):
       )
 
   # warmstart
-  wp.copy(d.qacc, d.qacc_warmstart)
+  kernel_copy(d.qacc, d.qacc_warmstart)
 
   _create_context(m, d, grad=True)
 
@@ -736,4 +737,4 @@ def solve(m: types.Model, d: types.Data):
     wp.launch(_done, dim=(d.nworld,), inputs=[m, d, i])
     # TODO(team): return if all done
 
-  wp.copy(d.qacc_warmstart, d.qacc)
+  kernel_copy(d.qacc_warmstart, d.qacc)

@@ -46,7 +46,7 @@ def mul_m(
 
     def tile_mul(adr: int, size: int, tilesize: int):
       # TODO(team): speed up kernel compile time (14s on 2023 Macbook Pro)
-      @kernel(module="unique")
+      @kernel
       def mul(m: Model, d: Data, leveladr: int, res: array3df, vec: array3df):
         worldid, nodeid = wp.tid()
         dofid = m.qLD_tile[leveladr + nodeid]
@@ -175,11 +175,6 @@ def bisection(x: wp.array(dtype=int), v: int, a_: int, b_: int) -> int:
   if c != b and x[b] <= v:
     c = b
   return c
-
-
-@wp.func
-def group_key(type1: wp.int32, type2: wp.int32) -> wp.int32:
-  return type1 + type2 * NUM_GEOM_TYPES
 
 
 @wp.func

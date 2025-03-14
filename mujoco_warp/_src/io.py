@@ -222,6 +222,13 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.body_rootid = wp.array(mjm.body_rootid, dtype=wp.int32, ndim=1)
   m.body_inertia = wp.array(mjm.body_inertia, dtype=wp.vec3, ndim=1)
   m.body_mass = wp.array(mjm.body_mass, dtype=wp.float32, ndim=1)
+
+  subtree_mass = np.copy(mjm.body_mass)
+  # TODO(team): should this be [mjm.nbody - 1, 0) ?
+  for i in range(mjm.nbody - 1, -1, -1):
+    subtree_mass[mjm.body_parentid[i]] += subtree_mass[i]
+
+  m.subtree_mass = wp.array(subtree_mass, dtype=wp.float32, ndim=1)
   m.body_invweight0 = wp.array(mjm.body_invweight0, dtype=wp.float32, ndim=2)
   m.body_geomnum = wp.array(mjm.body_geomnum, dtype=wp.int32, ndim=1)
   m.body_geomadr = wp.array(mjm.body_geomadr, dtype=wp.int32, ndim=1)
@@ -455,11 +462,6 @@ def make_data(
   d.act_vel_integration = wp.zeros_like(d.ctrl)
 
   # the result of the broadphase gets stored in this array
-  d.max_num_overlaps_per_world = (
-    mjm.ngeom * (mjm.ngeom - 1) // 2
-  )  # TODO: this is a hack to estimate the maximum number of overlaps per world
-  d.broadphase_pairs = wp.zeros((nworld, d.max_num_overlaps_per_world), dtype=wp.vec2i)
-  d.broadphase_result_count = wp.zeros(nworld, dtype=wp.int32)
 
   # internal broadphase tmp arrays
   d.spheres_sorted = wp.zeros((nworld, mjm.ngeom), dtype=wp.vec4)
@@ -471,15 +473,10 @@ def make_data(
   segment_indices_list = [i * mjm.ngeom for i in range(nworld + 1)]
   d.segment_indices = wp.array(segment_indices_list, dtype=int)
 
-  # internal narrowphase tmp arrays
-  ngroups = types.NUM_GEOM_TYPES * types.NUM_GEOM_TYPES
-  d.narrowphase_candidate_worldid = wp.empty(
-    (ngroups, d.max_num_overlaps_per_world * nworld), dtype=wp.int32, ndim=2
-  )
-  d.narrowphase_candidate_geom = wp.empty(
-    (ngroups, d.max_num_overlaps_per_world * nworld), dtype=wp.vec2i, ndim=2
-  )
-  d.narrowphase_candidate_group_count = wp.zeros(ngroups, dtype=wp.int32, ndim=1)
+  # collision driver
+  d.collision_pair = wp.empty(nconmax, dtype=wp.vec2i, ndim=1)
+  d.collision_worldid = wp.empty(nconmax, dtype=wp.int32, ndim=1)
+  d.ncollision = wp.zeros(1, dtype=wp.int32, ndim=1)
 
   return d
 
@@ -687,9 +684,6 @@ def put_data(
   d.act_vel_integration = wp.zeros_like(d.ctrl)
 
   # the result of the broadphase gets stored in this array
-  d.max_num_overlaps_per_world = mjm.ngeom * (mjm.ngeom - 1) // 2
-  d.broadphase_pairs = wp.zeros((nworld, d.max_num_overlaps_per_world), dtype=wp.vec2i)
-  d.broadphase_result_count = wp.zeros(nworld, dtype=wp.int32)
 
   # internal broadphase tmp arrays
   d.spheres_sorted = wp.zeros((nworld, mjm.ngeom), dtype=wp.vec4)
@@ -701,15 +695,10 @@ def put_data(
   segment_indices_list = [i * mjm.ngeom for i in range(nworld + 1)]
   d.segment_indices = wp.array(segment_indices_list, dtype=int)
 
-  # internal narrowphase tmp arrays
-  ngroups = types.NUM_GEOM_TYPES * types.NUM_GEOM_TYPES
-  d.narrowphase_candidate_worldid = wp.empty(
-    (ngroups, d.max_num_overlaps_per_world * nworld), dtype=wp.int32, ndim=2
-  )
-  d.narrowphase_candidate_geom = wp.empty(
-    (ngroups, d.max_num_overlaps_per_world * nworld), dtype=wp.vec2i, ndim=2
-  )
-  d.narrowphase_candidate_group_count = wp.zeros(ngroups, dtype=wp.int32, ndim=1)
+  # collision driver
+  d.collision_pair = wp.empty(nconmax, dtype=wp.vec2i, ndim=1)
+  d.collision_worldid = wp.empty(nconmax, dtype=wp.int32, ndim=1)
+  d.ncollision = wp.zeros(1, dtype=wp.int32, ndim=1)
 
   return d
 
