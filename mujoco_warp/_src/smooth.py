@@ -282,12 +282,14 @@ def crb(m: Model, d: Data):
     worldid, dofid = wp.tid()
     bodyid = m.dof_bodyid[dofid]
 
+    # init M(i, i) with armature inertia
+    M = m.dof_armature[dofid]
+
     # precompute buf = crb_body_i * cdof_i
     buf = math.inert_vec(d.crb[worldid, bodyid], d.cdof[worldid, dofid])
+    M += wp.dot(d.cdof[worldid, dofid], buf)
 
-    d.qM[worldid, dofid, dofid] = m.dof_armature[dofid] + wp.dot(
-      d.cdof[worldid, dofid], buf
-    )
+    d.qM[worldid, dofid, dofid] = M
 
     # sparse backward pass over ancestors
     dofidi = dofid
