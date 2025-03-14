@@ -260,32 +260,32 @@ def crb(m: Model, d: Data):
     wp.atomic_add(d.crb, worldid, pid, d.crb[worldid, bodyid])
 
   @kernel
-  def qM_sparse(m: Model, d: Data, qM: wp.array(ndim=3, dtype=wp.float32)):
+  def qM_sparse(m: Model, d: Data):
     worldid, dofid = wp.tid()
     madr_ij = m.dof_Madr[dofid]
     bodyid = m.dof_bodyid[dofid]
 
     # init M(i,i) with armature inertia
-    qM[worldid, 0, madr_ij] = m.dof_armature[dofid]
+    d.qM[worldid, 0, madr_ij] = m.dof_armature[dofid]
 
     # precompute buf = crb_body_i * cdof_i
     buf = math.inert_vec(d.crb[worldid, bodyid], d.cdof[worldid, dofid])
 
     # sparse backward pass over ancestors
     while dofid >= 0:
-      qM[worldid, 0, madr_ij] += wp.dot(d.cdof[worldid, dofid], buf)
+      d.qM[worldid, 0, madr_ij] += wp.dot(d.cdof[worldid, dofid], buf)
       madr_ij += 1
       dofid = m.dof_parentid[dofid]
 
   @kernel
-  def qM_dense(m: Model, d: Data, qM: wp.array(ndim=3, dtype=wp.float32)):
+  def qM_dense(m: Model, d: Data):
     worldid, dofid = wp.tid()
     bodyid = m.dof_bodyid[dofid]
 
     # precompute buf = crb_body_i * cdof_i
     buf = math.inert_vec(d.crb[worldid, bodyid], d.cdof[worldid, dofid])
 
-    qM[worldid, dofid, dofid] = m.dof_armature[dofid] + wp.dot(
+    d.qM[worldid, dofid, dofid] = m.dof_armature[dofid] + wp.dot(
       d.cdof[worldid, dofid], buf
     )
 
@@ -294,8 +294,8 @@ def crb(m: Model, d: Data):
     dofid = m.dof_parentid[dofid]
     while dofid >= 0:
       qMij = wp.dot(d.cdof[worldid, dofid], buf)
-      qM[worldid, dofidi, dofid] += qMij
-      qM[worldid, dofid, dofidi] += qMij
+      d.qM[worldid, dofidi, dofid] += qMij
+      d.qM[worldid, dofid, dofidi] += qMij
       dofid = m.dof_parentid[dofid]
 
   body_treeadr = m.body_treeadr.numpy()
@@ -306,9 +306,9 @@ def crb(m: Model, d: Data):
 
   d.qM.zero_()
   if m.opt.is_sparse:
-    wp.launch(qM_sparse, dim=(d.nworld, m.nv), inputs=[m, d, d.qM])
+    wp.launch(qM_sparse, dim=(d.nworld, m.nv), inputs=[m, d])
   else:
-    wp.launch(qM_dense, dim=(d.nworld, m.nv), inputs=[m, d, d.qM])
+    wp.launch(qM_dense, dim=(d.nworld, m.nv), inputs=[m, d])
 
 
 def _factor_i_sparse(m: Model, d: Data, M: array3df, L: array3df, D: array2df):
