@@ -50,11 +50,22 @@ def _geom_filter(m: Model, geom1: int, geom2: int, filterparent: bool) -> bool:
 
 
 @wp.func
-def _geom_pair(m: Model, geom1: int, geom2: int) -> wp.vec2i:
-  if m.geom_type[geom1] > m.geom_type[geom2]:
-    return wp.vec2i(geom2, geom1)
+def _add_geom_pair(m: Model, d: Data, geom1: int, geom2: int, worldid: int):
+  pairid = wp.atomic_add(d.ncollision, 0, 1)
+
+  if pairid >= d.nconmax:
+    return
+
+  type1 = m.geom_type[geom1]
+  type2 = m.geom_type[geom2]
+
+  if type1 > type2:
+    pair = wp.vec2i(geom2, geom1)
   else:
-    return wp.vec2i(geom1, geom2)
+    pair = wp.vec2i(geom1, geom2)
+
+  d.collision_pair[pairid] = pair
+  d.collision_worldid[pairid] = worldid
 
 
 @wp.struct
@@ -287,14 +298,7 @@ def broadphase_sweep_and_prune_kernel(
     """
     # Check if the boxes overlap
     if overlap(worldId, i, j, d.boxes_sorted):
-      pairid = wp.atomic_add(d.ncollision, 0, 1)
-
-      if pairid >= d.nconmax:
-        return
-
-      pair = _geom_pair(m, idx1, idx2)
-      d.collision_pair[pairid] = pair
-      d.collision_worldid[pairid] = worldId
+      _add_geom_pair(m, d, idx1, idx2, worldId)
 
     threadId += num_threads
 
@@ -497,14 +501,7 @@ def nxn_broadphase(m: Model, d: Data):
     geom_filter = _geom_filter(m, geom1, geom2, filterparent)
 
     if bounds_filter and geom_filter:
-      pairid = wp.atomic_add(d.ncollision, 0, 1)
-
-      if pairid >= d.nconmax:
-        return
-
-      pair = _geom_pair(m, geom1, geom2)
-      d.collision_pair[pairid] = pair
-      d.collision_worldid[pairid] = worldid
+      _add_geom_pair(m, d, geom1, geom2, worldid)
 
   wp.launch(
     _nxn_broadphase, dim=(d.nworld, m.ngeom * (m.ngeom - 1) // 2), inputs=[m, d]
