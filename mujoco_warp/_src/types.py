@@ -443,7 +443,6 @@ class Data:
   cdof: wp.array(dtype=wp.spatial_vector, ndim=2)
   crb: wp.array(dtype=vec10, ndim=2)
   qM: wp.array(dtype=wp.float32, ndim=3)
-  qM_sparse: wp.array(dtype=wp.float32, ndim=3)
   qLD: wp.array(dtype=wp.float32, ndim=3)
   act: wp.array(dtype=wp.float32, ndim=2)
   act_dot: wp.array(dtype=wp.float32, ndim=2)

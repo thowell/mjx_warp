@@ -277,30 +277,38 @@ def crb(m: Model, d: Data):
       madr_ij += 1
       dofid = m.dof_parentid[dofid]
 
+  @kernel
+  def qM_dense(m: Model, d: Data, qM: wp.array(ndim=3, dtype=wp.float32)):
+    worldid, dofid = wp.tid()
+    bodyid = m.dof_bodyid[dofid]
+
+    # init M(i,i) with armature inertia
+    qM[worldid, dofid, dofid] = m.dof_armature[dofid]
+
+    # precompute buf = crb_body_i * cdof_i
+    buf = math.inert_vec(d.crb[worldid, bodyid], d.cdof[worldid, dofid])
+
+    # sparse backward pass over ancestors
+    dofidi = dofid
+    while dofid >= 0:
+      qMij = wp.dot(d.cdof[worldid, dofid], buf)
+      qM[worldid, dofidi, dofid] += qMij
+      if dofidi != dofid:
+        qM[worldid, dofid, dofidi] += qMij
+
+      dofid = m.dof_parentid[dofid]
+
   body_treeadr = m.body_treeadr.numpy()
   for i in reversed(range(len(body_treeadr))):
     beg = body_treeadr[i]
     end = m.nbody if i == len(body_treeadr) - 1 else body_treeadr[i + 1]
     wp.launch(crb_accumulate, dim=(d.nworld, end - beg), inputs=[m, d, beg])
 
-  @kernel
-  def qM_dense2sparse(m: Model, d: Data):
-    worldid, elementid = wp.tid()
-    i = m.qM_fullm_i[elementid]
-    j = m.qM_fullm_j[elementid]
-    qMij = d.qM_sparse[worldid, 0, elementid]
-    d.qM[worldid, i, j] = qMij
-    if i != j:
-      d.qM[worldid, j, i] = qMij
-
   d.qM.zero_()
   if m.opt.is_sparse:
     wp.launch(qM_sparse, dim=(d.nworld, m.nv), inputs=[m, d, d.qM])
   else:
-    # TODO(team): dense version
-    d.qM_sparse.zero_()
-    wp.launch(qM_sparse, dim=(d.nworld, m.nv), inputs=[m, d, d.qM_sparse])
-    wp.launch(qM_dense2sparse, dim=(d.nworld, m.qM_fullm_i.size), inputs=[m, d])
+    wp.launch(qM_dense, dim=(d.nworld, m.nv), inputs=[m, d, d.qM])
 
 
 def _factor_i_sparse(m: Model, d: Data, M: array3df, L: array3df, D: array2df):
