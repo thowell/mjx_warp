@@ -282,20 +282,20 @@ def crb(m: Model, d: Data):
     worldid, dofid = wp.tid()
     bodyid = m.dof_bodyid[dofid]
 
-    # init M(i,i) with armature inertia
-    qM[worldid, dofid, dofid] = m.dof_armature[dofid]
-
     # precompute buf = crb_body_i * cdof_i
     buf = math.inert_vec(d.crb[worldid, bodyid], d.cdof[worldid, dofid])
 
+    qM[worldid, dofid, dofid] = m.dof_armature[dofid] + wp.dot(
+      d.cdof[worldid, dofid], buf
+    )
+
     # sparse backward pass over ancestors
     dofidi = dofid
+    dofid = m.dof_parentid[dofid]
     while dofid >= 0:
       qMij = wp.dot(d.cdof[worldid, dofid], buf)
       qM[worldid, dofidi, dofid] += qMij
-      if dofidi != dofid:
-        qM[worldid, dofid, dofidi] += qMij
-
+      qM[worldid, dofid, dofidi] += qMij
       dofid = m.dof_parentid[dofid]
 
   body_treeadr = m.body_treeadr.numpy()
