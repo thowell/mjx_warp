@@ -332,7 +332,9 @@ def get_contact_solver_params_kernel(
 
   condim1 = m.geom_condim[g1]
   condim2 = m.geom_condim[g2]
-  condim = wp.where(p1 == p2, wp.max(condim1, condim2), wp.where(p1 > p2, condim1, condim2))
+  condim = wp.where(
+    p1 == p2, wp.max(condim1, condim2), wp.where(p1 > p2, condim1, condim2)
+  )
   d.contact.dim[tid] = condim
 
   if m.geom_solref[g1].x > 0.0 and m.geom_solref[g2].x > 0.0:
