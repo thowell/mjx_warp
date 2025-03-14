@@ -150,14 +150,6 @@ class BroadPhaseTest(parameterized.TestCase):
       d.nworld, m.ngeom, pos, m.geom_rbound.numpy(), m.geom_margin.numpy(), m.geom_bodyid.numpy()
     )
 
-<<<<<<< HEAD
-    result = d.broadphase_pairs
-    broadphase_result_count = d.broadphase_result_count
-
-    # Get numpy arrays from result and broadphase_result_count
-    result_np = result.numpy()
-    broadphase_result_count_np = broadphase_result_count.numpy()
-=======
     ncollision = dx.ncollision.numpy()[0]
     np.testing.assert_equal(ncollision, len(brute_force_overlaps[0]), "ncollision")
 
@@ -166,25 +158,11 @@ class BroadPhaseTest(parameterized.TestCase):
     # Get numpy arrays from result and ncollision
     result_np = d.collision_pair.numpy()
     worldid_np = d.collision_worldid.numpy()
->>>>>>> main
 
     # Iterate over each world
     for world_idx in range(d.nworld):
       # Get number of collisions for this world
-<<<<<<< HEAD
-      num_collisions = broadphase_result_count_np[world_idx]
-       
-      # print(len(brute_force_overlaps[world_idx]))
-      # print(num_collisions)
-      # print(brute_force_overlaps)
-      # print(result)
-
-      num_collisions = broadphase_result_count_np[world_idx]
-      print(f"Number of collisions for world {world_idx}: {num_collisions}")
-
-=======
       num_collisions = np.sum(worldid_np[:ncollision] == world_idx)
->>>>>>> main
       list = brute_force_overlaps[world_idx]
       np.testing.assert_equal(len(list), num_collisions, "num_collisions")
 
