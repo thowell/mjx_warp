@@ -297,6 +297,7 @@ def crb(m: Model, d: Data):
   if m.opt.is_sparse:
     wp.launch(qM_sparse, dim=(d.nworld, m.nv), inputs=[m, d, d.qM])
   else:
+    # TODO(team): dense version
     d.qM_sparse.zero_()
     wp.launch(qM_sparse, dim=(d.nworld, m.nv), inputs=[m, d, d.qM_sparse])
     wp.launch(qM_dense2sparse, dim=(d.nworld, m.qM_fullm_i.size), inputs=[m, d])

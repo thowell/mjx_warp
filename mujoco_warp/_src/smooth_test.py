@@ -73,7 +73,7 @@ class SmoothTest(parameterized.TestCase):
     _assert_eq(d.cdof.numpy()[0], mjd.cdof, "cdof")
 
   @parameterized.parameters(True, False)
-  def test_crb(self, sparse):
+  def test_crb(self, sparse: bool):
     """Tests crb."""
     mjm, mjd, m, d = test_util.fixture("pendula.xml", sparse=sparse)
 
