@@ -475,7 +475,6 @@ def make_data(
 
   # collision driver
   d.collision_pair = wp.empty(nconmax, dtype=wp.vec2i, ndim=1)
-  d.collision_type = wp.empty(nconmax, dtype=wp.int32, ndim=1)
   d.collision_worldid = wp.empty(nconmax, dtype=wp.int32, ndim=1)
   d.ncollision = wp.zeros(1, dtype=wp.int32, ndim=1)
 
@@ -699,7 +698,6 @@ def put_data(
 
   # collision driver
   d.collision_pair = wp.empty(nconmax, dtype=wp.vec2i, ndim=1)
-  d.collision_type = wp.empty(nconmax, dtype=wp.int32, ndim=1)
   d.collision_worldid = wp.empty(nconmax, dtype=wp.int32, ndim=1)
   d.ncollision = wp.zeros(1, dtype=wp.int32, ndim=1)
 
