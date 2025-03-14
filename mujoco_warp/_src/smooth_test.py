@@ -72,15 +72,22 @@ class SmoothTest(parameterized.TestCase):
     _assert_eq(d.cinert.numpy()[0], mjd.cinert, "cinert")
     _assert_eq(d.cdof.numpy()[0], mjd.cdof, "cdof")
 
-  def test_crb(self):
+  @parameterized.parameters(True, False)
+  def test_crb(self, sparse: bool):
     """Tests crb."""
-    _, mjd, m, d = test_util.fixture("pendula.xml")
+    mjm, mjd, m, d = test_util.fixture("pendula.xml", sparse=sparse)
 
     d.crb.zero_()
 
     mjwarp.crb(m, d)
     _assert_eq(d.crb.numpy()[0], mjd.crb, "crb")
-    _assert_eq(d.qM.numpy()[0, 0], mjd.qM, "qM")
+
+    if sparse:
+      _assert_eq(d.qM.numpy()[0, 0], mjd.qM, "qM")
+    else:
+      qM = np.zeros((mjm.nv, mjm.nv))
+      mujoco.mj_fullM(mjm, qM, mjd.qM)
+      _assert_eq(d.qM.numpy()[0], qM, "qM")
 
   def test_factor_m_sparse(self):
     """Tests factor_m (sparse)."""
