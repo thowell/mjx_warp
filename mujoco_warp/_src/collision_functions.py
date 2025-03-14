@@ -305,9 +305,9 @@ def plane_box(
   # test all corners, pick bottom 4
   for i in range(8):
     # get corner in local coordinates
-    corner.x = wp.select(i & 1, -box.size.x, box.size.x)
-    corner.y = wp.select(i & 2, -box.size.y, box.size.y)
-    corner.z = wp.select(i & 4, -box.size.z, box.size.z)
+    corner.x = wp.where(i & 1, box.size.x, -box.size.x)
+    corner.y = wp.where(i & 2, box.size.y, -box.size.y)
+    corner.z = wp.where(i & 4, box.size.z, -box.size.z)
 
     # get corner in global coordinates relative to box center
     corner = box.rot * corner
