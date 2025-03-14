@@ -151,13 +151,6 @@ def xfrc_accumulate(m: Model, d: Data, qfrc: array2df):
 
 
 @wp.func
-def where(condition: bool, ret_true: Any, ret_false: Any):
-  if condition:
-    return ret_true
-  return ret_false
-
-
-@wp.func
 def bisection(x: wp.array(dtype=int), v: int, a_: int, b_: int) -> int:
   # Binary search for the largest index i such that x[i] <= v
   # x is a sorted array

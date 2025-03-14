@@ -15,7 +15,6 @@
 
 import warp as wp
 
-from .support import where
 from .types import MJ_MINVAL
 from .types import Data
 from .types import DisableBit
@@ -323,17 +322,17 @@ def get_contact_solver_params_kernel(
   solmix1 = m.geom_solmix[g1]
   solmix2 = m.geom_solmix[g2]
   mix = solmix1 / (solmix1 + solmix2)
-  mix = where((solmix1 < MJ_MINVAL) and (solmix2 < MJ_MINVAL), 0.5, mix)
-  mix = where((solmix1 < MJ_MINVAL) and (solmix2 >= MJ_MINVAL), 0.0, mix)
-  mix = where((solmix1 >= MJ_MINVAL) and (solmix2 < MJ_MINVAL), 1.0, mix)
+  mix = wp.where((solmix1 < MJ_MINVAL) and (solmix2 < MJ_MINVAL), 0.5, mix)
+  mix = wp.where((solmix1 < MJ_MINVAL) and (solmix2 >= MJ_MINVAL), 0.0, mix)
+  mix = wp.where((solmix1 >= MJ_MINVAL) and (solmix2 < MJ_MINVAL), 1.0, mix)
 
   p1 = m.geom_priority[g1]
   p2 = m.geom_priority[g2]
-  mix = where(p1 == p2, mix, where(p1 > p2, 1.0, 0.0))
+  mix = wp.where(p1 == p2, mix, wp.where(p1 > p2, 1.0, 0.0))
 
   condim1 = m.geom_condim[g1]
   condim2 = m.geom_condim[g2]
-  condim = where(p1 == p2, wp.max(condim1, condim2), where(p1 > p2, condim1, condim2))
+  condim = wp.where(p1 == p2, wp.max(condim1, condim2), wp.where(p1 > p2, condim1, condim2))
   d.contact.dim[tid] = condim
 
   if m.geom_solref[g1].x > 0.0 and m.geom_solref[g2].x > 0.0:
