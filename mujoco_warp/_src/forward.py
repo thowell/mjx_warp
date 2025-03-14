@@ -57,8 +57,8 @@ def _advance(
 
     # get the high/low range for each actuator state
     limited = m.actuator_actlimited[actid]
-    range_low = wp.select(limited, -wp.inf, m.actuator_actrange[actid][0])
-    range_high = wp.select(limited, wp.inf, m.actuator_actrange[actid][1])
+    range_low = wp.where(limited, m.actuator_actrange[actid][0], -wp.inf)
+    range_high = wp.where(limited, m.actuator_actrange[actid][1], wp.inf)
 
     # get the actual actuation - skip if -1 (means stateless actuator)
     act_adr = m.actuator_actadr[actid]
@@ -77,7 +77,7 @@ def _advance(
 
     # advance the actuation
     if dyn_type == wp.static(DynType.FILTEREXACT.value):
-      tau = wp.select(dyn_prm < MJ_MINVAL, dyn_prm, MJ_MINVAL)
+      tau = wp.where(dyn_prm < MJ_MINVAL, MJ_MINVAL, dyn_prm)
       act = act + act_dot * tau * (1.0 - wp.exp(-m.opt.timestep / tau))
     else:
       act = act + act_dot * m.opt.timestep

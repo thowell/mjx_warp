@@ -15,7 +15,6 @@
 
 import warp as wp
 
-from .support import group_key
 from .support import where
 from .types import MJ_MINVAL
 from .types import Data
@@ -65,9 +64,7 @@ def _add_geom_pair(m: Model, d: Data, geom1: int, geom2: int, worldid: int):
   else:
     pair = wp.vec2i(geom1, geom2)
 
-  key = group_key(type1, type2)
   d.collision_pair[pairid] = pair
-  d.collision_type[pairid] = key
   d.collision_worldid[pairid] = worldid
 
 
