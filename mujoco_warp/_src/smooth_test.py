@@ -89,36 +89,27 @@ class SmoothTest(parameterized.TestCase):
       mujoco.mj_fullM(mjm, qM, mjd.qM)
       _assert_eq(d.qM.numpy()[0], qM, "qM")
 
-  def test_factor_m_sparse(self):
-    """Tests factor_m (sparse)."""
-    _, mjd, m, d = test_util.fixture("pendula.xml", sparse=True)
+  @parameterized.parameters(True, False)
+  def test_factor_m(self, sparse: bool):
+    """Tests factor_m."""
+    _, mjd, m, d = test_util.fixture("pendula.xml", sparse=sparse)
 
+    qLD = d.qLD.numpy()[0].copy()
     for arr in (d.qLD, d.qLDiagInv):
       arr.zero_()
 
     mjwarp.factor_m(m, d)
-    _assert_eq(d.qLD.numpy()[0, 0], mjd.qLD, "qLD (sparse)")
-    _assert_eq(d.qLDiagInv.numpy()[0], mjd.qLDiagInv, "qLDiagInv")
 
-  def test_factor_m_dense(self):
-    """Tests mjwarp factor_m (dense)."""
-    # TODO(team): switch this to pendula.xml and merge with above test
-    # after mmacklin's tile_cholesky fixes are in
-    _, mjd, m, d = test_util.fixture("humanoid/humanoid.xml", sparse=False)
-
-    qLD = d.qLD.numpy()[0].copy()
-    d.qLD.zero_()
-
-    mjwarp.factor_m(m, d)
-    _assert_eq(d.qLD.numpy()[0], qLD, "qLD (dense)")
+    if sparse:
+      _assert_eq(d.qLD.numpy()[0, 0], mjd.qLD, "qLD (sparse)")
+      _assert_eq(d.qLDiagInv.numpy()[0], mjd.qLDiagInv, "qLDiagInv")
+    else:
+      _assert_eq(d.qLD.numpy()[0], qLD, "qLD (dense)")
 
   @parameterized.parameters(True, False)
   def test_solve_m(self, sparse: bool):
     """Tests solve_m."""
-    # TODO(team): switch this to pendula.xml and merge with above test
-    # after mmacklin's tile_cholesky fixes are in
-    fname = "pendula.xml" if sparse else "humanoid/humanoid.xml"
-    mjm, mjd, m, d = test_util.fixture(fname, sparse=sparse)
+    mjm, mjd, m, d = test_util.fixture("pendula.xml", sparse=sparse)
 
     qfrc_smooth = np.tile(mjd.qfrc_smooth, (1, 1))
     qacc_smooth = np.zeros(
