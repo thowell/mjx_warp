@@ -282,7 +282,7 @@ def crb(m: Model, d: Data):
     worldid, dofid = wp.tid()
     bodyid = m.dof_bodyid[dofid]
 
-    # init M(i, i) with armature inertia
+    # init M(i,i) with armature inertia
     M = m.dof_armature[dofid]
 
     # precompute buf = crb_body_i * cdof_i
