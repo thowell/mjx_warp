@@ -54,6 +54,7 @@ _NCONMAX = flags.DEFINE_integer(
 _NJMAX = flags.DEFINE_integer(
   "njmax", -1, "Maximum number of constraints in a batch physics step."
 )
+_KEYFRAME = flags.DEFINE_integer("keyframe", 0, "Keyframe to initialize simulation.")
 _OUTPUT = flags.DEFINE_enum(
   "output", "text", ["text", "tsv"], "format to print results"
 )
@@ -82,7 +83,7 @@ def _main(argv: Sequence[str]):
 
   d = mujoco.MjData(m)
   if m.nkey > 0:
-    mujoco.mj_resetDataKeyframe(m, d, 0)
+    mujoco.mj_resetDataKeyframe(m, d, _KEYFRAME.value)
   # populate some constraints
   mujoco.mj_forward(m, d)
 
@@ -92,7 +93,7 @@ def _main(argv: Sequence[str]):
   print(
     f"Model nbody: {m.nbody} nv: {m.nv} ngeom: {m.ngeom} is_sparse: {_IS_SPARSE.value} solver: {_SOLVER.value}"
   )
-  print(f"Data ncon: {d.ncon} nefc: {d.nefc}")
+  print(f"Data ncon: {d.ncon} nefc: {d.nefc} keyframe: {_KEYFRAME.value}")
   print(f"Rolling out {_NSTEP.value} steps at dt = {m.opt.timestep:.3f}...")
   jit_time, run_time, trace, steps = mjwarp.benchmark(
     mjwarp.__dict__[_FUNCTION.value],
