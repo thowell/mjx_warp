@@ -215,6 +215,8 @@ class BroadPhaseTest(parameterized.TestCase):
           f"Collision pair {pair_tuple} not found in brute force results",
         )
 
+    # TODO(team): test DisableBit.FILTERPARENT
+
   def test_nxn_broadphase(self):
     """Tests nxn_broadphase."""
     # one world and zero collisions
@@ -276,6 +278,7 @@ class BroadPhaseTest(parameterized.TestCase):
     np.testing.assert_allclose(d5.collision_pair.numpy()[0][1], 2)
 
     # TODO(team): test margin
+    # TODO(team): test DisableBit.FILTERPARENT
 
 
 if __name__ == "__main__":

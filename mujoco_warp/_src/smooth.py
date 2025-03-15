@@ -17,6 +17,7 @@ import warp as wp
 
 from . import math
 from .types import Data
+from .types import DisableBit
 from .types import JointType
 from .types import Model
 from .types import TrnType
@@ -444,7 +445,10 @@ def rne(m: Model, d: Data):
       d.cdof[worldid, dofid], d.rne_cfrc[worldid, bodyid]
     )
 
-  wp.launch(cacc_gravity, dim=[d.nworld], inputs=[m, d])
+  if m.opt.disableflags & DisableBit.GRAVITY:
+    d.rne_cacc.zero_()
+  else:
+    wp.launch(cacc_gravity, dim=[d.nworld], inputs=[m, d])
 
   body_treeadr = m.body_treeadr.numpy()
   for i in range(len(body_treeadr)):

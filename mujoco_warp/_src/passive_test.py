@@ -48,6 +48,8 @@ class PassiveTest(absltest.TestCase):
     _assert_eq(d.qfrc_damper.numpy()[0], mjd.qfrc_damper, "qfrc_damper")
     _assert_eq(d.qfrc_passive.numpy()[0], mjd.qfrc_passive, "qfrc_passive")
 
+  # TODO(team): test DisableBit.PASSIVE
+
 
 if __name__ == "__main__":
   wp.init()

@@ -29,36 +29,28 @@ class DisableBit(enum.IntFlag):
 
   Members:
     CONSTRAINT:   entire constraint solver
-    EQUALITY:     equality constraints
-    FRICTIONLOSS: joint and tendon frictionloss constraints
     LIMIT:        joint and tendon limit constraints
     CONTACT:      contact constraints
     PASSIVE:      passive forces
     GRAVITY:      gravitational forces
     CLAMPCTRL:    clamp control to specified range
-    WARMSTART:    warmstart constraint solver
     ACTUATION:    apply actuation forces
     REFSAFE:      integrator safety: make ref[0]>=2*timestep
-    SENSOR:       sensors
     EULERDAMP:    implicit damping for Euler integration
     FILTERPARENT: disable collisions between parent and child bodies
   """
 
   CONSTRAINT = mujoco.mjtDisableBit.mjDSBL_CONSTRAINT
-  EQUALITY = mujoco.mjtDisableBit.mjDSBL_EQUALITY
-  FRICTIONLOSS = mujoco.mjtDisableBit.mjDSBL_FRICTIONLOSS
   LIMIT = mujoco.mjtDisableBit.mjDSBL_LIMIT
   CONTACT = mujoco.mjtDisableBit.mjDSBL_CONTACT
   PASSIVE = mujoco.mjtDisableBit.mjDSBL_PASSIVE
   GRAVITY = mujoco.mjtDisableBit.mjDSBL_GRAVITY
   CLAMPCTRL = mujoco.mjtDisableBit.mjDSBL_CLAMPCTRL
-  WARMSTART = mujoco.mjtDisableBit.mjDSBL_WARMSTART
   ACTUATION = mujoco.mjtDisableBit.mjDSBL_ACTUATION
   REFSAFE = mujoco.mjtDisableBit.mjDSBL_REFSAFE
-  SENSOR = mujoco.mjtDisableBit.mjDSBL_SENSOR
   EULERDAMP = mujoco.mjtDisableBit.mjDSBL_EULERDAMP
   FILTERPARENT = mujoco.mjtDisableBit.mjDSBL_FILTERPARENT
-  # unsupported: MIDPHASE
+  # unsupported: EQUALITY, FRICTIONLOSS, MIDPHASE, WARMSTART, SENSOR
 
 
 class TrnType(enum.IntEnum):
@@ -67,8 +59,6 @@ class TrnType(enum.IntEnum):
   Members:
     JOINT: force on joint
     JOINTINPARENT: force on joint, expressed in parent frame
-    TENDON: force on tendon (unsupported)
-    SITE: force on site (unsupported)
   """
 
   JOINT = mujoco.mjtTrn.mjTRN_JOINT
@@ -81,18 +71,12 @@ class DynType(enum.IntEnum):
 
   Members:
     NONE: no internal dynamics; ctrl specifies force
-    INTEGRATOR: integrator: da/dt = u
-    FILTER: linear filter: da/dt = (u-a) / tau
     FILTEREXACT: linear filter: da/dt = (u-a) / tau, with exact integration
-    MUSCLE: piece-wise linear filter with two time constants
   """
 
   NONE = mujoco.mjtDyn.mjDYN_NONE
-  INTEGRATOR = mujoco.mjtDyn.mjDYN_INTEGRATOR
-  FILTER = mujoco.mjtDyn.mjDYN_FILTER
   FILTEREXACT = mujoco.mjtDyn.mjDYN_FILTEREXACT
-  MUSCLE = mujoco.mjtDyn.mjDYN_MUSCLE
-  # unsupported: USER
+  # unsupported: INTEGRATOR, FILTER, MUSCLE, USER
 
 
 class GainType(enum.IntEnum):
@@ -101,13 +85,11 @@ class GainType(enum.IntEnum):
   Members:
     FIXED: fixed gain
     AFFINE: const + kp*length + kv*velocity
-    MUSCLE: muscle FLV curve computed by muscle_gain
   """
 
   FIXED = mujoco.mjtGain.mjGAIN_FIXED
   AFFINE = mujoco.mjtGain.mjGAIN_AFFINE
-  MUSCLE = mujoco.mjtGain.mjGAIN_MUSCLE
-  # unsupported: USER
+  # unsupported: MUSCLE, USER
 
 
 class BiasType(enum.IntEnum):
@@ -116,13 +98,11 @@ class BiasType(enum.IntEnum):
   Members:
     NONE: no bias
     AFFINE: const + kp*length + kv*velocity
-    MUSCLE: muscle passive force computed by muscle_bias
   """
 
   NONE = mujoco.mjtBias.mjBIAS_NONE
   AFFINE = mujoco.mjtBias.mjBIAS_AFFINE
-  MUSCLE = mujoco.mjtBias.mjBIAS_MUSCLE
-  # unsupported: USER
+  # unsupported: MUSCLE, USER
 
 
 class JointType(enum.IntEnum):
@@ -152,11 +132,10 @@ class ConeType(enum.IntEnum):
 
   Members:
     PYRAMIDAL: pyramidal
-    ELLIPTIC: elliptic
   """
 
   PYRAMIDAL = mujoco.mjtCone.mjCONE_PYRAMIDAL
-  ELLIPTIC = mujoco.mjtCone.mjCONE_ELLIPTIC
+  # unsupported: ELLIPTIC
 
 
 class GeomType(enum.IntEnum):
@@ -164,27 +143,29 @@ class GeomType(enum.IntEnum):
 
   Members:
     PLANE: plane
-    HFIELD: height field
     SPHERE: sphere
     CAPSULE: capsule
-    ELLIPSOID: ellipsoid
-    CYLINDER: cylinder
     BOX: box
-    MESH: mesh
   """
 
   PLANE = mujoco.mjtGeom.mjGEOM_PLANE
-  HFIELD = mujoco.mjtGeom.mjGEOM_HFIELD
   SPHERE = mujoco.mjtGeom.mjGEOM_SPHERE
   CAPSULE = mujoco.mjtGeom.mjGEOM_CAPSULE
-  ELLIPSOID = mujoco.mjtGeom.mjGEOM_ELLIPSOID
-  CYLINDER = mujoco.mjtGeom.mjGEOM_CYLINDER
   BOX = mujoco.mjtGeom.mjGEOM_BOX
-  MESH = mujoco.mjtGeom.mjGEOM_MESH
-  # unsupported: NGEOMTYPES, ARROW*, LINE, SKIN, LABEL, NONE
+  # unsupported: HFIELD, ELLIPSOID, CYLINDER, MESH,
+  # NGEOMTYPES, ARROW*, LINE, SKIN, LABEL, NONE
 
 
-NUM_GEOM_TYPES = 8
+class SolverType(enum.IntEnum):
+  """Constraint solver algorithm.
+
+  Members:
+    CG: Conjugate gradient (primal)
+    NEWTON: Newton (primal)
+  """
+
+  CG = mujoco.mjtSolver.mjSOL_CG
+  NEWTON = mujoco.mjtSolver.mjSOL_NEWTON
 
 
 class vec5f(wp.types.vector(length=5, dtype=wp.float32)):
