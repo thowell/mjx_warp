@@ -37,6 +37,7 @@ _CLEAR_KERNEL_CACHE = flags.DEFINE_bool(
 _ENGINE = flags.DEFINE_enum("engine", "mjwarp", ["mjwarp", "mjc"], "Simulation engine")
 _VIEWER_GLOBAL_STATE = {
   "running": True,
+  "step_once": False,
 }
 
 
@@ -44,6 +45,8 @@ def key_callback(key: int) -> None:
   if key == 32:  # Space bar
     _VIEWER_GLOBAL_STATE["running"] = not _VIEWER_GLOBAL_STATE["running"]
     logging.info("RUNNING = %s", _VIEWER_GLOBAL_STATE["running"])
+  elif key == 46:  # period
+    _VIEWER_GLOBAL_STATE["step_once"] = True
 
 
 def _main(argv: Sequence[str]) -> None:
@@ -98,6 +101,10 @@ def _main(argv: Sequence[str]) -> None:
         d.time = mjd.time
 
         if _VIEWER_GLOBAL_STATE["running"]:
+          wp.capture_launch(graph)
+          wp.synchronize()
+        elif _VIEWER_GLOBAL_STATE["step_once"]:
+          _VIEWER_GLOBAL_STATE["step_once"] = False
           wp.capture_launch(graph)
           wp.synchronize()
 
