@@ -676,7 +676,6 @@ class Data:
     efc: constraint data
     nworld: number of worlds                                    ()
     nconmax: maximum number of contacts                         ()
-    nefc_total: total number of constraints                     ()
     njmax: maximum number of joints                             ()
     rne_cacc: arrays used for smooth.rne                        (nworld, nbody, 6)
     rne_cfrc: arrays used for smooth.rne                        (nworld, nbody, 6)
@@ -751,7 +750,6 @@ class Data:
   efc: Constraint
   nworld: int
   nconmax: int
-  nefc_total: wp.array(dtype=wp.int32, ndim=1)  # warp only
   njmax: int
   rne_cacc: wp.array(dtype=wp.spatial_vector, ndim=2)
   rne_cfrc: wp.array(dtype=wp.spatial_vector, ndim=2)
