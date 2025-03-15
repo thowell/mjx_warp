@@ -38,7 +38,7 @@ def _create_context(m: types.Model, d: types.Data, grad: bool = True):
   def _jaref(m: types.Model, d: types.Data):
     efcid, dofid = wp.tid()
 
-    if efcid >= d.nefc_total[0]:
+    if efcid >= d.nefc[0]:
       return
 
     worldid = d.efc.worldid[efcid]
@@ -85,7 +85,7 @@ def _update_constraint(m: types.Model, d: types.Data):
   def _efc_kernel(d: types.Data):
     efcid = wp.tid()
 
-    if efcid >= d.nefc_total[0]:
+    if efcid >= d.nefc[0]:
       return
 
     worldid = d.efc.worldid[efcid]
@@ -109,7 +109,7 @@ def _update_constraint(m: types.Model, d: types.Data):
   def _qfrc_constraint(d: types.Data):
     dofid, efcid = wp.tid()
 
-    if efcid >= d.nefc_total[0]:
+    if efcid >= d.nefc[0]:
       return
 
     worldid = d.efc.worldid[efcid]
@@ -187,7 +187,7 @@ def _update_gradient(m: types.Model, d: types.Data):
   def _JTDAJ(m: types.Model, d: types.Data):
     efcid, elementid = wp.tid()
 
-    if efcid >= d.nefc_total[0]:
+    if efcid >= d.nefc[0]:
       return
 
     dofi = m.dof_tri_row[elementid]
@@ -219,7 +219,7 @@ def _update_gradient(m: types.Model, d: types.Data):
   def _JTDAJ(m: types.Model, d: types.Data):
     efcid, elementid = wp.tid()
 
-    if efcid >= d.nefc_total[0]:
+    if efcid >= d.nefc[0]:
       return
 
     dofi = m.dof_tri_row[elementid]
@@ -297,7 +297,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
   def _jv(d: types.Data):
     efcid, dofid = wp.tid()
 
-    if efcid >= d.nefc_total[0]:
+    if efcid >= d.nefc[0]:
       return
 
     j = d.efc.J[efcid, dofid]
@@ -318,7 +318,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
   def _init_quad(d: types.Data):
     efcid = wp.tid()
 
-    if efcid >= d.nefc_total[0]:
+    if efcid >= d.nefc[0]:
       return
 
     Jaref = d.efc.Jaref[efcid]
@@ -340,7 +340,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
   def _init_p0(p0: wp.array(dtype=wp.vec3), d: types.Data):
     efcid = wp.tid()
 
-    if efcid >= d.nefc_total[0]:
+    if efcid >= d.nefc[0]:
       return
 
     # TODO(team): active and conditionally active constraints:
@@ -373,7 +373,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
   ):
     efcid = wp.tid()
 
-    if efcid >= d.nefc_total[0]:
+    if efcid >= d.nefc[0]:
       return
 
     worldid = d.efc.worldid[efcid]
@@ -452,7 +452,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
   ):
     efcid = wp.tid()
 
-    if efcid >= d.nefc_total[0]:
+    if efcid >= d.nefc[0]:
       return
 
     worldid = d.efc.worldid[efcid]
@@ -568,7 +568,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
   def _jaref(d: types.Data):
     efcid = wp.tid()
 
-    if efcid >= d.nefc_total[0]:
+    if efcid >= d.nefc[0]:
       return
 
     d.efc.Jaref[efcid] += d.efc.alpha[d.efc.worldid[efcid]] * d.efc.jv[efcid]
