@@ -63,7 +63,9 @@ _CLEAR_KERNEL_CACHE = flags.DEFINE_bool(
   "clear_kernel_cache", False, "Clear kernel cache (to calculate full JIT time)"
 )
 _EVENT_TRACE = flags.DEFINE_bool("event_trace", False, "Provide a full event trace")
-_MEASURE_ALLOC = flags.DEFINE_bool("measure_alloc", False, "Measure how much of nconmax, njmax is used.")
+_MEASURE_ALLOC = flags.DEFINE_bool(
+  "measure_alloc", False, "Measure how much of nconmax, njmax is used."
+)
 
 
 def _main(argv: Sequence[str]):
@@ -145,27 +147,32 @@ Summary for {_BATCH_SIZE.value} parallel rollouts
       ncon_matrix, nefc_matrix = [], []
       for i in range(num_buckets):
         size = _NSTEP.value // num_buckets + (i < (_NSTEP.value % num_buckets))
-        ncon_arr = np.array(ncon[idx:idx+size])
-        nefc_arr = np.array(nefc[idx:idx+size])
-        ncon_matrix.append([np.mean(ncon_arr), np.std(ncon_arr), np.min(ncon_arr), np.max(ncon_arr)])
-        nefc_matrix.append([np.mean(nefc_arr), np.std(nefc_arr), np.min(nefc_arr), np.max(nefc_arr)])
+        ncon_arr = np.array(ncon[idx : idx + size])
+        nefc_arr = np.array(nefc[idx : idx + size])
+        ncon_matrix.append(
+          [np.mean(ncon_arr), np.std(ncon_arr), np.min(ncon_arr), np.max(ncon_arr)]
+        )
+        nefc_matrix.append(
+          [np.mean(nefc_arr), np.std(nefc_arr), np.min(nefc_arr), np.max(nefc_arr)]
+        )
         idx += size
 
       def _print_table(matrix, headers):
         num_cols = len(headers)
-        col_widths = [max(len(f"{row[i]:g}") for row in matrix) for i in range(num_cols)]
+        col_widths = [
+          max(len(f"{row[i]:g}") for row in matrix) for i in range(num_cols)
+        ]
         col_widths = [max(col_widths[i], len(headers[i])) for i in range(num_cols)]
-        
+
         print("  ".join(f"{headers[i]:<{col_widths[i]}}" for i in range(num_cols)))
         print("-" * sum(col_widths) + "--" * 3)  # Separator line
         for row in matrix:
           print("  ".join(f"{row[i]:{col_widths[i]}g}" for i in range(num_cols)))
-      
+
       print("\nncon alloc:\n")
       _print_table(ncon_matrix, ("mean", "std", "min", "max"))
       print("\nnefc alloc:\n")
       _print_table(nefc_matrix, ("mean", "std", "min", "max"))
-
 
   elif _OUTPUT.value == "tsv":
     name = name.split("/")[-1].replace("testspeed_", "")
