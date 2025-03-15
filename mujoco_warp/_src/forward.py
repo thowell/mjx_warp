@@ -503,15 +503,20 @@ def fwd_velocity(m: Model, d: Data):
 @event_scope
 def fwd_actuation(m: Model, d: Data):
   """Actuation-dependent computations."""
-  if not m.nu:
+  if not m.nu or m.opt.disableflags & DisableBit.ACTUATION:
+    d.act_dot.zero_()
+    d.qfrc_actuator.zero_()
     return
 
   # TODO support stateful actuators
+
+  disable_clampctrl = m.opt.disableflags & DisableBit.CLAMPCTRL
 
   @kernel
   def _force(
     m: Model,
     ctrl: array2df,
+    disable_clampctrl: bool,
     # outputs
     force: array2df,
   ):
@@ -520,7 +525,7 @@ def fwd_actuation(m: Model, d: Data):
     bias = m.actuator_biasprm[dofid, 0]
     # TODO support gain types other than FIXED
     c = ctrl[worldid, dofid]
-    if m.actuator_ctrllimited[dofid]:
+    if m.actuator_ctrllimited[dofid] and not disable_clampctrl:
       r = m.actuator_ctrlrange[dofid]
       c = wp.clamp(c, r[0], r[1])
     f = gain * c + bias
@@ -557,7 +562,10 @@ def fwd_actuation(m: Model, d: Data):
       qfrc[worldid, vid] = s
 
   wp.launch(
-    _force, dim=[d.nworld, m.nu], inputs=[m, d.ctrl], outputs=[d.actuator_force]
+    _force,
+    dim=[d.nworld, m.nu],
+    inputs=[m, d.ctrl, disable_clampctrl],
+    outputs=[d.actuator_force],
   )
 
   if m.opt.is_sparse:

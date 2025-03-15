@@ -76,6 +76,9 @@ class ForwardTest(absltest.TestCase):
     _assert_eq(d.actuator_force.numpy()[0], mjd.actuator_force, "actuator_force")
     _assert_eq(d.qfrc_actuator.numpy()[0], mjd.qfrc_actuator, "qfrc_actuator")
 
+    # TODO(team): test DisableBit.CLAMPCTRL
+    # TODO(team): test DisableBit.ACTUATION
+
   def test_fwd_acceleration(self):
     _, mjd, m, d = self._load("humanoid/humanoid.xml", is_sparse=False)
 

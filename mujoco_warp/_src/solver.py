@@ -13,7 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-import mujoco
 import warp as wp
 
 from . import smooth
@@ -241,9 +240,9 @@ def _update_gradient(m: types.Model, d: types.Data):
 
   wp.launch(_grad, dim=(d.nworld, m.nv), inputs=[d])
 
-  if m.opt.solver == mujoco.mjtSolver.mjSOL_CG:
+  if m.opt.solver == types.SolverType.CG:
     smooth.solve_m(m, d, d.efc.Mgrad, d.efc.grad)
-  elif m.opt.solver == mujoco.mjtSolver.mjSOL_NEWTON:
+  elif m.opt.solver == types.SolverType.NEWTON:
     # h = qM + (efc_J.T * efc_D * active) @ efc_J
     if m.opt.is_sparse:
       wp.launch(_zero_h_lower, dim=(d.nworld, m.dof_tri_row.size), inputs=[m, d])
@@ -658,7 +657,7 @@ def solve(m: types.Model, d: types.Data):
     worldid, dofid = wp.tid()
     search = -1.0 * d.efc.Mgrad[worldid, dofid]
 
-    if wp.static(m.opt.solver == mujoco.mjtSolver.mjSOL_CG):
+    if wp.static(m.opt.solver == types.SolverType.CG):
       search += d.efc.beta[worldid] * d.efc.search[worldid, dofid]
 
     d.efc.search[worldid, dofid] = search
@@ -674,7 +673,7 @@ def solve(m: types.Model, d: types.Data):
     done = done or (gradient < m.opt.tolerance)
     d.efc.done[worldid] = int(done)
 
-  if m.opt.solver == mujoco.mjtSolver.mjSOL_CG:
+  if m.opt.solver == types.SolverType.CG:
 
     @kernel
     def _prev_grad_Mgrad(d: types.Data):
@@ -705,7 +704,7 @@ def solve(m: types.Model, d: types.Data):
     def _beta(d: types.Data):
       worldid = wp.tid()
       d.efc.beta[worldid] = wp.max(
-        0.0, d.efc.beta_num[worldid] / wp.max(mujoco.mjMINVAL, d.efc.beta_den[worldid])
+        0.0, d.efc.beta_num[worldid] / wp.max(types.MJ_MINVAL, d.efc.beta_den[worldid])
       )
 
   # warmstart
@@ -716,14 +715,14 @@ def solve(m: types.Model, d: types.Data):
   for i in range(m.opt.iterations):
     _linesearch_iterative(m, d)
 
-    if m.opt.solver == mujoco.mjtSolver.mjSOL_CG:
+    if m.opt.solver == types.SolverType.CG:
       wp.launch(_prev_grad_Mgrad, dim=(d.nworld, m.nv), inputs=[d])
 
     _update_constraint(m, d)
     _update_gradient(m, d)
 
     # polak-ribiere
-    if m.opt.solver == mujoco.mjtSolver.mjSOL_CG:
+    if m.opt.solver == types.SolverType.CG:
       wp.launch(_zero_beta_num_den, dim=(d.nworld), inputs=[d])
 
       wp.launch(_beta_num_den, dim=(d.nworld, m.nv), inputs=[d])
