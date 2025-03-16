@@ -546,7 +546,7 @@ def collision(m: Model, d: Data):
   broadphase(m, d)
   # XXX switch between collision functions and GJK/EPA here
   if True:
-    from .collision_functions import narrowphase
+    from .collision_primitive import narrowphase
   else:
     from .collision_convex import narrowphase
 
