@@ -21,9 +21,19 @@ from absl.testing import parameterized
 
 import mujoco_warp as mjwarp
 
+# tolerance for difference between MuJoCo and MJWarp smooth calculations - mostly
+# due to float precision
+_TOLERANCE = 5e-5
+
+
+def _assert_eq(a, b, name):
+  tol = _TOLERANCE * 10  # avoid test noise
+  err_msg = f"mismatch: {name}"
+  np.testing.assert_allclose(a, b, err_msg=err_msg, atol=tol, rtol=tol)
+
 
 class PrimitiveTest(parameterized.TestCase):
-  """Tests the primitive contact functions."""
+  """Tests the collision primitive functions."""
 
   _MJCFS = {
     "box_plane": """
@@ -98,23 +108,24 @@ class PrimitiveTest(parameterized.TestCase):
     "plane_capsule",
     "capsule_capsule",
   )
-  def test_contact(self, name):
-    """Tests contact calculation with different collision functions."""
-    m = mujoco.MjModel.from_xml_string(self._MJCFS[name])
-    d = mujoco.MjData(m)
-    mujoco.mj_forward(m, d)
-    mx = mjwarp.put_model(m)
-    dx = mjwarp.put_data(m, d)
-    mjwarp.collision(mx, dx)
-    mujoco.mj_collision(m, d)
-    self.assertEqual(d.ncon, dx.ncon.numpy()[0])
-    for i in range(d.ncon):
-      actual_dist = dx.contact.dist.numpy()[i]
-      actual_pos = dx.contact.pos.numpy()[i, :]
-      actual_frame = dx.contact.frame.numpy()[i].flatten()
-      np.testing.assert_array_almost_equal(actual_dist, d.contact.dist[i], 4)
-      np.testing.assert_array_almost_equal(actual_pos, d.contact.pos[i], 4)
-      np.testing.assert_array_almost_equal(actual_frame, d.contact.frame[i], 4)
+  def test_primitives(self, name):
+    """Tests collision primitive functions."""
+    mjm = mujoco.MjModel.from_xml_string(self._MJCFS[name])
+    mjd = mujoco.MjData(mjm)
+    mujoco.mj_forward(mjm, mjd)
+    m = mjwarp.put_model(mjm)
+    d = mjwarp.put_data(mjm, mjd)
+
+    mujoco.mj_collision(mjm, mjd)
+    mjwarp.collision(m, d)
+
+    ncon = d.ncon.numpy()[0]
+    np.testing.assert_equal(ncon, mjd.ncon)
+
+    for i in range(ncon):
+      _assert_eq(d.contact.dist.numpy()[i], mjd.contact.dist[i], "dist")
+      _assert_eq(d.contact.pos.numpy()[i], mjd.contact.pos[i], "pos")
+      _assert_eq(d.contact.frame.numpy()[i].flatten(), mjd.contact.frame[i], "frame")
 
 
 if __name__ == "__main__":
