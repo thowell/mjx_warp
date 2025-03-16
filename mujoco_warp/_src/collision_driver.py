@@ -112,8 +112,8 @@ def get_dyn_geom_aabb(
   aabb = transform_aabb(aabb_pos, aabb_size, pos, ori)
 
   # Write results to output
-  d.dyn_geom_aabb[env_id, gid, 0] = aabb.min
-  d.dyn_geom_aabb[env_id, gid, 1] = aabb.max
+  d.sap_geom_aabb[env_id, gid, 0] = aabb.min
+  d.sap_geom_aabb[env_id, gid, 1] = aabb.max
 
 
 @wp.func
@@ -145,8 +145,8 @@ def broadphase_project_boxes_onto_sweep_direction_kernel(
 ):
   worldId, i = wp.tid()
 
-  box_min = d.dyn_geom_aabb[worldId, i, 0]
-  box_max = d.dyn_geom_aabb[worldId, i, 1]
+  box_min = d.sap_geom_aabb[worldId, i, 0]
+  box_max = d.sap_geom_aabb[worldId, i, 1]
   c = (box_min + box_max) * 0.5
   box_half_size = (box_max - box_min) * 0.5
 
@@ -160,9 +160,9 @@ def broadphase_project_boxes_onto_sweep_direction_kernel(
   f = center - d_val
 
   # Store results in the data arrays
-  d.box_projections_lower[worldId, i] = f
-  d.box_projections_upper[worldId, i] = center + d_val
-  d.box_sorting_indexer[worldId, i] = i
+  d.sap_projection_lower[worldId, i] = f
+  d.sap_projection_upper[worldId, i] = center + d_val
+  d.sap_sort_index[worldId, i] = i
 
 
 @wp.kernel
@@ -172,15 +172,15 @@ def reorder_bounding_boxes_kernel(
   worldId, i = wp.tid()
 
   # Get the index from the data indexer
-  mapped = d.box_sorting_indexer[worldId, i]
+  mapped = d.sap_sort_index[worldId, i]
 
   # Get the box from the original boxes array
-  box_min = d.dyn_geom_aabb[worldId, mapped, 0]
-  box_max = d.dyn_geom_aabb[worldId, mapped, 1]
+  box_min = d.sap_geom_aabb[worldId, mapped, 0]
+  box_max = d.sap_geom_aabb[worldId, mapped, 1]
 
   # Reorder the box into the sorted array
-  d.boxes_sorted[worldId, i, 0] = box_min
-  d.boxes_sorted[worldId, i, 1] = box_max
+  d.sap_geom_sort[worldId, i, 0] = box_min
+  d.sap_geom_sort[worldId, i, 1] = box_max
 
 
 @wp.func
@@ -208,17 +208,17 @@ def sap_broadphase_prepare_kernel(
   worldId, i = wp.tid()  # Get the thread ID
 
   # Get the index of the current bounding box
-  idx1 = d.box_sorting_indexer[worldId, i]
+  idx1 = d.sap_sort_index[worldId, i]
 
-  end = d.box_projections_upper[worldId, idx1]
-  limit = find_first_greater_than(worldId, d.box_projections_lower, end, i + 1, m.ngeom)
+  end = d.sap_projection_upper[worldId, idx1]
+  limit = find_first_greater_than(worldId, d.sap_projection_lower, end, i + 1, m.ngeom)
   limit = wp.min(m.ngeom - 1, limit)
 
   # Calculate the range of boxes for the sweep and prune process
   count = limit - i
 
   # Store the cumulative sum for the current box
-  d.ranges[worldId, i] = count
+  d.sap_range[worldId, i] = count
 
 
 @wp.func
@@ -255,14 +255,14 @@ def find_indices(
 @wp.kernel
 def sap_broadphase_kernel(m: Model, d: Data, num_threads: int, filter_parent: bool):
   threadId = wp.tid()  # Get thread ID
-  if d.cumulative_sum.shape[0] > 0:
-    total_num_work_packages = d.cumulative_sum[d.cumulative_sum.shape[0] - 1]
+  if d.sap_cumulative_sum.shape[0] > 0:
+    total_num_work_packages = d.sap_cumulative_sum[d.sap_cumulative_sum.shape[0] - 1]
   else:
     total_num_work_packages = 0
 
   while threadId < total_num_work_packages:
     # Get indices for current and next box pair
-    ij = find_indices(threadId, d.cumulative_sum, d.cumulative_sum.shape[0])
+    ij = find_indices(threadId, d.sap_cumulative_sum, d.sap_cumulative_sum.shape[0])
     i = ij.x
     j = ij.y
 
@@ -271,8 +271,8 @@ def sap_broadphase_kernel(m: Model, d: Data, num_threads: int, filter_parent: bo
     j = j % m.ngeom
 
     # geom index
-    idx1 = d.box_sorting_indexer[worldId, i]
-    idx2 = d.box_sorting_indexer[worldId, j]
+    idx1 = d.sap_sort_index[worldId, i]
+    idx2 = d.sap_sort_index[worldId, j]
 
     if not _geom_filter(m, idx1, idx2, filter_parent):
       threadId += num_threads
@@ -294,7 +294,7 @@ def sap_broadphase_kernel(m: Model, d: Data, num_threads: int, filter_parent: bo
       continue
     """
     # Check if the boxes overlap
-    if overlap(worldId, i, j, d.boxes_sorted):
+    if overlap(worldId, i, j, d.sap_geom_sort):
       _add_geom_pair(m, d, idx1, idx2, worldId)
 
     threadId += num_threads
@@ -365,10 +365,10 @@ def sap_broadphase(m: Model, d: Data):
   segmented_sort_available = hasattr(wp.utils, "segmented_sort_pairs")
   if segmented_sort_available:
     wp.utils.segmented_sort_pairs(
-      d.box_projections_lower,
-      d.box_sorting_indexer,
+      d.sap_projection_lower,
+      d.sap_sort_index,
       m.ngeom * d.nworld,
-      d.segment_indices,
+      d.sap_segment_index,
     )
   else:
     # Sort each world's segment separately
@@ -378,24 +378,24 @@ def sap_broadphase(m: Model, d: Data):
       # Create temporary arrays for sorting
       temp_box_projections_lower = wp.zeros(
         m.ngeom * 2,
-        dtype=d.box_projections_lower.dtype,
+        dtype=d.sap_projection_lower.dtype,
       )
       temp_box_sorting_indexer = wp.zeros(
         m.ngeom * 2,
-        dtype=d.box_sorting_indexer.dtype,
+        dtype=d.sap_sort_index.dtype,
       )
 
       # Copy data to temporary arrays
       wp.copy(
         temp_box_projections_lower,
-        d.box_projections_lower,
+        d.sap_projection_lower,
         0,
         start_idx,
         m.ngeom,
       )
       wp.copy(
         temp_box_sorting_indexer,
-        d.box_sorting_indexer,
+        d.sap_sort_index,
         0,
         start_idx,
         m.ngeom,
@@ -408,14 +408,14 @@ def sap_broadphase(m: Model, d: Data):
 
       # Copy sorted data back
       wp.copy(
-        d.box_projections_lower,
+        d.sap_projection_lower,
         temp_box_projections_lower,
         start_idx,
         0,
         m.ngeom,
       )
       wp.copy(
-        d.box_sorting_indexer,
+        d.sap_sort_index,
         temp_box_sorting_indexer,
         start_idx,
         0,
@@ -435,7 +435,7 @@ def sap_broadphase(m: Model, d: Data):
   )
 
   # The scan (scan = cumulative sum, either inclusive or exclusive depending on the last argument) is used for load balancing among the threads
-  wp.utils.array_scan(d.ranges.reshape(-1), d.cumulative_sum, True)
+  wp.utils.array_scan(d.sap_range.reshape(-1), d.sap_cumulative_sum, True)
 
   # Estimate how many overlap checks need to be done - assumes each box has to be compared to 5 other boxes (and batched over all worlds)
   num_sweep_threads = 5 * d.nworld * m.ngeom

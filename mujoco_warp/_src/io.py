@@ -461,17 +461,15 @@ def make_data(
   d.qLDiagInv_integration = wp.zeros_like(d.qLDiagInv)
   d.act_vel_integration = wp.zeros_like(d.ctrl)
 
-  # the result of the broadphase gets stored in this array
-
-  # internal broadphase tmp arrays
-  d.boxes_sorted = wp.zeros((nworld, mjm.ngeom, 2), dtype=wp.vec3)
-  d.box_projections_lower = wp.zeros((2 * nworld, mjm.ngeom), dtype=wp.float32)
-  d.box_projections_upper = wp.zeros((nworld, mjm.ngeom), dtype=wp.float32)
-  d.box_sorting_indexer = wp.zeros((2 * nworld, mjm.ngeom), dtype=wp.int32)
-  d.ranges = wp.zeros((nworld, mjm.ngeom), dtype=wp.int32)
-  d.cumulative_sum = wp.zeros(nworld * mjm.ngeom, dtype=wp.int32)
+  # sweep-and-prune broadphase
+  d.sap_geom_sort = wp.zeros((nworld, mjm.ngeom, 2), dtype=wp.vec3)
+  d.sap_projection_lower = wp.zeros((2 * nworld, mjm.ngeom), dtype=wp.float32)
+  d.sap_projection_upper = wp.zeros((nworld, mjm.ngeom), dtype=wp.float32)
+  d.sap_sort_index = wp.zeros((2 * nworld, mjm.ngeom), dtype=wp.int32)
+  d.sap_range = wp.zeros((nworld, mjm.ngeom), dtype=wp.int32)
+  d.sap_cumulative_sum = wp.zeros(nworld * mjm.ngeom, dtype=wp.int32)
   segment_indices_list = [i * mjm.ngeom for i in range(nworld + 1)]
-  d.segment_indices = wp.array(segment_indices_list, dtype=int)
+  d.sap_segment_index = wp.array(segment_indices_list, dtype=int)
 
   # collision driver
   d.collision_pair = wp.empty(nconmax, dtype=wp.vec2i, ndim=1)
@@ -683,18 +681,16 @@ def put_data(
   d.qLDiagInv_integration = wp.zeros_like(d.qLDiagInv)
   d.act_vel_integration = wp.zeros_like(d.ctrl)
 
-  # the result of the broadphase gets stored in this array
-
-  # internal broadphase tmp arrays
-  d.boxes_sorted = wp.zeros((nworld, mjm.ngeom, 2), dtype=wp.vec3)
-  d.box_projections_lower = wp.zeros((2 * nworld, mjm.ngeom), dtype=wp.float32)
-  d.box_projections_upper = wp.zeros((nworld, mjm.ngeom), dtype=wp.float32)
-  d.box_sorting_indexer = wp.zeros((2 * nworld, mjm.ngeom), dtype=wp.int32)
-  d.ranges = wp.zeros((nworld, mjm.ngeom), dtype=wp.int32)
-  d.cumulative_sum = wp.zeros(nworld * mjm.ngeom, dtype=wp.int32)
+  # broadphase sweep and prune
+  d.sap_geom_sort = wp.zeros((nworld, mjm.ngeom, 2), dtype=wp.vec3)
+  d.sap_projection_lower = wp.zeros((2 * nworld, mjm.ngeom), dtype=wp.float32)
+  d.sap_projection_upper = wp.zeros((nworld, mjm.ngeom), dtype=wp.float32)
+  d.sap_sort_index = wp.zeros((2 * nworld, mjm.ngeom), dtype=wp.int32)
+  d.sap_range = wp.zeros((nworld, mjm.ngeom), dtype=wp.int32)
+  d.sap_cumulative_sum = wp.zeros(nworld * mjm.ngeom, dtype=wp.int32)
   segment_indices_list = [i * mjm.ngeom for i in range(nworld + 1)]
-  d.segment_indices = wp.array(segment_indices_list, dtype=int)
-  d.dyn_geom_aabb = wp.zeros((nworld, mjm.ngeom, 2), dtype=wp.vec3)
+  d.sap_segment_index = wp.array(segment_indices_list, dtype=int)
+  d.sap_geom_aabb = wp.zeros((nworld, mjm.ngeom, 2), dtype=wp.vec3)
 
   # collision driver
   d.collision_pair = wp.empty(nconmax, dtype=wp.vec2i, ndim=1)
