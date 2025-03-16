@@ -21,6 +21,7 @@ from ._src.collision_driver import (
 )
 from ._src.collision_driver import collision as collision
 from ._src.collision_driver import nxn_broadphase as nxn_broadphase
+from ._src.collision_primitive import primitive_narrowphase
 from ._src.constraint import make_constraint as make_constraint
 from ._src.forward import euler as euler
 from ._src.forward import forward as forward

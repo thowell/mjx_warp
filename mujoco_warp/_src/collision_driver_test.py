@@ -127,6 +127,8 @@ class PrimitiveTest(parameterized.TestCase):
       _assert_eq(d.contact.pos.numpy()[i], mjd.contact.pos[i], "pos")
       _assert_eq(d.contact.frame.numpy()[i].flatten(), mjd.contact.frame[i], "frame")
 
+  # TODO(team): test primitive_narrowphase
+
 
 if __name__ == "__main__":
   absltest.main()

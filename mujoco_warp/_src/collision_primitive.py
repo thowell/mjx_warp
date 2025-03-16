@@ -233,7 +233,7 @@ def plane_box(
 
 
 @wp.kernel
-def _narrowphase(
+def _primitive_narrowphase(
   m: Model,
   d: Data,
 ):
@@ -268,7 +268,7 @@ def _narrowphase(
     capsule_capsule(geom1, geom2, worldid, d, margin, geoms)
 
 
-def narrowphase(m: Model, d: Data):
+def primitive_narrowphase(m: Model, d: Data):
   # we need to figure out how to keep the overhead of this small - not launching anything
   # for pair types without collisions, as well as updating the launch dimensions.
-  wp.launch(_narrowphase, dim=d.nconmax, inputs=[m, d])
+  wp.launch(_primitive_narrowphase, dim=d.nconmax, inputs=[m, d])
