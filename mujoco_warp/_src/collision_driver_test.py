@@ -21,7 +21,7 @@ from absl.testing import parameterized
 
 import mujoco_warp as mjwarp
 
-# tolerance for difference between MuJoCo and MJWarp smooth calculations - mostly
+# tolerance for difference between MuJoCo and MJWarp calculations - mostly
 # due to float precision
 _TOLERANCE = 5e-5
 
