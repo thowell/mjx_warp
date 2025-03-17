@@ -78,8 +78,9 @@ def _update_constraint(m: types.Model, d: types.Data):
   def _init_cost(d: types.Data):
     worldid = wp.tid()
 
-    if d.efc.done[worldid]:
-      return
+    if wp.static(m.opt.iterations) > 1:
+      if d.efc.done[worldid]:
+        return
 
     d.efc.prev_cost[worldid] = d.efc.cost[worldid]
     d.efc.cost[worldid] = 0.0
@@ -94,8 +95,9 @@ def _update_constraint(m: types.Model, d: types.Data):
 
     worldid = d.efc.worldid[efcid]
 
-    if d.efc.done[worldid]:
-      return
+    if wp.static(m.opt.iterations) > 1:
+      if d.efc.done[worldid]:
+        return
 
     Jaref = d.efc.Jaref[efcid]
     efc_D = d.efc.D[efcid]
@@ -117,8 +119,9 @@ def _update_constraint(m: types.Model, d: types.Data):
   def _zero_qfrc_constraint(d: types.Data):
     worldid, dofid = wp.tid()
 
-    if d.efc.done[worldid]:
-      return
+    if wp.static(m.opt.iterations) > 1:
+      if d.efc.done[worldid]:
+        return
 
     d.qfrc_constraint[worldid, dofid] = 0.0
 
@@ -131,8 +134,9 @@ def _update_constraint(m: types.Model, d: types.Data):
 
     worldid = d.efc.worldid[efcid]
 
-    if d.efc.done[worldid]:
-      return
+    if wp.static(m.opt.iterations) > 1:
+      if d.efc.done[worldid]:
+        return
 
     wp.atomic_add(
       d.qfrc_constraint[worldid],
@@ -144,8 +148,9 @@ def _update_constraint(m: types.Model, d: types.Data):
   def _gauss(d: types.Data):
     worldid, dofid = wp.tid()
 
-    if d.efc.done[worldid]:
-      return
+    if wp.static(m.opt.iterations) > 1:
+      if d.efc.done[worldid]:
+        return
 
     gauss_cost = (
       0.5
@@ -171,13 +176,15 @@ def _update_constraint(m: types.Model, d: types.Data):
 
 def _update_gradient(m: types.Model, d: types.Data):
   TILE = m.nv
+  ITERATIONS = m.opt.iterations
 
   @kernel
   def _zero_grad_dot(d: types.Data):
     worldid = wp.tid()
 
-    if d.efc.done[worldid]:
-      return
+    if wp.static(m.opt.iterations) > 1:
+      if d.efc.done[worldid]:
+        return
 
     d.efc.grad_dot[worldid] = 0.0
 
@@ -185,8 +192,9 @@ def _update_gradient(m: types.Model, d: types.Data):
   def _grad(d: types.Data):
     worldid, dofid = wp.tid()
 
-    if d.efc.done[worldid]:
-      return
+    if wp.static(m.opt.iterations) > 1:
+      if d.efc.done[worldid]:
+        return
 
     grad = (
       d.efc.Ma[worldid, dofid]
@@ -202,8 +210,9 @@ def _update_gradient(m: types.Model, d: types.Data):
     def _zero_h_lower(m: types.Model, d: types.Data):
       worldid, elementid = wp.tid()
 
-      if d.efc.done[worldid]:
-        return
+      if ITERATIONS > 1:
+        if d.efc.done[worldid]:
+          return
 
       rowid = m.dof_tri_row[elementid]
       colid = m.dof_tri_col[elementid]
@@ -213,8 +222,9 @@ def _update_gradient(m: types.Model, d: types.Data):
     def _set_h_qM_lower_sparse(m: types.Model, d: types.Data):
       worldid, elementid = wp.tid()
 
-      if d.efc.done[worldid]:
-        return
+      if ITERATIONS > 1:
+        if d.efc.done[worldid]:
+          return
 
       i = m.qM_fullm_i[elementid]
       j = m.qM_fullm_j[elementid]
@@ -226,8 +236,9 @@ def _update_gradient(m: types.Model, d: types.Data):
     def _copy_lower_triangle(m: types.Model, d: types.Data):
       worldid, elementid = wp.tid()
 
-      if d.efc.done[worldid]:
-        return
+      if ITERATIONS > 1:
+        if d.efc.done[worldid]:
+          return
 
       rowid = m.dof_tri_row[elementid]
       colid = m.dof_tri_col[elementid]
@@ -242,8 +253,9 @@ def _update_gradient(m: types.Model, d: types.Data):
 
     worldid = d.efc.worldid[efcid]
 
-    if d.efc.done[worldid]:
-      return
+    if ITERATIONS > 1:
+      if d.efc.done[worldid]:
+        return
 
     dofi = m.dof_tri_row[elementid]
     dofj = m.dof_tri_col[elementid]
@@ -253,7 +265,6 @@ def _update_gradient(m: types.Model, d: types.Data):
     if efc_D == 0.0 or active == 0:
       return
 
-    worldid = d.efc.worldid[efcid]
     # TODO(team): sparse efc_J
     wp.atomic_add(
       d.efc.h[worldid, dofi],
@@ -265,39 +276,15 @@ def _update_gradient(m: types.Model, d: types.Data):
   def _cholesky(d: types.Data):
     worldid = wp.tid()
 
-    if d.efc.done[worldid]:
-      return
+    if wp.static(m.opt.iterations) > 1:
+      if d.efc.done[worldid]:
+        return
 
     mat_tile = wp.tile_load(d.efc.h[worldid], shape=(TILE, TILE))
     fact_tile = wp.tile_cholesky(mat_tile)
     input_tile = wp.tile_load(d.efc.grad[worldid], shape=TILE)
     output_tile = wp.tile_cholesky_solve(fact_tile, input_tile)
     wp.tile_store(d.efc.Mgrad[worldid], output_tile)
-
-  @kernel
-  def _JTDAJ(m: types.Model, d: types.Data):
-    efcid, elementid = wp.tid()
-
-    if efcid >= d.nefc_total[0]:
-      return
-
-    worldid = d.efc.worldid[efcid]
-
-    if d.efc.done[worldid]:
-      return
-
-    dofi = m.dof_tri_row[elementid]
-    dofj = m.dof_tri_col[elementid]
-
-    efc_D = d.efc.D[efcid]
-    active = d.efc.active[efcid]
-    if efc_D == 0.0 or active == 0:
-      return
-
-    # TODO(team): sparse efc_J
-    # h[worldid, dofi, dofj] += J[efcid, dofi] * J[efcid, dofj] * D[efcid]
-    res = d.efc.J[efcid, dofi] * d.efc.J[efcid, dofj] * efc_D
-    wp.atomic_add(d.efc.h[worldid, dofi], dofj, res)
 
   # grad = Ma - qfrc_smooth - qfrc_constraint
   wp.launch(_zero_grad_dot, dim=(d.nworld), inputs=[d])
@@ -348,13 +335,16 @@ def _safe_div(x: wp.float32, y: wp.float32) -> wp.float32:
 
 @event_scope
 def _linesearch_iterative(m: types.Model, d: types.Data):
+  ITERATIONS = m.opt.iterations
+
   @kernel
   def _gtol(m: types.Model, d: types.Data):
     # TODO(team): static m?
     worldid = wp.tid()
 
-    if d.efc.done[worldid]:
-      return
+    if ITERATIONS > 1:
+      if d.efc.done[worldid]:
+        return
 
     snorm = wp.math.sqrt(d.efc.search_dot[worldid])
     scale = m.stat.meaninertia * wp.float(wp.max(1, m.nv))
@@ -378,8 +368,9 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
 
     worldid = d.efc.worldid[efcid]
 
-    if d.efc.done[worldid]:
-      return
+    if wp.static(m.opt.iterations) > 1:
+      if d.efc.done[worldid]:
+        return
 
     j = d.efc.J[efcid, dofid]
     search = d.efc.search[d.efc.worldid[efcid], dofid]
@@ -389,8 +380,9 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
   def _zero_quad_gauss(d: types.Data):
     worldid = wp.tid()
 
-    if d.efc.done[worldid]:
-      return
+    if wp.static(m.opt.iterations) > 1:
+      if d.efc.done[worldid]:
+        return
 
     d.efc.quad_gauss[worldid] = wp.vec3(0.0)
 
@@ -398,8 +390,9 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
   def _init_quad_gauss(m: types.Model, d: types.Data):
     worldid, dofid = wp.tid()
 
-    if d.efc.done[worldid]:
-      return
+    if ITERATIONS > 1:
+      if d.efc.done[worldid]:
+        return
 
     search = d.efc.search[worldid, dofid]
     quad_gauss = wp.vec3()
@@ -417,8 +410,9 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
 
     worldid = d.efc.worldid[efcid]
 
-    if d.efc.done[worldid]:
-      return
+    if wp.static(m.opt.iterations) > 1:
+      if d.efc.done[worldid]:
+        return
 
     Jaref = d.efc.Jaref[efcid]
     jv = d.efc.jv[efcid]
@@ -433,8 +427,9 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
   def _init_p0_gauss(p0: wp.array(dtype=wp.vec3), d: types.Data):
     worldid = wp.tid()
 
-    if d.efc.done[worldid]:
-      return
+    if wp.static(m.opt.iterations) > 1:
+      if d.efc.done[worldid]:
+        return
 
     quad = d.efc.quad_gauss[worldid]
     p0[worldid] = wp.vec3(quad[0], quad[1], 2.0 * quad[2])
@@ -448,8 +443,9 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
 
     worldid = d.efc.worldid[efcid]
 
-    if d.efc.done[worldid]:
-      return
+    if wp.static(m.opt.iterations) > 1:
+      if d.efc.done[worldid]:
+        return
 
     # TODO(team): active and conditionally active constraints:
     if d.efc.Jaref[efcid] >= 0.0:
@@ -467,8 +463,9 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
   ):
     worldid = wp.tid()
 
-    if d.efc.done[worldid]:
-      return
+    if wp.static(m.opt.iterations) > 1:
+      if d.efc.done[worldid]:
+        return
 
     pp0 = p0[worldid]
     alpha = -_safe_div(pp0[1], pp0[2])
@@ -488,8 +485,9 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
 
     worldid = d.efc.worldid[efcid]
 
-    if d.efc.done[worldid]:
-      return
+    if wp.static(m.opt.iterations) > 1:
+      if d.efc.done[worldid]:
+        return
 
     alpha = lo_alpha[worldid]
 
@@ -508,8 +506,9 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
   ):
     worldid = wp.tid()
 
-    if d.efc.done[worldid]:
-      return
+    if wp.static(m.opt.iterations) > 1:
+      if d.efc.done[worldid]:
+        return
 
     pp0 = p0[worldid]
     plo = lo[worldid]
@@ -537,7 +536,11 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
   ):
     worldid = wp.tid()
 
-    if done[worldid] or d.efc.done[worldid]:
+    if wp.static(m.opt.iterations) > 1:
+      if d.efc.done[worldid]:
+        return
+
+    if done[worldid]:
       return
 
     quad = d.efc.quad_gauss[worldid]
@@ -576,7 +579,11 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
 
     worldid = d.efc.worldid[efcid]
 
-    if done[worldid] or d.efc.done[worldid]:
+    if wp.static(m.opt.iterations) > 1:
+      if d.efc.done[worldid]:
+        return
+
+    if done[worldid]:
       return
 
     quad = d.efc.quad[efcid]
@@ -616,7 +623,11 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
   ):
     worldid = wp.tid()
 
-    if done[worldid] or d.efc.done[worldid]:
+    if wp.static(m.opt.iterations) > 1:
+      if d.efc.done[worldid]:
+        return
+
+    if done[worldid]:
       return
 
     plo = lo[worldid]
@@ -680,8 +691,9 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
   def _qacc_ma(d: types.Data):
     worldid, dofid = wp.tid()
 
-    if d.efc.done[worldid]:
-      return
+    if wp.static(m.opt.iterations) > 1:
+      if d.efc.done[worldid]:
+        return
 
     alpha = d.efc.alpha[worldid]
     d.qacc[worldid, dofid] += alpha * d.efc.search[worldid, dofid]
@@ -696,8 +708,9 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
 
     worldid = d.efc.worldid[efcid]
 
-    if d.efc.done[worldid]:
-      return
+    if wp.static(m.opt.iterations) > 1:
+      if d.efc.done[worldid]:
+        return
 
     d.efc.Jaref[efcid] += d.efc.alpha[worldid] * d.efc.jv[efcid]
 
@@ -775,13 +788,15 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
 @event_scope
 def solve(m: types.Model, d: types.Data):
   """Finds forces that satisfy constraints."""
+  ITERATIONS = m.opt.iterations
 
   @kernel
   def _zero_search_dot(d: types.Data):
     worldid = wp.tid()
 
-    if d.efc.done[worldid]:
-      return
+    if wp.static(m.opt.iterations) > 1:
+      if d.efc.done[worldid]:
+        return
 
     d.efc.search_dot[worldid] = 0.0
 
@@ -789,8 +804,9 @@ def solve(m: types.Model, d: types.Data):
   def _search_update(d: types.Data):
     worldid, dofid = wp.tid()
 
-    if d.efc.done[worldid]:
-      return
+    if wp.static(m.opt.iterations) > 1:
+      if d.efc.done[worldid]:
+        return
 
     search = -1.0 * d.efc.Mgrad[worldid, dofid]
 
@@ -804,8 +820,9 @@ def solve(m: types.Model, d: types.Data):
   def _done(m: types.Model, d: types.Data, solver_niter: int):
     worldid = wp.tid()
 
-    if d.efc.done[worldid]:
-      return
+    if ITERATIONS > 1:
+      if d.efc.done[worldid]:
+        return
 
     improvement = _rescale(m, d.efc.prev_cost[worldid] - d.efc.cost[worldid])
     gradient = _rescale(m, wp.math.sqrt(d.efc.grad_dot[worldid]))
@@ -819,8 +836,9 @@ def solve(m: types.Model, d: types.Data):
     def _prev_grad_Mgrad(d: types.Data):
       worldid, dofid = wp.tid()
 
-      if d.efc.done[worldid]:
-        return
+      if wp.static(m.opt.iterations) > 1:
+        if d.efc.done[worldid]:
+          return
 
       d.efc.prev_grad[worldid, dofid] = d.efc.grad[worldid, dofid]
       d.efc.prev_Mgrad[worldid, dofid] = d.efc.Mgrad[worldid, dofid]
@@ -829,8 +847,9 @@ def solve(m: types.Model, d: types.Data):
     def _zero_beta_num_den(d: types.Data):
       worldid = wp.tid()
 
-      if d.efc.done[worldid]:
-        return
+      if wp.static(m.opt.iterations) > 1:
+        if d.efc.done[worldid]:
+          return
 
       d.efc.beta_num[worldid] = 0.0
       d.efc.beta_den[worldid] = 0.0
@@ -839,8 +858,9 @@ def solve(m: types.Model, d: types.Data):
     def _beta_num_den(d: types.Data):
       worldid, dofid = wp.tid()
 
-      if d.efc.done[worldid]:
-        return
+      if wp.static(m.opt.iterations) > 1:
+        if d.efc.done[worldid]:
+          return
 
       prev_Mgrad = d.efc.prev_Mgrad[worldid][dofid]
       wp.atomic_add(
@@ -856,8 +876,9 @@ def solve(m: types.Model, d: types.Data):
     def _beta(d: types.Data):
       worldid = wp.tid()
 
-      if d.efc.done[worldid]:
-        return
+      if wp.static(m.opt.iterations) > 1:
+        if d.efc.done[worldid]:
+          return
 
       d.efc.beta[worldid] = wp.max(
         0.0, d.efc.beta_num[worldid] / wp.max(mujoco.mjMINVAL, d.efc.beta_den[worldid])
