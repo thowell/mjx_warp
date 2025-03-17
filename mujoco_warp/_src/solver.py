@@ -207,6 +207,7 @@ def _update_gradient(m: types.Model, d: types.Data):
 
     @kernel
     def _zero_h_lower(m: types.Model, d: types.Data):
+      # TODO(team): static m?
       worldid, elementid = wp.tid()
 
       if ITERATIONS > 1:
@@ -219,6 +220,7 @@ def _update_gradient(m: types.Model, d: types.Data):
 
     @kernel
     def _set_h_qM_lower_sparse(m: types.Model, d: types.Data):
+      # TODO(team): static m?
       worldid, elementid = wp.tid()
 
       if ITERATIONS > 1:
@@ -233,6 +235,7 @@ def _update_gradient(m: types.Model, d: types.Data):
 
     @kernel
     def _copy_lower_triangle(m: types.Model, d: types.Data):
+      # TODO(team): static m?
       worldid, elementid = wp.tid()
 
       if ITERATIONS > 1:
@@ -245,6 +248,7 @@ def _update_gradient(m: types.Model, d: types.Data):
 
   @kernel
   def _JTDAJ(m: types.Model, d: types.Data):
+    # TODO(team): static m?
     efcid, elementid = wp.tid()
 
     if efcid >= d.nefc[0]:
@@ -340,7 +344,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
     # TODO(team): static m?
     worldid = wp.tid()
 
-    if ITERATIONS > 1:
+    if m.opt.iterations > 1:
       if d.efc.done[worldid]:
         return
 
@@ -386,6 +390,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
 
   @kernel
   def _init_quad_gauss(m: types.Model, d: types.Data):
+    # TODO(team): static m?
     worldid, dofid = wp.tid()
 
     if ITERATIONS > 1:
@@ -816,6 +821,7 @@ def solve(m: types.Model, d: types.Data):
 
   @kernel
   def _done(m: types.Model, d: types.Data, solver_niter: int):
+    # TODO(team): static m?
     worldid = wp.tid()
 
     if ITERATIONS > 1:
