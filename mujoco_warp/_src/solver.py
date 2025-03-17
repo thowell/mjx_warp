@@ -13,7 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-import mujoco
 import warp as wp
 
 from . import smooth
@@ -38,7 +37,7 @@ def _create_context(m: types.Model, d: types.Data, grad: bool = True):
   def _jaref(m: types.Model, d: types.Data):
     efcid, dofid = wp.tid()
 
-    if efcid >= d.nefc_total[0]:
+    if efcid >= d.nefc[0]:
       return
 
     worldid = d.efc.worldid[efcid]
@@ -85,7 +84,7 @@ def _update_constraint(m: types.Model, d: types.Data):
   def _efc_kernel(d: types.Data):
     efcid = wp.tid()
 
-    if efcid >= d.nefc_total[0]:
+    if efcid >= d.nefc[0]:
       return
 
     worldid = d.efc.worldid[efcid]
@@ -109,7 +108,7 @@ def _update_constraint(m: types.Model, d: types.Data):
   def _qfrc_constraint(d: types.Data):
     dofid, efcid = wp.tid()
 
-    if efcid >= d.nefc_total[0]:
+    if efcid >= d.nefc[0]:
       return
 
     worldid = d.efc.worldid[efcid]
@@ -187,7 +186,7 @@ def _update_gradient(m: types.Model, d: types.Data):
   def _JTDAJ(m: types.Model, d: types.Data):
     efcid, elementid = wp.tid()
 
-    if efcid >= d.nefc_total[0]:
+    if efcid >= d.nefc[0]:
       return
 
     dofi = m.dof_tri_row[elementid]
@@ -219,7 +218,7 @@ def _update_gradient(m: types.Model, d: types.Data):
   def _JTDAJ(m: types.Model, d: types.Data):
     efcid, elementid = wp.tid()
 
-    if efcid >= d.nefc_total[0]:
+    if efcid >= d.nefc[0]:
       return
 
     dofi = m.dof_tri_row[elementid]
@@ -241,9 +240,9 @@ def _update_gradient(m: types.Model, d: types.Data):
 
   wp.launch(_grad, dim=(d.nworld, m.nv), inputs=[d])
 
-  if m.opt.solver == mujoco.mjtSolver.mjSOL_CG:
+  if m.opt.solver == types.SolverType.CG:
     smooth.solve_m(m, d, d.efc.Mgrad, d.efc.grad)
-  elif m.opt.solver == mujoco.mjtSolver.mjSOL_NEWTON:
+  elif m.opt.solver == types.SolverType.NEWTON:
     # h = qM + (efc_J.T * efc_D * active) @ efc_J
     if m.opt.is_sparse:
       wp.launch(_zero_h_lower, dim=(d.nworld, m.dof_tri_row.size), inputs=[m, d])
@@ -283,7 +282,6 @@ def _safe_div(x: wp.float32, y: wp.float32) -> wp.float32:
   return x / wp.where(y != 0.0, y, types.MJ_MINVAL)
 
 
-@event_scope
 def _linesearch_iterative(m: types.Model, d: types.Data):
   @kernel
   def _gtol(m: types.Model, d: types.Data):
@@ -297,7 +295,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
   def _jv(d: types.Data):
     efcid, dofid = wp.tid()
 
-    if efcid >= d.nefc_total[0]:
+    if efcid >= d.nefc[0]:
       return
 
     j = d.efc.J[efcid, dofid]
@@ -318,7 +316,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
   def _init_quad(d: types.Data):
     efcid = wp.tid()
 
-    if efcid >= d.nefc_total[0]:
+    if efcid >= d.nefc[0]:
       return
 
     Jaref = d.efc.Jaref[efcid]
@@ -340,7 +338,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
   def _init_p0(p0: wp.array(dtype=wp.vec3), d: types.Data):
     efcid = wp.tid()
 
-    if efcid >= d.nefc_total[0]:
+    if efcid >= d.nefc[0]:
       return
 
     # TODO(team): active and conditionally active constraints:
@@ -373,7 +371,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
   ):
     efcid = wp.tid()
 
-    if efcid >= d.nefc_total[0]:
+    if efcid >= d.nefc[0]:
       return
 
     worldid = d.efc.worldid[efcid]
@@ -452,7 +450,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
   ):
     efcid = wp.tid()
 
-    if efcid >= d.nefc_total[0]:
+    if efcid >= d.nefc[0]:
       return
 
     worldid = d.efc.worldid[efcid]
@@ -568,7 +566,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
   def _jaref(d: types.Data):
     efcid = wp.tid()
 
-    if efcid >= d.nefc_total[0]:
+    if efcid >= d.nefc[0]:
       return
 
     d.efc.Jaref[efcid] += d.efc.alpha[d.efc.worldid[efcid]] * d.efc.jv[efcid]
@@ -658,7 +656,7 @@ def solve(m: types.Model, d: types.Data):
     worldid, dofid = wp.tid()
     search = -1.0 * d.efc.Mgrad[worldid, dofid]
 
-    if wp.static(m.opt.solver == mujoco.mjtSolver.mjSOL_CG):
+    if wp.static(m.opt.solver == types.SolverType.CG):
       search += d.efc.beta[worldid] * d.efc.search[worldid, dofid]
 
     d.efc.search[worldid, dofid] = search
@@ -674,7 +672,7 @@ def solve(m: types.Model, d: types.Data):
     done = done or (gradient < m.opt.tolerance)
     d.efc.done[worldid] = int(done)
 
-  if m.opt.solver == mujoco.mjtSolver.mjSOL_CG:
+  if m.opt.solver == types.SolverType.CG:
 
     @kernel
     def _prev_grad_Mgrad(d: types.Data):
@@ -705,7 +703,7 @@ def solve(m: types.Model, d: types.Data):
     def _beta(d: types.Data):
       worldid = wp.tid()
       d.efc.beta[worldid] = wp.max(
-        0.0, d.efc.beta_num[worldid] / wp.max(mujoco.mjMINVAL, d.efc.beta_den[worldid])
+        0.0, d.efc.beta_num[worldid] / wp.max(types.MJ_MINVAL, d.efc.beta_den[worldid])
       )
 
   # warmstart
@@ -716,14 +714,14 @@ def solve(m: types.Model, d: types.Data):
   for i in range(m.opt.iterations):
     _linesearch_iterative(m, d)
 
-    if m.opt.solver == mujoco.mjtSolver.mjSOL_CG:
+    if m.opt.solver == types.SolverType.CG:
       wp.launch(_prev_grad_Mgrad, dim=(d.nworld, m.nv), inputs=[d])
 
     _update_constraint(m, d)
     _update_gradient(m, d)
 
     # polak-ribiere
-    if m.opt.solver == mujoco.mjtSolver.mjSOL_CG:
+    if m.opt.solver == types.SolverType.CG:
       wp.launch(_zero_beta_num_den, dim=(d.nworld), inputs=[d])
 
       wp.launch(_beta_num_den, dim=(d.nworld, m.nv), inputs=[d])

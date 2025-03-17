@@ -18,7 +18,6 @@ from typing import Any
 import mujoco
 import warp as wp
 
-from .types import NUM_GEOM_TYPES
 from .types import Data
 from .types import Model
 from .types import array2df
@@ -148,13 +147,6 @@ def xfrc_accumulate(m: Model, d: Data, qfrc: array2df):
     qfrc[worldid, dofid] += accumul
 
   wp.launch(kernel=_accumulate, dim=(d.nworld, m.nv), inputs=[m, d, qfrc])
-
-
-@wp.func
-def where(condition: bool, ret_true: Any, ret_false: Any):
-  if condition:
-    return ret_true
-  return ret_false
 
 
 @wp.func
