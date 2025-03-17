@@ -78,6 +78,7 @@ class ForwardTest(absltest.TestCase):
 
     # TODO(team): test DisableBit.CLAMPCTRL
     # TODO(team): test DisableBit.ACTUATION
+    # TODO(team): test actuator gain/bias (e.g. position control)
 
   def test_fwd_acceleration(self):
     _, mjd, m, d = self._load("humanoid/humanoid.xml", is_sparse=False)
