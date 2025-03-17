@@ -67,7 +67,6 @@ def _add_geom_pair(m: Model, d: Data, geom1: int, geom2: int, worldid: int):
   d.collision_worldid[pairid] = worldid
 
 
-<<<<<<< HEAD
 @wp.kernel
 def broadphase_project_spheres_onto_sweep_direction_kernel(
   m: Model,
@@ -136,85 +135,11 @@ def decode_plane(encoded: wp.vec4) -> wp.vec4:
 def reorder_bounding_spheres_kernel(
   m: Model,
   d: Data,
-=======
-@wp.kernel
-def broadphase_project_spheres_onto_sweep_direction_kernel(
-  m: Model,
-  d: Data,
-  direction: wp.vec3,
-):
-  worldId, i = wp.tid()
-
-  c = d.geom_xpos[worldId, i]
-  r = m.geom_rbound[i]
-  if r == 0.0:
-    # current geom is a plane
-    r = 1000000000.0
-  sphere_radius = r + m.geom_margin[i]
-
-  center = wp.dot(direction, c)
-  f = center - sphere_radius
-
-  # Store results in the data arrays
-  d.box_projections_lower[worldId, i] = f
-  d.box_projections_upper[worldId, i] = center + sphere_radius
-  d.box_sorting_indexer[worldId, i] = i
-
-
-# Define constants for plane types
-PLANE_ZERO_OFFSET = -1.0
-PLANE_NEGATIVE_OFFSET = -2.0
-PLANE_POSITIVE_OFFSET = -3.0
-
-
-@wp.func
-def encode_plane(normal: wp.vec3, point_on_plane: wp.vec3, margin: float) -> wp.vec4:
-  normal = wp.normalize(normal)
-  plane_offset = -wp.dot(normal, point_on_plane + normal * margin)
-
-  # Scale factor for the normal
-  scale = wp.abs(plane_offset)
-
-  # Handle special cases
-  if wp.abs(plane_offset) < 1e-6:
-    return wp.vec4(normal.x, normal.y, normal.z, PLANE_ZERO_OFFSET)
-  elif plane_offset < 0.0:
-    return wp.vec4(
-      scale * normal.x, scale * normal.y, scale * normal.z, PLANE_NEGATIVE_OFFSET
-    )
-  else:
-    return wp.vec4(
-      scale * normal.x, scale * normal.y, scale * normal.z, PLANE_POSITIVE_OFFSET
-    )
-
-
-@wp.func
-def decode_plane(encoded: wp.vec4) -> wp.vec4:
-  magnitude = wp.length(encoded)
-  normal = wp.normalize(xyz(encoded))
-
-  if encoded.w == PLANE_ZERO_OFFSET:
-    return wp.vec4(normal.x, normal.y, normal.z, 0.0)
-  elif encoded.w == PLANE_NEGATIVE_OFFSET:
-    return wp.vec4(normal.x, normal.y, normal.z, -magnitude)
-  else:
-    return wp.vec4(normal.x, normal.y, normal.z, magnitude)
-
-
-@wp.kernel
-def reorder_bounding_spheres_kernel(
-  m: Model,
-  d: Data,
->>>>>>> upstream/main
 ):
   worldId, i = wp.tid()
 
   # Get the index from the data indexer
-<<<<<<< HEAD
   mapped = d.sap_sort_index[worldId, i]
-=======
-  mapped = d.box_sorting_indexer[worldId, i]
->>>>>>> upstream/main
 
   # Get the bounding volume
   c = d.geom_xpos[worldId, mapped]
@@ -226,19 +151,11 @@ def reorder_bounding_spheres_kernel(
     # store the plane equation
     xmat = d.geom_xmat[worldId, mapped]
     plane_normal = wp.vec3(xmat[0, 2], xmat[1, 2], xmat[2, 2])
-<<<<<<< HEAD
     d.sap_geom_sort[worldId, i] = encode_plane(
       plane_normal, c, margin
     )  # negative w component is used to disginguish planes from spheres
   else:
     d.sap_geom_sort[worldId, i] = wp.vec4(c.x, c.y, c.z, r + margin)
-=======
-    d.spheres_sorted[worldId, i] = encode_plane(
-      plane_normal, c, margin
-    )  # negative w component is used to disginguish planes from spheres
-  else:
-    d.spheres_sorted[worldId, i] = wp.vec4(c.x, c.y, c.z, r + margin)
->>>>>>> upstream/main
 
 
 @wp.func
@@ -377,11 +294,7 @@ def sap_broadphase_kernel(m: Model, d: Data, num_threads: int, filter_parent: bo
       continue
 
     # Check if the boxes overlap
-<<<<<<< HEAD
     if overlap(worldId, i, j, d.sap_geom_sort):
-=======
-    if overlap(worldId, i, j, d.spheres_sorted):
->>>>>>> upstream/main
       _add_geom_pair(m, d, idx1, idx2, worldId)
 
     threadId += num_threads
