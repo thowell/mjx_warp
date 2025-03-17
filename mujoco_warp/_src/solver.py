@@ -998,7 +998,6 @@ def solve(m: types.Model, d: types.Data):
 
   _create_context(m, d, grad=True)
 
-
   for i in range(m.opt.iterations):
     _linesearch(m, d)
 

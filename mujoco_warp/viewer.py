@@ -35,7 +35,9 @@ _CLEAR_KERNEL_CACHE = flags.DEFINE_bool(
   "clear_kernel_cache", False, "Clear kernel cache (to calculate full JIT time)"
 )
 _ENGINE = flags.DEFINE_enum("engine", "mjwarp", ["mjwarp", "mjc"], "Simulation engine")
-_LS_PARALLEL = flags.DEFINE_bool("ls_parallel", False, "Engine solver with parallel linesearch")
+_LS_PARALLEL = flags.DEFINE_bool(
+  "ls_parallel", False, "Engine solver with parallel linesearch"
+)
 _VIEWER_GLOBAL_STATE = {
   "running": True,
   "step_once": False,
