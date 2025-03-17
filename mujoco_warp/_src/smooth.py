@@ -17,6 +17,7 @@ import warp as wp
 
 from . import math
 from .types import Data
+from .types import DisableBit
 from .types import JointType
 from .types import Model
 from .types import TrnType
@@ -283,15 +284,21 @@ def crb(m: Model, d: Data):
     bodyid = m.dof_bodyid[dofid]
 
     # init M(i,i) with armature inertia
-    d.qM[worldid, dofid, dofid] = m.dof_armature[dofid]
+    M = m.dof_armature[dofid]
 
     # precompute buf = crb_body_i * cdof_i
     buf = math.inert_vec(d.crb[worldid, bodyid], d.cdof[worldid, dofid])
+    M += wp.dot(d.cdof[worldid, dofid], buf)
+
+    d.qM[worldid, dofid, dofid] = M
 
     # sparse backward pass over ancestors
     dofidi = dofid
+    dofid = m.dof_parentid[dofid]
     while dofid >= 0:
-      d.qM[worldid, dofidi, dofid] += wp.dot(d.cdof[worldid, dofid], buf)
+      qMij = wp.dot(d.cdof[worldid, dofid], buf)
+      d.qM[worldid, dofidi, dofid] += qMij
+      d.qM[worldid, dofid, dofidi] += qMij
       dofid = m.dof_parentid[dofid]
 
   body_treeadr = m.body_treeadr.numpy()
@@ -438,7 +445,10 @@ def rne(m: Model, d: Data):
       d.cdof[worldid, dofid], d.rne_cfrc[worldid, bodyid]
     )
 
-  wp.launch(cacc_gravity, dim=[d.nworld], inputs=[m, d])
+  if m.opt.disableflags & DisableBit.GRAVITY:
+    d.rne_cacc.zero_()
+  else:
+    wp.launch(cacc_gravity, dim=[d.nworld], inputs=[m, d])
 
   body_treeadr = m.body_treeadr.numpy()
   for i in range(len(body_treeadr)):

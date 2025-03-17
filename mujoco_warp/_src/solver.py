@@ -13,7 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-import mujoco
 import warp as wp
 
 from . import smooth
@@ -38,7 +37,7 @@ def _create_context(m: types.Model, d: types.Data, grad: bool = True):
   def _jaref(m: types.Model, d: types.Data):
     efcid, dofid = wp.tid()
 
-    if efcid >= d.nefc_total[0]:
+    if efcid >= d.nefc[0]:
       return
 
     worldid = d.efc.worldid[efcid]
@@ -90,7 +89,7 @@ def _update_constraint(m: types.Model, d: types.Data):
   def _efc_kernel(d: types.Data):
     efcid = wp.tid()
 
-    if efcid >= d.nefc_total[0]:
+    if efcid >= d.nefc[0]:
       return
 
     worldid = d.efc.worldid[efcid]
@@ -129,7 +128,7 @@ def _update_constraint(m: types.Model, d: types.Data):
   def _qfrc_constraint(d: types.Data):
     dofid, efcid = wp.tid()
 
-    if efcid >= d.nefc_total[0]:
+    if efcid >= d.nefc[0]:
       return
 
     worldid = d.efc.worldid[efcid]
@@ -248,7 +247,7 @@ def _update_gradient(m: types.Model, d: types.Data):
   def _JTDAJ(m: types.Model, d: types.Data):
     efcid, elementid = wp.tid()
 
-    if efcid >= d.nefc_total[0]:
+    if efcid >= d.nefc[0]:
       return
 
     worldid = d.efc.worldid[efcid]
@@ -291,9 +290,9 @@ def _update_gradient(m: types.Model, d: types.Data):
 
   wp.launch(_grad, dim=(d.nworld, m.nv), inputs=[d])
 
-  if m.opt.solver == mujoco.mjtSolver.mjSOL_CG:
+  if m.opt.solver == types.SolverType.CG:
     smooth.solve_m(m, d, d.efc.Mgrad, d.efc.grad)
-  elif m.opt.solver == mujoco.mjtSolver.mjSOL_NEWTON:
+  elif m.opt.solver == types.SolverType.NEWTON:
     # h = qM + (efc_J.T * efc_D * active) @ efc_J
     if m.opt.is_sparse:
       wp.launch(_zero_h_lower, dim=(d.nworld, m.dof_tri_row.size), inputs=[m, d])
@@ -330,10 +329,9 @@ def _eval_pt(quad: wp.vec3, alpha: wp.float32) -> wp.vec3:
 
 @wp.func
 def _safe_div(x: wp.float32, y: wp.float32) -> wp.float32:
-  return x / wp.select(y == 0.0, y, types.MJ_MINVAL)
+  return x / wp.where(y != 0.0, y, types.MJ_MINVAL)
 
 
-@event_scope
 def _linesearch_iterative(m: types.Model, d: types.Data):
   ITERATIONS = m.opt.iterations
 
@@ -363,7 +361,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
   def _jv(d: types.Data):
     efcid, dofid = wp.tid()
 
-    if efcid >= d.nefc_total[0]:
+    if efcid >= d.nefc[0]:
       return
 
     worldid = d.efc.worldid[efcid]
@@ -405,7 +403,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
   def _init_quad(d: types.Data):
     efcid = wp.tid()
 
-    if efcid >= d.nefc_total[0]:
+    if efcid >= d.nefc[0]:
       return
 
     worldid = d.efc.worldid[efcid]
@@ -438,7 +436,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
   def _init_p0(p0: wp.array(dtype=wp.vec3), d: types.Data):
     efcid = wp.tid()
 
-    if efcid >= d.nefc_total[0]:
+    if efcid >= d.nefc[0]:
       return
 
     worldid = d.efc.worldid[efcid]
@@ -480,7 +478,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
   ):
     efcid = wp.tid()
 
-    if efcid >= d.nefc_total[0]:
+    if efcid >= d.nefc[0]:
       return
 
     worldid = d.efc.worldid[efcid]
@@ -514,10 +512,10 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
     plo = lo[worldid]
     plo_alpha = lo_alpha[worldid]
     lo_less = plo[1] < pp0[1]
-    lo[worldid] = wp.select(lo_less, pp0, plo)
-    lo_alpha[worldid] = wp.select(lo_less, 0.0, plo_alpha)
-    hi[worldid] = wp.select(lo_less, plo, pp0)
-    hi_alpha[worldid] = wp.select(lo_less, plo_alpha, 0.0)
+    lo[worldid] = wp.where(lo_less, plo, pp0)
+    lo_alpha[worldid] = wp.where(lo_less, plo_alpha, 0.0)
+    hi[worldid] = wp.where(lo_less, pp0, plo)
+    hi_alpha[worldid] = wp.where(lo_less, 0.0, plo_alpha)
 
   @kernel
   def _next_alpha_gauss(
@@ -574,7 +572,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
   ):
     efcid = wp.tid()
 
-    if efcid >= d.nefc_total[0]:
+    if efcid >= d.nefc[0]:
       return
 
     worldid = d.efc.worldid[efcid]
@@ -643,28 +641,28 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
 
     # swap lo:
     swap_lo_lo_next = _in_bracket(plo, plo_next)
-    plo = wp.select(swap_lo_lo_next, plo, plo_next)
-    plo_alpha = wp.select(swap_lo_lo_next, plo_alpha, plo_next_alpha)
+    plo = wp.where(swap_lo_lo_next, plo_next, plo)
+    plo_alpha = wp.where(swap_lo_lo_next, plo_next_alpha, plo_alpha)
     swap_lo_mid = _in_bracket(plo, pmid)
-    plo = wp.select(swap_lo_mid, plo, pmid)
-    plo_alpha = wp.select(swap_lo_mid, plo_alpha, pmid_alpha)
+    plo = wp.where(swap_lo_mid, pmid, plo)
+    plo_alpha = wp.where(swap_lo_mid, pmid_alpha, plo_alpha)
     swap_lo_hi_next = _in_bracket(plo, phi_next)
-    plo = wp.select(swap_lo_hi_next, plo, phi_next)
-    plo_alpha = wp.select(swap_lo_hi_next, plo_alpha, phi_next_alpha)
+    plo = wp.where(swap_lo_hi_next, phi_next, plo)
+    plo_alpha = wp.where(swap_lo_hi_next, phi_next_alpha, plo_alpha)
     lo[worldid] = plo
     lo_alpha[worldid] = plo_alpha
     swap_lo = swap_lo_lo_next or swap_lo_mid or swap_lo_hi_next
 
     # swap hi:
     swap_hi_hi_next = _in_bracket(phi, phi_next)
-    phi = wp.select(swap_hi_hi_next, phi, phi_next)
-    phi_alpha = wp.select(swap_hi_hi_next, phi_alpha, phi_next_alpha)
+    phi = wp.where(swap_hi_hi_next, phi_next, phi)
+    phi_alpha = wp.where(swap_hi_hi_next, phi_next_alpha, phi_alpha)
     swap_hi_mid = _in_bracket(phi, pmid)
-    phi = wp.select(swap_hi_mid, phi, pmid)
-    phi_alpha = wp.select(swap_hi_mid, phi_alpha, pmid_alpha)
+    phi = wp.where(swap_hi_mid, pmid, phi)
+    phi_alpha = wp.where(swap_hi_mid, pmid_alpha, phi_alpha)
     swap_hi_lo_next = _in_bracket(phi, plo_next)
-    phi = wp.select(swap_hi_lo_next, phi, plo_next)
-    phi_alpha = wp.select(swap_hi_lo_next, phi_alpha, plo_next_alpha)
+    phi = wp.where(swap_hi_lo_next, plo_next, phi)
+    phi_alpha = wp.where(swap_hi_lo_next, plo_next_alpha, phi_alpha)
     hi[worldid] = phi
     hi_alpha[worldid] = phi_alpha
     swap_hi = swap_hi_hi_next or swap_hi_mid or swap_hi_lo_next
@@ -683,8 +681,8 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
     alpha = 0.0
     improved = plo[0] < pp0[0] or phi[0] < pp0[0]
     plo_better = plo[0] < phi[0]
-    alpha = wp.select(improved and plo_better, alpha, plo_alpha)
-    alpha = wp.select(improved and not plo_better, alpha, phi_alpha)
+    alpha = wp.where(improved and plo_better, plo_alpha, alpha)
+    alpha = wp.where(improved and not plo_better, phi_alpha, alpha)
     d.efc.alpha[worldid] = alpha
 
   @kernel
@@ -703,7 +701,7 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
   def _jaref(d: types.Data):
     efcid = wp.tid()
 
-    if efcid >= d.nefc_total[0]:
+    if efcid >= d.nefc[0]:
       return
 
     worldid = d.efc.worldid[efcid]
@@ -810,7 +808,7 @@ def solve(m: types.Model, d: types.Data):
 
     search = -1.0 * d.efc.Mgrad[worldid, dofid]
 
-    if wp.static(m.opt.solver == mujoco.mjtSolver.mjSOL_CG):
+    if wp.static(m.opt.solver == types.SolverType.CG):
       search += d.efc.beta[worldid] * d.efc.search[worldid, dofid]
 
     d.efc.search[worldid, dofid] = search
@@ -830,7 +828,7 @@ def solve(m: types.Model, d: types.Data):
       gradient < m.opt.tolerance
     )
 
-  if m.opt.solver == mujoco.mjtSolver.mjSOL_CG:
+  if m.opt.solver == types.SolverType.CG:
 
     @kernel
     def _prev_grad_Mgrad(d: types.Data):
@@ -881,7 +879,7 @@ def solve(m: types.Model, d: types.Data):
           return
 
       d.efc.beta[worldid] = wp.max(
-        0.0, d.efc.beta_num[worldid] / wp.max(mujoco.mjMINVAL, d.efc.beta_den[worldid])
+        0.0, d.efc.beta_num[worldid] / wp.max(types.MJ_MINVAL, d.efc.beta_den[worldid])
       )
 
   # warmstart
@@ -892,14 +890,14 @@ def solve(m: types.Model, d: types.Data):
   for i in range(m.opt.iterations):
     _linesearch_iterative(m, d)
 
-    if m.opt.solver == mujoco.mjtSolver.mjSOL_CG:
+    if m.opt.solver == types.SolverType.CG:
       wp.launch(_prev_grad_Mgrad, dim=(d.nworld, m.nv), inputs=[d])
 
     _update_constraint(m, d)
     _update_gradient(m, d)
 
     # polak-ribiere
-    if m.opt.solver == mujoco.mjtSolver.mjSOL_CG:
+    if m.opt.solver == types.SolverType.CG:
       wp.launch(_zero_beta_num_den, dim=(d.nworld), inputs=[d])
 
       wp.launch(_beta_num_den, dim=(d.nworld, m.nv), inputs=[d])

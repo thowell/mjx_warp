@@ -55,16 +55,16 @@ def _update_efc_row(
   # See https://mujoco.readthedocs.io/en/latest/modeling.html#solver-parameters
   k = 1.0 / (dmax * dmax * timeconst * timeconst * dampratio * dampratio)
   b = 2.0 / (dmax * timeconst)
-  k = wp.select(solref[0] <= 0, k, -solref[0] / (dmax * dmax))
-  b = wp.select(solref[1] <= 0, b, -solref[1] / dmax)
+  k = wp.where(solref[0] <= 0, -solref[0] / (dmax * dmax), k)
+  b = wp.where(solref[1] <= 0, -solref[1] / dmax, b)
 
   imp_x = wp.abs(pos_imp) / width
   imp_a = (1.0 / wp.pow(mid, power - 1.0)) * wp.pow(imp_x, power)
   imp_b = 1.0 - (1.0 / wp.pow(1.0 - mid, power - 1.0)) * wp.pow(1.0 - imp_x, power)
-  imp_y = wp.select(imp_x < mid, imp_b, imp_a)
+  imp_y = wp.where(imp_x < mid, imp_a, imp_b)
   imp = dmin + imp_y * (dmax - dmin)
   imp = wp.clamp(imp, dmin, dmax)
-  imp = wp.select(imp_x > 1.0, imp, dmax)
+  imp = wp.where(imp_x > 1.0, dmax, imp)
 
   # Update constraints
   d.efc.D[efcid] = 1.0 / wp.max(invweight * (1.0 - imp) / imp, types.MJ_MINVAL)
@@ -116,7 +116,7 @@ def _efc_limit_slide_hinge(
   active = pos < 0
 
   if active:
-    efcid = wp.atomic_add(d.nefc_total, 0, 1)
+    efcid = wp.atomic_add(d.nefc, 0, 1)
     d.efc.worldid[efcid] = worldid
 
     dofadr = m.jnt_dofadr[jntid]
@@ -159,7 +159,7 @@ def _efc_contact_pyramidal(
   active = pos < 0
 
   if active:
-    efcid = wp.atomic_add(d.nefc_total, 0, 1)
+    efcid = wp.atomic_add(d.nefc, 0, 1)
     worldid = d.contact.worldid[conid]
     d.efc.worldid[efcid] = worldid
 
@@ -215,7 +215,7 @@ def make_constraint(m: types.Model, d: types.Data):
   """Creates constraint jacobians and other supporting data."""
 
   if not (m.opt.disableflags & types.DisableBit.CONSTRAINT.value):
-    d.nefc_total.zero_()
+    d.nefc.zero_()
     d.efc.J.zero_()
 
     refsafe = not m.opt.disableflags & types.DisableBit.REFSAFE.value

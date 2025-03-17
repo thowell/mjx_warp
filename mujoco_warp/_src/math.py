@@ -18,7 +18,6 @@ from typing import Tuple
 import warp as wp
 
 from . import types
-from .support import where
 
 
 @wp.func
@@ -157,7 +156,7 @@ def quat_integrate(q: wp.quat, v: wp.vec3, dt: wp.float32) -> wp.quat:
 def orthogonals(a: wp.vec3):
   y = wp.vec3(0.0, 1.0, 0.0)
   z = wp.vec3(0.0, 0.0, 1.0)
-  b = where((-0.5 < a[1]) and (a[1] < 0.5), y, z)
+  b = wp.where((-0.5 < a[1]) and (a[1] < 0.5), y, z)
   b = b - a * wp.dot(a, b)
   b = wp.normalize(b)
   if wp.length(a) == 0.0:

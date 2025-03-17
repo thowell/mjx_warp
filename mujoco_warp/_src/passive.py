@@ -17,6 +17,7 @@ import warp as wp
 
 from . import math
 from .types import Data
+from .types import DisableBit
 from .types import JointType
 from .types import Model
 from .warp_util import event_scope
@@ -26,6 +27,10 @@ from .warp_util import kernel
 @event_scope
 def passive(m: Model, d: Data):
   """Adds all passive forces."""
+  if m.opt.disableflags & DisableBit.PASSIVE:
+    d.qfrc_passive.zero_()
+    # TODO(team): qfrc_gravcomp
+    return
 
   @kernel
   def _spring(m: Model, d: Data):

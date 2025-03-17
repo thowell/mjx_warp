@@ -18,7 +18,6 @@ from typing import Any
 import mujoco
 import warp as wp
 
-from .types import NUM_GEOM_TYPES
 from .types import Data
 from .types import Model
 from .types import array2df
@@ -174,13 +173,6 @@ def xfrc_accumulate(m: Model, d: Data, qfrc: array2df):
 
 
 @wp.func
-def where(condition: bool, ret_true: Any, ret_false: Any):
-  if condition:
-    return ret_true
-  return ret_false
-
-
-@wp.func
 def bisection(x: wp.array(dtype=int), v: int, a_: int, b_: int) -> int:
   # Binary search for the largest index i such that x[i] <= v
   # x is a sorted array
@@ -198,14 +190,6 @@ def bisection(x: wp.array(dtype=int), v: int, a_: int, b_: int) -> int:
   if c != b and x[b] <= v:
     c = b
   return c
-
-
-@wp.func
-def group_key(type1: wp.int32, type2: wp.int32) -> wp.int32:
-  if type1 > type2:
-    return type2 + type1 * NUM_GEOM_TYPES
-  else:
-    return type1 + type2 * NUM_GEOM_TYPES
 
 
 @wp.func

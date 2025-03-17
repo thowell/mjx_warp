@@ -57,8 +57,8 @@ def _advance(
 
     # get the high/low range for each actuator state
     limited = m.actuator_actlimited[actid]
-    range_low = wp.select(limited, -wp.inf, m.actuator_actrange[actid][0])
-    range_high = wp.select(limited, wp.inf, m.actuator_actrange[actid][1])
+    range_low = wp.where(limited, m.actuator_actrange[actid][0], -wp.inf)
+    range_high = wp.where(limited, m.actuator_actrange[actid][1], wp.inf)
 
     # get the actual actuation - skip if -1 (means stateless actuator)
     act_adr = m.actuator_actadr[actid]
@@ -77,7 +77,7 @@ def _advance(
 
     # advance the actuation
     if dyn_type == wp.static(DynType.FILTEREXACT.value):
-      tau = wp.select(dyn_prm < MJ_MINVAL, dyn_prm, MJ_MINVAL)
+      tau = wp.where(dyn_prm < MJ_MINVAL, MJ_MINVAL, dyn_prm)
       act = act + act_dot * tau * (1.0 - wp.exp(-m.opt.timestep / tau))
     else:
       act = act + act_dot * m.opt.timestep
@@ -503,7 +503,9 @@ def fwd_velocity(m: Model, d: Data):
 @event_scope
 def fwd_actuation(m: Model, d: Data):
   """Actuation-dependent computations."""
-  if not m.nu:
+  if not m.nu or m.opt.disableflags & DisableBit.ACTUATION:
+    d.act_dot.zero_()
+    d.qfrc_actuator.zero_()
     return
 
   # TODO support stateful actuators
@@ -511,23 +513,32 @@ def fwd_actuation(m: Model, d: Data):
   @kernel
   def _force(
     m: Model,
-    ctrl: array2df,
+    d: Data,
     # outputs
     force: array2df,
   ):
-    worldid, dofid = wp.tid()
-    gain = m.actuator_gainprm[dofid, 0]
-    bias = m.actuator_biasprm[dofid, 0]
-    # TODO support gain types other than FIXED
-    c = ctrl[worldid, dofid]
-    if m.actuator_ctrllimited[dofid]:
-      r = m.actuator_ctrlrange[dofid]
-      c = wp.clamp(c, r[0], r[1])
-    f = gain * c + bias
-    if m.actuator_forcelimited[dofid]:
-      r = m.actuator_forcerange[dofid]
-      f = wp.clamp(f, r[0], r[1])
-    force[worldid, dofid] = f
+    worldid, uid = wp.tid()
+
+    actuator_length = d.actuator_length[worldid, uid]
+    actuator_velocity = d.actuator_velocity[worldid, uid]
+
+    gain = m.actuator_gainprm[uid, 0]
+    gain += m.actuator_gainprm[uid, 1] * actuator_length
+    gain += m.actuator_gainprm[uid, 2] * actuator_velocity
+
+    bias = m.actuator_biasprm[uid, 0]
+    bias += m.actuator_biasprm[uid, 1] * actuator_length
+    bias += m.actuator_biasprm[uid, 2] * actuator_velocity
+
+    ctrl = d.ctrl[worldid, uid]
+    disable_clampctrl = m.opt.disableflags & wp.static(DisableBit.CLAMPCTRL.value)
+    if m.actuator_ctrllimited[uid] and not disable_clampctrl:
+      r = m.actuator_ctrlrange[uid]
+      ctrl = wp.clamp(ctrl, r[0], r[1])
+    f = gain * ctrl + bias
+    if m.actuator_forcelimited[uid]:
+      r = m.actuator_forcerange[uid]
+    force[worldid, uid] = f
 
   @kernel
   def _qfrc_limited(m: Model, d: Data):
@@ -556,9 +567,7 @@ def fwd_actuation(m: Model, d: Data):
         s = wp.clamp(s, r[0], r[1])
       qfrc[worldid, vid] = s
 
-  wp.launch(
-    _force, dim=[d.nworld, m.nu], inputs=[m, d.ctrl], outputs=[d.actuator_force]
-  )
+  wp.launch(_force, dim=[d.nworld, m.nu], inputs=[m, d], outputs=[d.actuator_force])
 
   if m.opt.is_sparse:
     # TODO(team): sparse version
