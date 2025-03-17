@@ -741,15 +741,14 @@ class Data:
   qLD_integration: wp.array(dtype=wp.float32, ndim=3)
   qLDiagInv_integration: wp.array(dtype=wp.float32, ndim=2)
 
-  # sweep and prune broadphase arrays
-  spheres_sorted: wp.array(dtype=wp.vec4, ndim=2)
-
-  box_projections_lower: wp.array(dtype=wp.float32, ndim=2)
-  box_projections_upper: wp.array(dtype=wp.float32, ndim=2)
-  box_sorting_indexer: wp.array(dtype=wp.int32, ndim=2)
-  ranges: wp.array(dtype=wp.int32, ndim=2)
-  cumulative_sum: wp.array(dtype=wp.int32, ndim=1)
-  segment_indices: wp.array(dtype=wp.int32, ndim=1)
+  # sweep-and-prune broadphase
+  sap_geom_sort: wp.array(dtype=wp.vec4, ndim=2)
+  sap_projection_lower: wp.array(dtype=wp.float32, ndim=2)
+  sap_projection_upper: wp.array(dtype=wp.float32, ndim=2)
+  sap_sort_index: wp.array(dtype=wp.int32, ndim=2)
+  sap_range: wp.array(dtype=wp.int32, ndim=2)
+  sap_cumulative_sum: wp.array(dtype=wp.int32, ndim=1)
+  sap_segment_index: wp.array(dtype=wp.int32, ndim=1)
 
   # collision driver
   collision_pair: wp.array(dtype=wp.vec2i, ndim=1)
