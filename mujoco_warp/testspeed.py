@@ -29,7 +29,7 @@ import mujoco_warp as mjwarp
 
 _FUNCTION = flags.DEFINE_enum(
   "function",
-  "kinematics",
+  "step",
   [n for n, _ in inspect.getmembers(mjwarp, inspect.isfunction)],
   "the function to run",
 )
