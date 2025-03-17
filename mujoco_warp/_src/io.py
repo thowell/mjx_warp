@@ -362,6 +362,10 @@ def _constraint(nv: int, nworld: int, njmax: int) -> types.Constraint:
   efc.mid = wp.empty(shape=(nworld,), dtype=wp.vec3)
   efc.mid_alpha = wp.empty(shape=(nworld,), dtype=wp.float32)
 
+  efc.alpha_candidate = wp.empty(shape=(types.MAX_LS_PARALLEL), dtype=wp.float32)
+  efc.cost_candidate = wp.empty(shape=(nworld), dtype=types.veclsf)
+  efc.quad_total_candidate = wp.empty(shape=(nworld, types.MAX_LS_PARALLEL), dtype=wp.vec3f)
+
   return efc
 
 

@@ -22,15 +22,6 @@ from .warp_util import event_scope
 from .warp_util import kernel
 from .warp_util import kernel_copy
 
-MAX_LS_PARALLEL = 32
-
-
-class veclsf(wp.types.vector(length=MAX_LS_PARALLEL, dtype=wp.float32)):
-  pass
-
-
-vecls = veclsf
-
 
 def _create_context(m: types.Model, d: types.Data, grad: bool = True):
   @kernel
@@ -746,9 +737,9 @@ def _linesearch_parallel(m: types.Model, d: types.Data):
     bestid = wp.argmin(d.efc.cost_candidate[worldid])
     d.efc.alpha[worldid] = d.efc.alpha_candidate[bestid]
 
-  wp.launch(_quad_total, dim=(d.nworld, MAX_LS_PARALLEL), inputs=[m, d])
-  wp.launch(_quad_total_candidate, dim=(d.njmax, MAX_LS_PARALLEL), inputs=[m, d])
-  wp.launch(_cost_alpha, dim=(d.nworld, MAX_LS_PARALLEL), inputs=[m, d])
+  wp.launch(_quad_total, dim=(d.nworld, types.MAX_LS_PARALLEL), inputs=[m, d])
+  wp.launch(_quad_total_candidate, dim=(d.njmax, types.MAX_LS_PARALLEL), inputs=[m, d])
+  wp.launch(_cost_alpha, dim=(d.nworld, types.MAX_LS_PARALLEL), inputs=[m, d])
   wp.launch(_best_alpha, dim=(d.nworld), inputs=[d])
 
 
@@ -893,6 +884,17 @@ def solve(m: types.Model, d: types.Data):
   ITERATIONS = m.opt.iterations
 
   @kernel
+  def _alpha_candidate(d: types.Data):
+    tid = wp.tid()
+
+    if tid >= wp.static(m.opt.ls_iterations):
+      return
+
+    d.efc.alpha_candidate[tid] = float(tid) / float(
+      wp.max(wp.min(wp.static(m.opt.ls_iterations), types.MAX_LS_PARALLEL) - 1, 1)
+    )
+
+  @kernel
   def _zero_search_dot(d: types.Data):
     worldid = wp.tid()
 
@@ -987,10 +989,15 @@ def solve(m: types.Model, d: types.Data):
         0.0, d.efc.beta_num[worldid] / wp.max(types.MJ_MINVAL, d.efc.beta_den[worldid])
       )
 
+  if m.opt.ls_parallel:
+    # candidate step sizes
+    wp.launch(_alpha_candidate, dim=(types.MAX_LS_PARALLEL), inputs=[d])
+
   # warmstart
   kernel_copy(d.qacc, d.qacc_warmstart)
 
   _create_context(m, d, grad=True)
+
 
   for i in range(m.opt.iterations):
     _linesearch(m, d)

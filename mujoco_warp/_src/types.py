@@ -17,6 +17,15 @@ import enum
 import mujoco
 import warp as wp
 
+MAX_LS_PARALLEL = 32
+
+
+class veclsf(wp.types.vector(length=MAX_LS_PARALLEL, dtype=wp.float32)):
+  pass
+
+
+vecls = veclsf
+
 MJ_MINVAL = mujoco.mjMINVAL
 MJ_MINIMP = mujoco.mjMINIMP  # minimum constraint impedance
 MJ_MAXIMP = mujoco.mjMAXIMP  # maximum constraint impedance
@@ -277,6 +286,9 @@ class Constraint:
     hi_next_alpha: alpha for next high point          (nworld,)
     mid: loss at mid_alpha                            (nworld, 3)
     mid_alpha: midpoint between lo_alpha and hi_alpha (nworld,)
+    alpha_candidate: step sizes for linesearch        (MAX_LS_PARALLEL,)
+    cost_candidate: costs associated with step sizes  (nworld, MAX_LS_PARALLEL)
+    quad_total_candidate: quad_total for step sizes   (nworld, MAX_LS_PARALLEL, 3)
   """
 
   worldid: wp.array(dtype=wp.int32, ndim=1)
@@ -324,6 +336,9 @@ class Constraint:
   hi_next_alpha: wp.array(dtype=wp.float32, ndim=1)
   mid: wp.array(dtype=wp.vec3, ndim=1)
   mid_alpha: wp.array(dtype=wp.float32, ndim=1)
+  alpha_candidate: wp.array(dtype=wp.float32, ndim=1)
+  cost_candidate: wp.array(dtype=veclsf, ndim=1)
+  quad_total_candidate: wp.array(dtype=wp.vec3f, ndim=2)
 
 
 @wp.struct
