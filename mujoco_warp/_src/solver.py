@@ -452,10 +452,10 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
     plo = lo[worldid]
     plo_alpha = lo_alpha[worldid]
     lo_less = plo[1] < pp0[1]
-    lo[worldid] = wp.select(lo_less, pp0, plo)
-    lo_alpha[worldid] = wp.select(lo_less, 0.0, plo_alpha)
-    hi[worldid] = wp.select(lo_less, plo, pp0)
-    hi_alpha[worldid] = wp.select(lo_less, plo_alpha, 0.0)
+    lo[worldid] = wp.where(lo_less, plo, pp0)
+    lo_alpha[worldid] = wp.where(lo_less, plo_alpha, 0.0)
+    hi[worldid] = wp.where(lo_less, pp0, plo)
+    hi_alpha[worldid] = wp.where(lo_less, 0.0, plo_alpha)
 
   @kernel
   def _next_alpha_gauss(
@@ -581,28 +581,28 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
 
     # swap lo:
     swap_lo_lo_next = _in_bracket(plo, plo_next)
-    plo = wp.select(swap_lo_lo_next, plo, plo_next)
-    plo_alpha = wp.select(swap_lo_lo_next, plo_alpha, plo_next_alpha)
+    plo = wp.where(swap_lo_lo_next, plo_next, plo)
+    plo_alpha = wp.where(swap_lo_lo_next, plo_next_alpha, plo_alpha)
     swap_lo_mid = _in_bracket(plo, pmid)
-    plo = wp.select(swap_lo_mid, plo, pmid)
-    plo_alpha = wp.select(swap_lo_mid, plo_alpha, pmid_alpha)
+    plo = wp.where(swap_lo_mid, pmid, plo)
+    plo_alpha = wp.where(swap_lo_mid, pmid_alpha, plo_alpha)
     swap_lo_hi_next = _in_bracket(plo, phi_next)
-    plo = wp.select(swap_lo_hi_next, plo, phi_next)
-    plo_alpha = wp.select(swap_lo_hi_next, plo_alpha, phi_next_alpha)
+    plo = wp.where(swap_lo_hi_next, phi_next, plo)
+    plo_alpha = wp.where(swap_lo_hi_next, phi_next_alpha, plo_alpha)
     lo[worldid] = plo
     lo_alpha[worldid] = plo_alpha
     swap_lo = swap_lo_lo_next or swap_lo_mid or swap_lo_hi_next
 
     # swap hi:
     swap_hi_hi_next = _in_bracket(phi, phi_next)
-    phi = wp.select(swap_hi_hi_next, phi, phi_next)
-    phi_alpha = wp.select(swap_hi_hi_next, phi_alpha, phi_next_alpha)
+    phi = wp.where(swap_hi_hi_next, phi_next, phi)
+    phi_alpha = wp.where(swap_hi_hi_next, phi_next_alpha, phi_alpha)
     swap_hi_mid = _in_bracket(phi, pmid)
-    phi = wp.select(swap_hi_mid, phi, pmid)
-    phi_alpha = wp.select(swap_hi_mid, phi_alpha, pmid_alpha)
+    phi = wp.where(swap_hi_mid, pmid, phi)
+    phi_alpha = wp.where(swap_hi_mid, pmid_alpha, phi_alpha)
     swap_hi_lo_next = _in_bracket(phi, plo_next)
-    phi = wp.select(swap_hi_lo_next, phi, plo_next)
-    phi_alpha = wp.select(swap_hi_lo_next, phi_alpha, plo_next_alpha)
+    phi = wp.where(swap_hi_lo_next, plo_next, phi)
+    phi_alpha = wp.where(swap_hi_lo_next, plo_next_alpha, phi_alpha)
     hi[worldid] = phi
     hi_alpha[worldid] = phi_alpha
     swap_hi = swap_hi_hi_next or swap_hi_mid or swap_hi_lo_next
@@ -621,25 +621,26 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
     alpha = 0.0
     improved = plo[0] < pp0[0] or phi[0] < pp0[0]
     plo_better = plo[0] < phi[0]
-    alpha = wp.select(improved and plo_better, alpha, plo_alpha)
-    alpha = wp.select(improved and not plo_better, alpha, phi_alpha)
+    alpha = wp.where(improved and plo_better, plo_alpha, alpha)
+    alpha = wp.where(improved and not plo_better, phi_alpha, alpha)
     d.efc.alpha[worldid] = alpha
 
   wp.launch(_gtol, dim=(d.nworld,), inputs=[m, d])
 
   # linesearch points
-  done = wp.zeros(shape=(d.nworld,), dtype=bool)
-  p0 = wp.empty(shape=(d.nworld,), dtype=wp.vec3)
-  lo = wp.empty(shape=(d.nworld,), dtype=wp.vec3)
-  lo_alpha = wp.empty(shape=(d.nworld,), dtype=wp.float32)
-  hi = wp.empty(shape=(d.nworld,), dtype=wp.vec3)
-  hi_alpha = wp.empty(shape=(d.nworld,), dtype=wp.float32)
-  lo_next = wp.empty(shape=(d.nworld,), dtype=wp.vec3)
-  lo_next_alpha = wp.empty(shape=(d.nworld,), dtype=wp.float32)
-  hi_next = wp.empty(shape=(d.nworld,), dtype=wp.vec3)
-  hi_next_alpha = wp.empty(shape=(d.nworld,), dtype=wp.float32)
-  mid = wp.empty(shape=(d.nworld,), dtype=wp.vec3)
-  mid_alpha = wp.empty(shape=(d.nworld,), dtype=wp.float32)
+  done = d.efc.ls_done
+  done.zero_()
+  p0 = d.efc.p0
+  lo = d.efc.lo
+  lo_alpha = d.efc.lo_alpha
+  hi = d.efc.hi
+  hi_alpha = d.efc.hi_alpha
+  lo_next = d.efc.lo_next
+  lo_next_alpha = d.efc.lo_next_alpha
+  hi_next = d.efc.hi_next
+  hi_next_alpha = d.efc.hi_next_alpha
+  mid = d.efc.mid
+  mid_alpha = d.efc.mid_alpha
 
   # initialize interval
 
@@ -832,7 +833,7 @@ def _linesearch(m: types.Model, d: types.Data):
       if d.efc.done[worldid]:
         return
 
-    d.efc.Jaref[efcid] += d.efc.alpha[d.efc.worldid[efcid]] * d.efc.jv[efcid]
+    d.efc.Jaref[efcid] += d.efc.alpha[worldid] * d.efc.jv[efcid]
 
   # mv = qM @ search
   support.mul_m(m, d, d.efc.mv, d.efc.search, d.efc.done)

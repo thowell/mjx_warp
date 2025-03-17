@@ -13,13 +13,14 @@
 # limitations under the License.
 # ==============================================================================
 
+from typing import Any
+
 import mujoco
 import warp as wp
 
 from .types import Data
 from .types import Model
 from .types import array2df
-from typing import Any
 from .types import array3df
 from .warp_util import event_scope
 from .warp_util import kernel
