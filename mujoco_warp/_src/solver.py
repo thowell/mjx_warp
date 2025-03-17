@@ -674,17 +674,25 @@ def _linesearch_iterative(m: types.Model, d: types.Data):
 
 
 def _linesearch_parallel(m: types.Model, d: types.Data):
+  ITERATIONS = m.opt.iterations
+
   @wp.kernel
   def _quad_total(m: types.Model, d: types.Data):
+    # TODO(team): static m?
     worldid, alphaid = wp.tid()
 
     if alphaid >= m.opt.ls_iterations:
       return
 
+    if ITERATIONS > 1:
+      if d.efc.done[worldid]:
+        return
+
     d.efc.quad_total_candidate[worldid, alphaid] = d.efc.quad_gauss[worldid]
 
   @kernel
   def _quad_total_candidate(m: types.Model, d: types.Data):
+    # TODO(team): static m?
     efcid, alphaid = wp.tid()
 
     if alphaid >= m.opt.ls_iterations:
@@ -694,6 +702,11 @@ def _linesearch_parallel(m: types.Model, d: types.Data):
       return
 
     worldid = d.efc.worldid[efcid]
+
+    if ITERATIONS > 1:
+      if d.efc.done[worldid]:
+        return
+
     x = d.efc.Jaref[efcid] + d.efc.alpha_candidate[alphaid] * d.efc.jv[efcid]
     # TODO(team): active and conditionally active constraints
     if x < 0.0:
@@ -701,11 +714,16 @@ def _linesearch_parallel(m: types.Model, d: types.Data):
 
   @kernel
   def _cost_alpha(m: types.Model, d: types.Data):
+    # TODO(team): static m?
     worldid, alphaid = wp.tid()
 
     if alphaid >= m.opt.ls_iterations:
       d.efc.cost_candidate[worldid][alphaid] = wp.inf
       return
+
+    if ITERATIONS > 1:
+      if d.efc.done[worldid]:
+        return
 
     alpha = d.efc.alpha_candidate[alphaid]
     alpha_sq = alpha * alpha
@@ -720,6 +738,11 @@ def _linesearch_parallel(m: types.Model, d: types.Data):
   @kernel
   def _best_alpha(d: types.Data):
     worldid = wp.tid()
+
+    if wp.static(m.opt.iterations) > 1:
+      if d.efc.done[worldid]:
+        return
+
     bestid = wp.argmin(d.efc.cost_candidate[worldid])
     d.efc.alpha[worldid] = d.efc.alpha_candidate[bestid]
 
