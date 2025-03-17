@@ -171,6 +171,14 @@ def _copy_2dmat33f(dest: wp.array2d(dtype=wp.mat33f), src: wp.array2d(dtype=wp.m
   dest[i, j] = src[i, j]
 
 
+@wp.kernel
+def _copy_2dspatialf(
+  dest: wp.array2d(dtype=wp.spatial_vector), src: wp.array2d(dtype=wp.spatial_vector)
+):
+  i, j = wp.tid()
+  dest[i, j] = src[i, j]
+
+
 # TODO(team): remove kernel_copy once wp.copy is supported in cuda subgraphs
 
 
@@ -197,6 +205,8 @@ def kernel_copy(dest: wp.array, src: wp.array):
     kernel = _copy_2dmat33f
   elif src.ndim == 2 and src.dtype == types.vec10f:
     kernel = _copy_2dvec10f
+  elif src.ndim == 2 and src.dtype == wp.spatial_vector:
+    kernel = _copy_2dspatialf
   else:
     raise NotImplementedError("copy not supported for these array types")
 
