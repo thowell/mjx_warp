@@ -179,7 +179,7 @@ class SolverTest(parameterized.TestCase):
       njmax=2 * nefc_active,
     )
 
-    d.nefc_total = wp.array([nefc_active], dtype=wp.int32, ndim=1)
+    d.nefc = wp.array([nefc_active], dtype=wp.int32, ndim=1)
 
     nefc_fill = d.njmax - nefc_active
 

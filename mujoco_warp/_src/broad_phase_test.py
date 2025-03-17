@@ -75,7 +75,27 @@ class BroadphaseTest(absltest.TestCase):
       </mujoco>
     """
 
-    collision_pair = [(1, 2), (1, 6), (2, 6), (3, 4), (6, 7)]
+    collision_pair = [
+      (0, 1),
+      (0, 2),
+      (0, 3),
+      (0, 4),
+      (0, 6),
+      (1, 2),
+      (1, 4),
+      (1, 5),
+      (1, 6),
+      (1, 7),
+      (2, 3),
+      (2, 4),
+      (2, 5),
+      (2, 6),
+      (2, 7),
+      (3, 4),
+      (4, 6),
+      (5, 7),
+      (6, 7),
+    ]
 
     _, _, m, d = _load_from_string(_SAP_MODEL)
 
@@ -96,6 +116,8 @@ class BroadphaseTest(absltest.TestCase):
         True,
         f"geom pair {pair_tuple} not found in brute force results",
       )
+
+    # TODO(team): test DisableBit.FILTERPARENT
 
   def test_nxn_broadphase(self):
     """Tests nxn_broadphase."""
@@ -218,6 +240,7 @@ class BroadphaseTest(absltest.TestCase):
     np.testing.assert_allclose(d5.collision_pair.numpy()[0][1], 2)
 
     # TODO(team): test margin
+    # TODO(team): test DisableBit.FILTERPARENT
 
 
 if __name__ == "__main__":

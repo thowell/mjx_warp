@@ -135,6 +135,8 @@ class SmoothTest(parameterized.TestCase):
     mjwarp.rne(m, d)
     _assert_eq(d.qfrc_bias.numpy()[0], mjd.qfrc_bias, "qfrc_bias")
 
+    # TODO(team): test DisableBit.GRAVITY
+
   def test_com_vel(self):
     """Tests com_vel."""
     _, mjd, m, d = test_util.fixture("pendula.xml")

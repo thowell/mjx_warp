@@ -18,7 +18,6 @@ from typing import Any
 import mujoco
 import warp as wp
 
-from .types import NUM_GEOM_TYPES
 from .types import Data
 from .types import Model
 from .types import array2df

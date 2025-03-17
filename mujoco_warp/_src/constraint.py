@@ -116,7 +116,7 @@ def _efc_limit_slide_hinge(
   active = pos < 0
 
   if active:
-    efcid = wp.atomic_add(d.nefc_total, 0, 1)
+    efcid = wp.atomic_add(d.nefc, 0, 1)
     d.efc.worldid[efcid] = worldid
 
     dofadr = m.jnt_dofadr[jntid]
@@ -159,7 +159,7 @@ def _efc_contact_pyramidal(
   active = pos < 0
 
   if active:
-    efcid = wp.atomic_add(d.nefc_total, 0, 1)
+    efcid = wp.atomic_add(d.nefc, 0, 1)
     worldid = d.contact.worldid[conid]
     d.efc.worldid[efcid] = worldid
 
@@ -215,7 +215,7 @@ def make_constraint(m: types.Model, d: types.Data):
   """Creates constraint jacobians and other supporting data."""
 
   if not (m.opt.disableflags & types.DisableBit.CONSTRAINT.value):
-    d.nefc_total.zero_()
+    d.nefc.zero_()
     d.efc.J.zero_()
 
     refsafe = not m.opt.disableflags & types.DisableBit.REFSAFE.value
