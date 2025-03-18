@@ -191,6 +191,16 @@ class SensorType(enum.IntEnum):
   pass
 
 
+class EqType(enum.IntEnum):
+  """Type of equality constraint.
+
+  Members:
+  """
+
+  pass
+  # unsupported: CONNECT, WELD, JOINT, TENDON, FLEX, DISTANCE
+
+
 class vec5f(wp.types.vector(length=5, dtype=wp.float32)):
   pass
 

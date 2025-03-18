@@ -24,6 +24,28 @@ import mujoco_warp as mjwarp
 
 
 class IOTest(absltest.TestCase):
+  def test_equality(self):
+    mjm = mujoco.MjModel.from_xml_string("""
+    <mujoco>
+      <worldbody>
+        <body name="body1">
+          <geom type="sphere" size=".1"/>
+          <freejoint/>
+        </body>
+        <body name="body2">
+          <geom type="sphere" size=".1"/>
+          <freejoint/>
+        </body>
+      </worldbody>  
+      <equality>
+        <connect body1="body1" body2="body2" anchor="0 0 0"/>                      
+      </equality>              
+    </mujoco>
+    """)
+
+    with self.assertRaises(NotImplementedError):
+      mjwarp.put_model(mjm)
+
   def test_sensor(self):
     mjm = mujoco.MjModel.from_xml_string("""
       <mujoco>

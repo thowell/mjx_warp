@@ -22,6 +22,9 @@ from . import types
 
 
 def put_model(mjm: mujoco.MjModel) -> types.Model:
+  if mjm.neq > 0:
+    raise NotImplementedError("Equality constraints are unsupported.")
+
   if mjm.nsensor > 0:
     raise NotImplementedError("Sensors are unsupported.")
 
@@ -39,6 +42,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
     raise NotImplementedError(f"Solver: {mjm.opt.solver} is unsupported.")
 
   m = types.Model()
+
   m.nq = mjm.nq
   m.nv = mjm.nv
   m.na = mjm.na
