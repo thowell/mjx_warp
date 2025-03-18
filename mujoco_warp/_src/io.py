@@ -23,6 +23,9 @@ from . import types
 
 def put_model(mjm: mujoco.MjModel) -> types.Model:
   # check options
+  if mjm.opt.integrator not in set(types.IntegratorType):
+    raise NotImplementedError(f"Integrator: {mjm.opt.integrator} is unsupported.")
+
   if mjm.opt.cone not in set(types.ConeType):
     raise NotImplementedError(f"Cone: {mjm.opt.cone} is unsupported.")
 
