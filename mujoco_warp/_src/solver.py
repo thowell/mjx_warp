@@ -724,6 +724,7 @@ def _linesearch_parallel(m: types.Model, d: types.Data):
       if d.efc.done[worldid]:
         return
 
+    # TODO(team): investigate alternatives to wp.argmin
     bestid = wp.argmin(d.efc.cost_candidate[worldid])
     d.efc.alpha[worldid] = m.alpha_candidate[bestid]
 
