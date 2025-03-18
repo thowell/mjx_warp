@@ -179,6 +179,7 @@ class SolverType(enum.IntEnum):
 
   CG = mujoco.mjtSolver.mjSOL_CG
   NEWTON = mujoco.mjtSolver.mjSOL_NEWTON
+  # unsupported: PGS
 
 
 class vec5f(wp.types.vector(length=5, dtype=wp.float32)):
