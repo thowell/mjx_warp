@@ -2,7 +2,7 @@
 
 MJWarp is a GPU-optimized version of the MuJoCo physics simulator, designed for NVIDIA hardware.
 
-> [WARNING]
+> [!WARNING]
 > MJWarp is in its Alpha stage, with many features still missing and limited testing so far.
 
 MJWarp was designed to circumvent many of the [sharp bits](https://mujoco.readthedocs.io/en/stable/mjx.html#mjx-the-sharp-bits) in [MuJoCo MJX](https://mujoco.readthedocs.io/en/stable/mjx.html#). Once MJWarp exits Alpha, it will be integrated back into both MJX and the upcoming Newton initiative.
