@@ -22,6 +22,10 @@ from . import types
 
 
 def put_model(mjm: mujoco.MjModel) -> types.Model:
+  # check options
+  if mjm.opt.cone not in set(types.ConeType):
+    raise NotImplementedError(f"Cone: {mjm.opt.cone} is unsupported.")
+
   m = types.Model()
   m.nq = mjm.nq
   m.nv = mjm.nv
