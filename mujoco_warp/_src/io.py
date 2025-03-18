@@ -33,6 +33,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.nsite = mjm.nsite
   m.nmocap = mjm.nmocap
   m.nM = mjm.nM
+  m.nlsp = mjm.opt.ls_iterations
   m.nexclude = mjm.nexclude
   m.opt.timestep = mjm.opt.timestep
   m.opt.tolerance = mjm.opt.tolerance
@@ -210,7 +211,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
     actuator_moment_tilesize_nu, dtype=wp.int32, ndim=1, device="cpu"
   )
   m.alpha_candidate = wp.array(
-    np.array(np.linspace(0.0, 1.0, m.opt.ls_iterations)), dtype=wp.float32
+    np.array(np.linspace(0.0, 1.0, m.nlsp)), dtype=wp.float32
   )
   m.body_dofadr = wp.array(mjm.body_dofadr, dtype=wp.int32, ndim=1)
   m.body_dofnum = wp.array(mjm.body_dofnum, dtype=wp.int32, ndim=1)

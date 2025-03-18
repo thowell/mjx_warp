@@ -727,9 +727,9 @@ def _linesearch_parallel(m: types.Model, d: types.Data):
     bestid = wp.argmin(d.efc.cost_candidate[worldid])
     d.efc.alpha[worldid] = m.alpha_candidate[bestid]
 
-  wp.launch(_quad_total, dim=(d.nworld, m.opt.ls_iterations), inputs=[m, d])
-  wp.launch(_quad_total_candidate, dim=(d.njmax, m.opt.ls_iterations), inputs=[m, d])
-  wp.launch(_cost_alpha, dim=(d.nworld, m.opt.ls_iterations), inputs=[m, d])
+  wp.launch(_quad_total, dim=(d.nworld, m.nlsp), inputs=[m, d])
+  wp.launch(_quad_total_candidate, dim=(d.njmax, m.nlsp), inputs=[m, d])
+  wp.launch(_cost_alpha, dim=(d.nworld, m.nlsp), inputs=[m, d])
   wp.launch(_best_alpha, dim=(d.nworld), inputs=[d])
 
 

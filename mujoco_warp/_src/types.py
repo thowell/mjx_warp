@@ -347,6 +347,7 @@ class Model:
     nexclude: number of excluded geom pairs                  ()
     nmocap: number of mocap bodies                           ()
     nM: number of non-zeros in sparse inertia matrix         ()
+    nlsp: number of step sizes for parallel linsearch        ()
     opt: physics options
     stat: model statistics
     qpos0: qpos values at default pose                       (nq,)
@@ -358,7 +359,7 @@ class Model:
     actuator_moment_tileadr: tiling configuration
     actuator_moment_tilesize_nv: tiling configuration
     actuator_moment_tilesize_nu: tiling configuration
-    alpha_candidate: step size candidates for engine solver  (ls_iterations,)
+    alpha_candidate: step size candidates for engine solver  (nlsp,)
     qM_fullm_i: sparse mass matrix addressing
     qM_fullm_j: sparse mass matrix addressing
     qM_mulm_i: sparse mass matrix addressing
@@ -468,6 +469,7 @@ class Model:
   nexclude: int
   nmocap: int
   nM: int
+  nlsp: int  # warp only
   opt: Option
   stat: Statistic
   qpos0: wp.array(dtype=wp.float32, ndim=1)
