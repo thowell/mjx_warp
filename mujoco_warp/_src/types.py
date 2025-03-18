@@ -168,6 +168,16 @@ class SolverType(enum.IntEnum):
   NEWTON = mujoco.mjtSolver.mjSOL_NEWTON
 
 
+class EqType(enum.IntEnum):
+  """Type of equality constraint.
+
+  Members:
+  """
+
+  pass
+  # unsupported: CONNECT, WELD, JOINT, TENDON, FLEX, DISTANCE
+
+
 class vec5f(wp.types.vector(length=5, dtype=wp.float32)):
   pass
 
