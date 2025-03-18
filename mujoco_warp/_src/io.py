@@ -24,7 +24,7 @@ from . import types
 def put_model(mjm: mujoco.MjModel) -> types.Model:
   if mjm.neq > 0:
     raise NotImplementedError("Equality constraints are unsupported.")
-  
+
   m = types.Model()
 
   m.nq = mjm.nq
