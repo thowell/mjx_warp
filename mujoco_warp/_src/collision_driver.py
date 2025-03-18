@@ -68,53 +68,105 @@ def _add_geom_pair(m: Model, d: Data, geom1: int, geom2: int, worldid: int):
   d.collision_worldid[pairid] = worldid
 
 
-@wp.struct
-class AABB:
-  min: wp.vec3
-  max: wp.vec3
+@wp.kernel
+def broadphase_project_spheres_onto_sweep_direction_kernel(
+  m: Model,
+  d: Data,
+  direction: wp.vec3,
+):
+  worldId, i = wp.tid()
+
+  c = d.geom_xpos[worldId, i]
+  r = m.geom_rbound[i]
+  if r == 0.0:
+    # current geom is a plane
+    r = 1000000000.0
+  sphere_radius = r + m.geom_margin[i]
+
+  center = wp.dot(direction, c)
+  f = center - sphere_radius
+
+  # Store results in the data arrays
+  d.sap_projection_lower[worldId, i] = f
+  d.sap_projection_upper[worldId, i] = center + sphere_radius
+  d.sap_sort_index[worldId, i] = i
+
+
+# Define constants for plane types
+PLANE_ZERO_OFFSET = -1.0
+PLANE_NEGATIVE_OFFSET = -2.0
+PLANE_POSITIVE_OFFSET = -3.0
 
 
 @wp.func
-def transform_aabb(
-  aabb_pos: wp.vec3, aabb_size: wp.vec3, pos: wp.vec3, ori: wp.mat33
-) -> AABB:
-  aabb = AABB()
-  aabb.max = wp.vec3(-1000000000.0, -1000000000.0, -1000000000.0)
-  aabb.min = wp.vec3(1000000000.0, 1000000000.0, 1000000000.0)
+def encode_plane(normal: wp.vec3, point_on_plane: wp.vec3, margin: float) -> wp.vec4:
+  normal = wp.normalize(normal)
+  plane_offset = -wp.dot(normal, point_on_plane + normal * margin)
 
-  for i in range(8):
-    corner = wp.vec3(aabb_size.x * 0.5, aabb_size.y * 0.5, aabb_size.z * 0.5)
-    if i % 2 == 0:
-      corner.x = -corner.x
-    if (i // 2) % 2 == 0:
-      corner.y = -corner.y
-    if i < 4:
-      corner.z = -corner.z
-    corner_world = ori * (corner + aabb_pos) + pos
-    aabb.max = wp.max(aabb.max, corner_world)
-    aabb.min = wp.min(aabb.min, corner_world)
+  # Scale factor for the normal
+  scale = wp.abs(plane_offset)
 
-  return aabb
+  # Handle special cases
+  if wp.abs(plane_offset) < 1e-6:
+    return wp.vec4(normal.x, normal.y, normal.z, PLANE_ZERO_OFFSET)
+  elif plane_offset < 0.0:
+    return wp.vec4(
+      scale * normal.x, scale * normal.y, scale * normal.z, PLANE_NEGATIVE_OFFSET
+    )
+  else:
+    return wp.vec4(
+      scale * normal.x, scale * normal.y, scale * normal.z, PLANE_POSITIVE_OFFSET
+    )
+
+
+@wp.func
+def decode_plane(encoded: wp.vec4) -> wp.vec4:
+  magnitude = wp.length(encoded)
+  normal = wp.normalize(xyz(encoded))
+
+  if encoded.w == PLANE_ZERO_OFFSET:
+    return wp.vec4(normal.x, normal.y, normal.z, 0.0)
+  elif encoded.w == PLANE_NEGATIVE_OFFSET:
+    return wp.vec4(normal.x, normal.y, normal.z, -magnitude)
+  else:
+    return wp.vec4(normal.x, normal.y, normal.z, magnitude)
 
 
 @wp.kernel
-def get_dyn_geom_aabb(
+def reorder_bounding_spheres_kernel(
   m: Model,
   d: Data,
 ):
-  env_id, gid = wp.tid()
+  worldId, i = wp.tid()
 
-  pos = d.geom_xpos[env_id, gid]
-  ori = d.geom_xmat[env_id, gid]
+  # Get the index from the data indexer
+  mapped = d.sap_sort_index[worldId, i]
 
-  aabb_pos = m.geom_aabb[gid, 0]
-  aabb_size = m.geom_aabb[gid, 1]
+  # Get the bounding volume
+  c = d.geom_xpos[worldId, mapped]
+  r = m.geom_rbound[mapped]
+  margin = m.geom_margin[mapped]
 
-  aabb = transform_aabb(aabb_pos, aabb_size, pos, ori)
+  # Reorder the box into the sorted array
+  if r == 0.0:
+    # store the plane equation
+    xmat = d.geom_xmat[worldId, mapped]
+    plane_normal = wp.vec3(xmat[0, 2], xmat[1, 2], xmat[2, 2])
+    d.sap_geom_sort[worldId, i] = encode_plane(
+      plane_normal, c, margin
+    )  # negative w component is used to disginguish planes from spheres
+  else:
+    d.sap_geom_sort[worldId, i] = wp.vec4(c.x, c.y, c.z, r + margin)
 
-  # Write results to output
-  d.dyn_geom_aabb[env_id, gid, 0] = aabb.min
-  d.dyn_geom_aabb[env_id, gid, 1] = aabb.max
+
+@wp.func
+def xyz(v: wp.vec4) -> wp.vec3:
+  return wp.vec3(v.x, v.y, v.z)
+
+
+@wp.func
+def signed_distance_point_plane(point: wp.vec3, plane: wp.vec4) -> float:
+  return wp.dot(point, xyz(plane)) + plane.w
 
 
 @wp.func
@@ -122,66 +174,29 @@ def overlap(
   world_id: int,
   a: int,
   b: int,
-  boxes: wp.array(dtype=wp.vec3, ndim=3),
+  spheres_or_planes: wp.array(dtype=wp.vec4, ndim=2),
 ) -> bool:
   # Extract centers and sizes
-  a_min = boxes[world_id, a, 0]
-  a_max = boxes[world_id, a, 1]
-  b_min = boxes[world_id, b, 0]
-  b_max = boxes[world_id, b, 1]
+  s_a = spheres_or_planes[world_id, a]
+  s_b = spheres_or_planes[world_id, b]
 
-  return not (
-    a_min.x > b_max.x
-    or b_min.x > a_max.x
-    or a_min.y > b_max.y
-    or b_min.y > a_max.y
-    or a_min.z > b_max.z
-    or b_min.z > a_max.z
-  )
-
-
-@wp.kernel
-def broadphase_project_boxes_onto_sweep_direction_kernel(
-  d: Data,
-):
-  worldId, i = wp.tid()
-
-  box_min = d.dyn_geom_aabb[worldId, i, 0]
-  box_max = d.dyn_geom_aabb[worldId, i, 1]
-  c = (box_min + box_max) * 0.5
-  box_half_size = (box_max - box_min) * 0.5
-
-  # Use fixed direction vector and its absolute values
-  direction = wp.vec3(0.5935, 0.7790, 0.1235)
-  direction = wp.normalize(direction)
-  abs_dir = wp.vec3(abs(direction.x), abs(direction.y), abs(direction.z))
-
-  center = wp.dot(direction, c)
-  d_val = wp.dot(box_half_size, abs_dir)
-  f = center - d_val
-
-  # Store results in the data arrays
-  d.box_projections_lower[worldId, i] = f
-  d.box_projections_upper[worldId, i] = center + d_val
-  d.box_sorting_indexer[worldId, i] = i
-
-
-@wp.kernel
-def reorder_bounding_boxes_kernel(
-  d: Data,
-):
-  worldId, i = wp.tid()
-
-  # Get the index from the data indexer
-  mapped = d.box_sorting_indexer[worldId, i]
-
-  # Get the box from the original boxes array
-  box_min = d.dyn_geom_aabb[worldId, mapped, 0]
-  box_max = d.dyn_geom_aabb[worldId, mapped, 1]
-
-  # Reorder the box into the sorted array
-  d.boxes_sorted[worldId, i, 0] = box_min
-  d.boxes_sorted[worldId, i, 1] = box_max
+  if s_a.w < 0.0 and s_b.w < 0.0:
+    # both are planes
+    return False
+  elif s_a.w < 0.0 or s_b.w < 0.0:
+    if s_b.w < 0.0:  # swap if required such that s_a is always a plane
+      tmp = s_a
+      s_a = s_b
+      s_b = tmp
+    s_a = decode_plane(s_a)
+    dist = signed_distance_point_plane(xyz(s_b), s_a)
+    return dist <= s_b.w
+  else:
+    # geoms are spheres
+    delta = xyz(s_a) - xyz(s_b)
+    dist_sq = wp.dot(delta, delta)
+    radius_sum = s_a.w + s_b.w
+    return dist_sq <= radius_sum * radius_sum
 
 
 @wp.func
@@ -202,24 +217,24 @@ def find_first_greater_than(
 
 
 @wp.kernel
-def broadphase_sweep_and_prune_prepare_kernel(
+def sap_broadphase_prepare_kernel(
   m: Model,
   d: Data,
 ):
   worldId, i = wp.tid()  # Get the thread ID
 
   # Get the index of the current bounding box
-  idx1 = d.box_sorting_indexer[worldId, i]
+  idx1 = d.sap_sort_index[worldId, i]
 
-  end = d.box_projections_upper[worldId, idx1]
-  limit = find_first_greater_than(worldId, d.box_projections_lower, end, i + 1, m.ngeom)
+  end = d.sap_projection_upper[worldId, idx1]
+  limit = find_first_greater_than(worldId, d.sap_projection_lower, end, i + 1, m.ngeom)
   limit = wp.min(m.ngeom - 1, limit)
 
   # Calculate the range of boxes for the sweep and prune process
   count = limit - i
 
   # Store the cumulative sum for the current box
-  d.ranges[worldId, i] = count
+  d.sap_range[worldId, i] = count
 
 
 @wp.func
@@ -254,18 +269,16 @@ def find_indices(
 
 
 @wp.kernel
-def broadphase_sweep_and_prune_kernel(
-  m: Model, d: Data, num_threads: int, filter_parent: bool
-):
+def sap_broadphase_kernel(m: Model, d: Data, num_threads: int, filter_parent: bool):
   threadId = wp.tid()  # Get thread ID
-  if d.cumulative_sum.shape[0] > 0:
-    total_num_work_packages = d.cumulative_sum[d.cumulative_sum.shape[0] - 1]
+  if d.sap_cumulative_sum.shape[0] > 0:
+    total_num_work_packages = d.sap_cumulative_sum[d.sap_cumulative_sum.shape[0] - 1]
   else:
     total_num_work_packages = 0
 
   while threadId < total_num_work_packages:
     # Get indices for current and next box pair
-    ij = find_indices(threadId, d.cumulative_sum, d.cumulative_sum.shape[0])
+    ij = find_indices(threadId, d.sap_cumulative_sum, d.sap_cumulative_sum.shape[0])
     i = ij.x
     j = ij.y
 
@@ -274,30 +287,15 @@ def broadphase_sweep_and_prune_kernel(
     j = j % m.ngeom
 
     # geom index
-    idx1 = d.box_sorting_indexer[worldId, i]
-    idx2 = d.box_sorting_indexer[worldId, j]
+    idx1 = d.sap_sort_index[worldId, i]
+    idx2 = d.sap_sort_index[worldId, j]
 
     if not _geom_filter(m, idx1, idx2, filter_parent):
       threadId += num_threads
       continue
 
-    """
-    # somehow does not work yet.
-    # exclude
-    signature = (body1 << 16) + body2
-    filtered = bool(False)
-    # TODO(AD): this can become very expensive
-    for i in range(m.nexclude):
-      if m.exclude_signature[i] == signature:
-        filtered = True
-        break
-
-    if filtered:
-      threadId += num_threads
-      continue
-    """
     # Check if the boxes overlap
-    if overlap(worldId, i, j, d.boxes_sorted):
+    if overlap(worldId, i, j, d.sap_geom_sort):
       _add_geom_pair(m, d, idx1, idx2, worldId)
 
     threadId += num_threads
@@ -349,29 +347,34 @@ def get_contact_solver_params_kernel(
   d.contact.solimp[tid] = mix * m.geom_solimp[g1] + (1.0 - mix) * m.geom_solimp[g2]
 
 
-def broadphase_sweep_and_prune(m: Model, d: Data):
-  """Broad-phase collision detection via sweep-and-prune."""
+def sap_broadphase(m: Model, d: Data):
+  """Broadphase collision detection via sweep-and-prune."""
 
-  # generate geom AABBs
-  wp.launch(
-    kernel=get_dyn_geom_aabb,
-    dim=(d.nworld, m.ngeom),
-    inputs=[m, d],
-  )
+  # Use random fixed direction vector for now
+  direction = wp.vec3(0.5935, 0.7790, 0.1235)
+  direction = wp.normalize(direction)
 
   wp.launch(
-    kernel=broadphase_project_boxes_onto_sweep_direction_kernel,
+    kernel=broadphase_project_spheres_onto_sweep_direction_kernel,
     dim=(d.nworld, m.ngeom),
-    inputs=[d],
+    inputs=[m, d, direction],
   )
 
+  tile_sort_available = False
   segmented_sort_available = hasattr(wp.utils, "segmented_sort_pairs")
-  if segmented_sort_available:
+
+  if tile_sort_available:
+    segmented_sort_kernel = create_segmented_sort_kernel(m.ngeom)
+    wp.launch_tiled(
+      kernel=segmented_sort_kernel, dim=(d.nworld), inputs=[m, d], block_dim=128
+    )
+    print("tile sort available")
+  elif segmented_sort_available:
     wp.utils.segmented_sort_pairs(
-      d.box_projections_lower,
-      d.box_sorting_indexer,
+      d.sap_projection_lower,
+      d.sap_sort_index,
       m.ngeom * d.nworld,
-      d.segment_indices,
+      d.sap_segment_index,
     )
   else:
     # Sort each world's segment separately
@@ -381,24 +384,24 @@ def broadphase_sweep_and_prune(m: Model, d: Data):
       # Create temporary arrays for sorting
       temp_box_projections_lower = wp.zeros(
         m.ngeom * 2,
-        dtype=d.box_projections_lower.dtype,
+        dtype=d.sap_projection_lower.dtype,
       )
       temp_box_sorting_indexer = wp.zeros(
         m.ngeom * 2,
-        dtype=d.box_sorting_indexer.dtype,
+        dtype=d.sap_sort_index.dtype,
       )
 
       # Copy data to temporary arrays
       wp.copy(
         temp_box_projections_lower,
-        d.box_projections_lower,
+        d.sap_projection_lower,
         0,
         start_idx,
         m.ngeom,
       )
       wp.copy(
         temp_box_sorting_indexer,
-        d.box_sorting_indexer,
+        d.sap_sort_index,
         0,
         start_idx,
         m.ngeom,
@@ -411,14 +414,14 @@ def broadphase_sweep_and_prune(m: Model, d: Data):
 
       # Copy sorted data back
       wp.copy(
-        d.box_projections_lower,
+        d.sap_projection_lower,
         temp_box_projections_lower,
         start_idx,
         0,
         m.ngeom,
       )
       wp.copy(
-        d.box_sorting_indexer,
+        d.sap_sort_index,
         temp_box_sorting_indexer,
         start_idx,
         0,
@@ -426,25 +429,25 @@ def broadphase_sweep_and_prune(m: Model, d: Data):
       )
 
   wp.launch(
-    kernel=reorder_bounding_boxes_kernel,
+    kernel=reorder_bounding_spheres_kernel,
     dim=(d.nworld, m.ngeom),
-    inputs=[d],
+    inputs=[m, d],
   )
 
   wp.launch(
-    kernel=broadphase_sweep_and_prune_prepare_kernel,
+    kernel=sap_broadphase_prepare_kernel,
     dim=(d.nworld, m.ngeom),
     inputs=[m, d],
   )
 
   # The scan (scan = cumulative sum, either inclusive or exclusive depending on the last argument) is used for load balancing among the threads
-  wp.utils.array_scan(d.ranges.reshape(-1), d.cumulative_sum, True)
+  wp.utils.array_scan(d.sap_range.reshape(-1), d.sap_cumulative_sum, True)
 
   # Estimate how many overlap checks need to be done - assumes each box has to be compared to 5 other boxes (and batched over all worlds)
   num_sweep_threads = 5 * d.nworld * m.ngeom
   filter_parent = not m.opt.disableflags & DisableBit.FILTERPARENT.value
   wp.launch(
-    kernel=broadphase_sweep_and_prune_kernel,
+    kernel=sap_broadphase_kernel,
     dim=num_sweep_threads,
     inputs=[m, d, num_sweep_threads, filter_parent],
   )
@@ -453,6 +456,7 @@ def broadphase_sweep_and_prune(m: Model, d: Data):
 
 
 def nxn_broadphase(m: Model, d: Data):
+  """Broadphase collision detective via brute-force search."""
   filterparent = not (m.opt.disableflags & DisableBit.FILTERPARENT.value)
 
   @wp.kernel
@@ -477,12 +481,8 @@ def nxn_broadphase(m: Model, d: Data):
     margin2 = m.geom_margin[geom2]
     pos1 = d.geom_xpos[worldid, geom1]
     pos2 = d.geom_xpos[worldid, geom2]
-    xmat1 = d.geom_xmat[worldid, geom1]
-    xmat2 = d.geom_xmat[worldid, geom2]
     size1 = m.geom_rbound[geom1]
     size2 = m.geom_rbound[geom2]
-    type1 = m.geom_type[geom1]
-    type2 = m.geom_type[geom2]
 
     bound = size1 + size2 + wp.max(margin1, margin2)
     dif = pos2 - pos1
@@ -493,10 +493,12 @@ def nxn_broadphase(m: Model, d: Data):
       bounds_filter = dist_sq <= bound * bound
     elif size1 == 0.0:
       # geom1 is a plane
+      xmat1 = d.geom_xmat[worldid, geom1]
       dist = wp.dot(dif, wp.vec3(xmat1[0, 2], xmat1[1, 2], xmat1[2, 2]))
       bounds_filter = dist <= bound
     else:
       # geom2 is a plane
+      xmat2 = d.geom_xmat[worldid, geom2]
       dist = wp.dot(-dif, wp.vec3(xmat2[0, 2], xmat2[1, 2], xmat2[2, 2]))
       bounds_filter = dist <= bound
 
@@ -508,19 +510,6 @@ def nxn_broadphase(m: Model, d: Data):
   wp.launch(
     _nxn_broadphase, dim=(d.nworld, m.ngeom * (m.ngeom - 1) // 2), inputs=[m, d]
   )
-
-
-###########################################################################################3
-
-
-def broadphase(m: Model, d: Data):
-  # broadphase collision
-
-  # TODO(team): determine ngeom to switch from n^2 to sap
-  if m.ngeom <= 100:
-    nxn_broadphase(m, d)
-  else:
-    broadphase_sweep_and_prune(m, d)
 
 
 def get_contact_solver_params(m: Model, d: Data):
@@ -544,8 +533,11 @@ def collision(m: Model, d: Data):
   d.ncollision.zero_()
   d.ncon.zero_()
 
-  # TODO(team): should we limit per-world contact nubmers?
-  broadphase(m, d)
+  # TODO(team): determine ngeom to switch from n^2 to sap
+  if m.ngeom <= 100:
+    nxn_broadphase(m, d)
+  else:
+    sap_broadphase(m, d)
 
   # TODO(team): we should reject far-away contacts in the narrowphase instead of constraint
   #             partitioning because we can move some pressure of the atomics

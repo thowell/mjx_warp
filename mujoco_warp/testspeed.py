@@ -19,6 +19,7 @@ import inspect
 from typing import Sequence
 
 import mujoco
+import numpy as np
 import warp as wp
 from absl import app
 from absl import flags
@@ -28,7 +29,7 @@ import mujoco_warp as mjwarp
 
 _FUNCTION = flags.DEFINE_enum(
   "function",
-  "kinematics",
+  "step",
   [n for n, _ in inspect.getmembers(mjwarp, inspect.isfunction)],
   "the function to run",
 )
@@ -62,6 +63,9 @@ _CLEAR_KERNEL_CACHE = flags.DEFINE_bool(
   "clear_kernel_cache", False, "Clear kernel cache (to calculate full JIT time)"
 )
 _EVENT_TRACE = flags.DEFINE_bool("event_trace", False, "Provide a full event trace")
+_MEASURE_ALLOC = flags.DEFINE_bool(
+  "measure_alloc", False, "Measure how much of nconmax, njmax is used."
+)
 
 
 def _main(argv: Sequence[str]):
@@ -93,9 +97,10 @@ def _main(argv: Sequence[str]):
   print(
     f"Model nbody: {m.nbody} nv: {m.nv} ngeom: {m.ngeom} is_sparse: {_IS_SPARSE.value} solver: {_SOLVER.value}"
   )
+  print(f"Params nconmax: {_NCONMAX.value} njmax: {_NJMAX.value}")
   print(f"Data ncon: {d.ncon} nefc: {d.nefc} keyframe: {_KEYFRAME.value}")
   print(f"Rolling out {_NSTEP.value} steps at dt = {m.opt.timestep:.3f}...")
-  jit_time, run_time, trace, steps = mjwarp.benchmark(
+  jit_time, run_time, trace, steps, ncon, nefc = mjwarp.benchmark(
     mjwarp.__dict__[_FUNCTION.value],
     m,
     d,
@@ -107,6 +112,7 @@ def _main(argv: Sequence[str]):
     _NCONMAX.value,
     _NJMAX.value,
     _EVENT_TRACE.value,
+    _MEASURE_ALLOC.value,
   )
 
   name = argv[0]
@@ -136,6 +142,38 @@ Summary for {_BATCH_SIZE.value} parallel rollouts
           _print_trace(sub_trace, indent + 1)
 
       _print_trace(trace, 0)
+    if ncon and nefc:
+      num_buckets = 10
+      idx = 0
+      ncon_matrix, nefc_matrix = [], []
+      for i in range(num_buckets):
+        size = _NSTEP.value // num_buckets + (i < (_NSTEP.value % num_buckets))
+        ncon_arr = np.array(ncon[idx : idx + size])
+        nefc_arr = np.array(nefc[idx : idx + size])
+        ncon_matrix.append(
+          [np.mean(ncon_arr), np.std(ncon_arr), np.min(ncon_arr), np.max(ncon_arr)]
+        )
+        nefc_matrix.append(
+          [np.mean(nefc_arr), np.std(nefc_arr), np.min(nefc_arr), np.max(nefc_arr)]
+        )
+        idx += size
+
+      def _print_table(matrix, headers):
+        num_cols = len(headers)
+        col_widths = [
+          max(len(f"{row[i]:g}") for row in matrix) for i in range(num_cols)
+        ]
+        col_widths = [max(col_widths[i], len(headers[i])) for i in range(num_cols)]
+
+        print("  ".join(f"{headers[i]:<{col_widths[i]}}" for i in range(num_cols)))
+        print("-" * sum(col_widths) + "--" * 3)  # Separator line
+        for row in matrix:
+          print("  ".join(f"{row[i]:{col_widths[i]}g}" for i in range(num_cols)))
+
+      print("\nncon alloc:\n")
+      _print_table(ncon_matrix, ("mean", "std", "min", "max"))
+      print("\nnefc alloc:\n")
+      _print_table(nefc_matrix, ("mean", "std", "min", "max"))
 
   elif _OUTPUT.value == "tsv":
     name = name.split("/")[-1].replace("testspeed_", "")

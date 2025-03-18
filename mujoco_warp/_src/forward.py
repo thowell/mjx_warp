@@ -510,29 +510,35 @@ def fwd_actuation(m: Model, d: Data):
 
   # TODO support stateful actuators
 
-  disable_clampctrl = m.opt.disableflags & DisableBit.CLAMPCTRL
-
   @kernel
   def _force(
     m: Model,
-    ctrl: array2df,
-    disable_clampctrl: bool,
+    d: Data,
     # outputs
     force: array2df,
   ):
-    worldid, dofid = wp.tid()
-    gain = m.actuator_gainprm[dofid, 0]
-    bias = m.actuator_biasprm[dofid, 0]
-    # TODO support gain types other than FIXED
-    c = ctrl[worldid, dofid]
-    if m.actuator_ctrllimited[dofid] and not disable_clampctrl:
-      r = m.actuator_ctrlrange[dofid]
-      c = wp.clamp(c, r[0], r[1])
-    f = gain * c + bias
-    if m.actuator_forcelimited[dofid]:
-      r = m.actuator_forcerange[dofid]
-      f = wp.clamp(f, r[0], r[1])
-    force[worldid, dofid] = f
+    worldid, uid = wp.tid()
+
+    actuator_length = d.actuator_length[worldid, uid]
+    actuator_velocity = d.actuator_velocity[worldid, uid]
+
+    gain = m.actuator_gainprm[uid, 0]
+    gain += m.actuator_gainprm[uid, 1] * actuator_length
+    gain += m.actuator_gainprm[uid, 2] * actuator_velocity
+
+    bias = m.actuator_biasprm[uid, 0]
+    bias += m.actuator_biasprm[uid, 1] * actuator_length
+    bias += m.actuator_biasprm[uid, 2] * actuator_velocity
+
+    ctrl = d.ctrl[worldid, uid]
+    disable_clampctrl = m.opt.disableflags & wp.static(DisableBit.CLAMPCTRL.value)
+    if m.actuator_ctrllimited[uid] and not disable_clampctrl:
+      r = m.actuator_ctrlrange[uid]
+      ctrl = wp.clamp(ctrl, r[0], r[1])
+    f = gain * ctrl + bias
+    if m.actuator_forcelimited[uid]:
+      r = m.actuator_forcerange[uid]
+    force[worldid, uid] = f
 
   @kernel
   def _qfrc_limited(m: Model, d: Data):
@@ -561,12 +567,7 @@ def fwd_actuation(m: Model, d: Data):
         s = wp.clamp(s, r[0], r[1])
       qfrc[worldid, vid] = s
 
-  wp.launch(
-    _force,
-    dim=[d.nworld, m.nu],
-    inputs=[m, d.ctrl, disable_clampctrl],
-    outputs=[d.actuator_force],
-  )
+  wp.launch(_force, dim=[d.nworld, m.nu], inputs=[m, d], outputs=[d.actuator_force])
 
   if m.opt.is_sparse:
     # TODO(team): sparse version
@@ -673,7 +674,7 @@ def forward(m: Model, d: Data):
   # TODO(team): sensor.sensor_acc
 
   if d.njmax == 0:
-    kernel_copy(d.qcc, d.qacc_smooth)
+    kernel_copy(d.qacc, d.qacc_smooth)
   else:
     solver.solve(m, d)
 
