@@ -277,9 +277,8 @@ class Constraint:
     hi_next_alpha: alpha for next high point          (nworld,)
     mid: loss at mid_alpha                            (nworld, 3)
     mid_alpha: midpoint between lo_alpha and hi_alpha (nworld,)
-    alpha_candidate: step sizes for linesearch        (MAX_LS_PARALLEL,)
-    cost_candidate: costs associated with step sizes  (nworld, MAX_LS_PARALLEL)
-    quad_total_candidate: quad_total for step sizes   (nworld, MAX_LS_PARALLEL, 3)
+    cost_candidate: costs associated with step sizes  (nworld, nlsp)
+    quad_total_candidate: quad_total for step sizes   (nworld, nlsp, 3)
   """
 
   worldid: wp.array(dtype=wp.int32, ndim=1)
