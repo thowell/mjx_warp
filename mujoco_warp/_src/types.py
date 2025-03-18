@@ -167,6 +167,12 @@ class SolverType(enum.IntEnum):
   CG = mujoco.mjtSolver.mjSOL_CG
   NEWTON = mujoco.mjtSolver.mjSOL_NEWTON
 
+class SensorType(enum.IntEnum):
+  """Type of sensor.
+  
+  Members:
+  """
+  pass
 
 class vec5f(wp.types.vector(length=5, dtype=wp.float32)):
   pass
