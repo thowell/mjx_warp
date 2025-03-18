@@ -15,6 +15,7 @@
 
 import warp as wp
 
+from .collision_primitive import primitive_narrowphase
 from .types import MJ_MINVAL
 from .types import Data
 from .types import DisableBit
@@ -538,14 +539,9 @@ def collision(m: Model, d: Data):
   else:
     sap_broadphase(m, d)
 
-  # XXX switch between collision functions and GJK/EPA here
-  if True:
-    from .collision_functions import narrowphase
-  else:
-    from .collision_convex import narrowphase
-
-  # TODO(team): should we limit per-world contact nubmers?
   # TODO(team): we should reject far-away contacts in the narrowphase instead of constraint
   #             partitioning because we can move some pressure of the atomics
-  narrowphase(m, d)
+  primitive_narrowphase(m, d)
+  # TODO(team) switch between collision functions and GJK/EPA here
+
   get_contact_solver_params(m, d)

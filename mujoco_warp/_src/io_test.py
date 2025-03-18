@@ -26,17 +26,43 @@ import mujoco_warp as mjwarp
 class IOTest(absltest.TestCase):
   def test_sensor(self):
     mjm = mujoco.MjModel.from_xml_string("""
-    <mujoco>
-      <worldbody>
-        <body>
-          <geom type="sphere" size=".1"/>
-          <joint name="slide" type="slide"/>
-        </body>
-      </worldbody>  
-      <sensor>
-        <jointpos joint="slide"/>                      
-      </sensor>              
-    </mujoco>
+      <mujoco>
+        <worldbody>
+          <body>
+            <geom type="sphere" size=".1"/>
+            <joint name="slide" type="slide"/>
+          </body>
+        </worldbody>   
+        <sensor>
+          <jointpos joint="slide"/>                      
+        </sensor> 
+      </mujoco>
+    """)
+
+    with self.assertRaises(NotImplementedError):
+      mjwarp.put_model(mjm)
+
+  def test_tendon(self):
+    mjm = mujoco.MjModel.from_xml_string("""
+      <mujoco>
+        <worldbody>
+          <body>          
+            <geom type="sphere" size=".1"/>
+            <site name="site0"/>
+            <joint name="slide" type="slide"/>
+            <body pos="0 0 .1">
+              <geom type="sphere" size=".1"/>
+              <site name="site1"/>
+            </body>
+          </body>
+        </worldbody>  
+        <tendon>
+          <spatial>
+            <site site="site0"/>
+            <site site="site1"/>
+          </spatial>                      
+        </tendon>              
+      </mujoco>
     """)
 
     with self.assertRaises(NotImplementedError):
