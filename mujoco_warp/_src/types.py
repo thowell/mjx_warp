@@ -17,15 +17,6 @@ import enum
 import mujoco
 import warp as wp
 
-MAX_LS_PARALLEL = 32
-
-
-class veclsf(wp.types.vector(length=MAX_LS_PARALLEL, dtype=wp.float32)):
-  pass
-
-
-vecls = veclsf
-
 MJ_MINVAL = mujoco.mjMINVAL
 MJ_MINIMP = mujoco.mjMINIMP  # minimum constraint impedance
 MJ_MAXIMP = mujoco.mjMAXIMP  # maximum constraint impedance
@@ -336,8 +327,7 @@ class Constraint:
   hi_next_alpha: wp.array(dtype=wp.float32, ndim=1)
   mid: wp.array(dtype=wp.vec3, ndim=1)
   mid_alpha: wp.array(dtype=wp.float32, ndim=1)
-  alpha_candidate: wp.array(dtype=wp.float32, ndim=1)
-  cost_candidate: wp.array(dtype=veclsf, ndim=1)
+  cost_candidate: wp.array(dtype=wp.float32, ndim=2)
   quad_total_candidate: wp.array(dtype=wp.vec3f, ndim=2)
 
 
@@ -368,6 +358,7 @@ class Model:
     actuator_moment_tileadr: tiling configuration
     actuator_moment_tilesize_nv: tiling configuration
     actuator_moment_tilesize_nu: tiling configuration
+    alpha_candidate: step size candidates for engine solver  (ls_iterations,)
     qM_fullm_i: sparse mass matrix addressing
     qM_fullm_j: sparse mass matrix addressing
     qM_mulm_i: sparse mass matrix addressing
@@ -488,6 +479,7 @@ class Model:
   actuator_moment_tileadr: wp.array(dtype=wp.int32, ndim=1)  # warp only
   actuator_moment_tilesize_nv: wp.array(dtype=wp.int32, ndim=1)  # warp only
   actuator_moment_tilesize_nu: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  alpha_candidate: wp.array(dtype=wp.float32, ndim=1)  # warp only
   qM_fullm_i: wp.array(dtype=wp.int32, ndim=1)  # warp only
   qM_fullm_j: wp.array(dtype=wp.int32, ndim=1)  # warp only
   qM_mulm_i: wp.array(dtype=wp.int32, ndim=1)  # warp only

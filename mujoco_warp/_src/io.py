@@ -209,6 +209,9 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.actuator_moment_tilesize_nu = wp.array(
     actuator_moment_tilesize_nu, dtype=wp.int32, ndim=1, device="cpu"
   )
+  m.alpha_candidate = wp.array(
+    np.array(np.linspace(0.0, 1.0, m.opt.ls_iterations)), dtype=wp.float32
+  )
   m.body_dofadr = wp.array(mjm.body_dofadr, dtype=wp.int32, ndim=1)
   m.body_dofnum = wp.array(mjm.body_dofnum, dtype=wp.int32, ndim=1)
   m.body_jntadr = wp.array(mjm.body_jntadr, dtype=wp.int32, ndim=1)
@@ -312,7 +315,9 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   return m
 
 
-def _constraint(nv: int, nworld: int, njmax: int) -> types.Constraint:
+def _constraint(
+  nv: int, nworld: int, njmax: int, ls_iterations: int
+) -> types.Constraint:
   efc = types.Constraint()
 
   efc.J = wp.zeros((njmax, nv), dtype=wp.float32)
@@ -362,11 +367,8 @@ def _constraint(nv: int, nworld: int, njmax: int) -> types.Constraint:
   efc.mid = wp.empty(shape=(nworld,), dtype=wp.vec3)
   efc.mid_alpha = wp.empty(shape=(nworld,), dtype=wp.float32)
 
-  efc.alpha_candidate = wp.empty(shape=(types.MAX_LS_PARALLEL), dtype=wp.float32)
-  efc.cost_candidate = wp.empty(shape=(nworld), dtype=types.veclsf)
-  efc.quad_total_candidate = wp.empty(
-    shape=(nworld, types.MAX_LS_PARALLEL), dtype=wp.vec3f
-  )
+  efc.cost_candidate = wp.empty(shape=(nworld, ls_iterations), dtype=wp.float32)
+  efc.quad_total_candidate = wp.empty(shape=(nworld, ls_iterations), dtype=wp.vec3f)
 
   return efc
 
@@ -445,7 +447,7 @@ def make_data(
   d.contact.geom = wp.zeros((nconmax,), dtype=wp.vec2i)
   d.contact.efc_address = wp.zeros((nconmax,), dtype=wp.int32)
   d.contact.worldid = wp.zeros((nconmax,), dtype=wp.int32)
-  d.efc = _constraint(mjm.nv, d.nworld, d.njmax)
+  d.efc = _constraint(mjm.nv, d.nworld, d.njmax, mjm.opt.ls_iterations)
   d.qfrc_passive = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qfrc_spring = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qfrc_damper = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
@@ -667,7 +669,7 @@ def put_data(
   d.rne_cacc = wp.zeros(shape=(d.nworld, mjm.nbody), dtype=wp.spatial_vector)
   d.rne_cfrc = wp.zeros(shape=(d.nworld, mjm.nbody), dtype=wp.spatial_vector)
 
-  d.efc = _constraint(mjm.nv, d.nworld, d.njmax)
+  d.efc = _constraint(mjm.nv, d.nworld, d.njmax, mjm.opt.ls_iterations)
   d.efc.J = wp.array(efc_J_fill, dtype=wp.float32, ndim=2)
   d.efc.D = wp.array(efc_D_fill, dtype=wp.float32, ndim=1)
   d.efc.pos = wp.array(efc_pos_fill, dtype=wp.float32, ndim=1)
