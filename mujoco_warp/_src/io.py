@@ -22,6 +22,9 @@ from . import types
 
 
 def put_model(mjm: mujoco.MjModel) -> types.Model:
+  if mjm.ntendon > 0:
+    raise NotImplementedError("Tendons are unsupported.")
+  
   # check options
   if mjm.opt.integrator not in set(types.IntegratorType):
     raise NotImplementedError(f"Integrator: {mjm.opt.integrator} is unsupported.")
@@ -31,6 +34,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
 
   if mjm.opt.solver not in set(types.SolverType):
     raise NotImplementedError(f"Solver: {mjm.opt.solver} is unsupported.")
+  
 
   m = types.Model()
   m.nq = mjm.nq
