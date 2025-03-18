@@ -22,6 +22,9 @@ from . import types
 
 
 def put_model(mjm: mujoco.MjModel) -> types.Model:
+  if mjm.nsensor > 0:
+    raise NotImplementedError("Sensors are unsupported.")
+
   if mjm.ntendon > 0:
     raise NotImplementedError("Tendons are unsupported.")
 

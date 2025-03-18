@@ -182,6 +182,15 @@ class SolverType(enum.IntEnum):
   # unsupported: PGS
 
 
+class SensorType(enum.IntEnum):
+  """Type of sensor.
+
+  Members:
+  """
+
+  pass
+
+
 class vec5f(wp.types.vector(length=5, dtype=wp.float32)):
   pass
 
