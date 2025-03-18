@@ -5,7 +5,7 @@ MJWarp is a GPU-optimized version of the [MuJoCo](https://github.com/google-deep
 > [!WARNING]
 > MJWarp is in its Alpha stage, with many features still missing and limited testing so far.
 
-MJWarp uses the [NVIDIA Warp](https://github.com/NVIDIA/warp) python framework to circumvent many of the [sharp bits](https://mujoco.readthedocs.io/en/stable/mjx.html#mjx-the-sharp-bits) in [MuJoCo MJX](https://mujoco.readthedocs.io/en/stable/mjx.html#). Once MJWarp exits Alpha, it will be integrated into both MJX and the upcoming Newton initiative.
+MJWarp uses [NVIDIA Warp](https://github.com/NVIDIA/warp) to circumvent many of the [sharp bits](https://mujoco.readthedocs.io/en/stable/mjx.html#mjx-the-sharp-bits) in [MuJoCo MJX](https://mujoco.readthedocs.io/en/stable/mjx.html#). Once MJWarp exits Alpha, it will be integrated into both MJX and the upcoming Newton initiative.
 
 MJWarp is maintained by [Google Deepmind](https://deepmind.google/) and [NVIDIA](https://www.nvidia.com/).
 
