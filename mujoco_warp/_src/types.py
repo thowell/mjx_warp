@@ -138,6 +138,19 @@ class ConeType(enum.IntEnum):
   # unsupported: ELLIPTIC
 
 
+class IntegratorType(enum.IntEnum):
+  """Integrator mode.
+
+  Members:
+    EULER: semi-implicit Euler
+    IMPLICITFAST: implicit in velocity, no rne derivative
+  """
+
+  EULER = mujoco.mjtIntegrator.mjINT_EULER
+  IMPLICITFAST = mujoco.mjtIntegrator.mjINT_IMPLICITFAST
+  # unsupported: RK4, IMPLICIT
+
+
 class GeomType(enum.IntEnum):
   """Type of geometry.
 
@@ -166,6 +179,16 @@ class SolverType(enum.IntEnum):
 
   CG = mujoco.mjtSolver.mjSOL_CG
   NEWTON = mujoco.mjtSolver.mjSOL_NEWTON
+  # unsupported: PGS
+
+
+class SensorType(enum.IntEnum):
+  """Type of sensor.
+
+  Members:
+  """
+
+  pass
 
 
 class EqType(enum.IntEnum):
