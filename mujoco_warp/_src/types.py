@@ -232,6 +232,7 @@ class Option:
     ls_iterations: maximum number of CG/Newton linesearch iterations
     disableflags: bit flags for disabling standard features
     is_sparse: whether to use sparse representations
+    ls_parallel: evaluate engine solver step sizes in parallel
   """
 
   timestep: float
@@ -246,6 +247,7 @@ class Option:
   ls_iterations: int
   disableflags: int
   is_sparse: bool
+  ls_parallel: bool
 
 
 @wp.struct
@@ -308,6 +310,8 @@ class Constraint:
     hi_next_alpha: alpha for next high point          (nworld,)
     mid: loss at mid_alpha                            (nworld, 3)
     mid_alpha: midpoint between lo_alpha and hi_alpha (nworld,)
+    cost_candidate: costs associated with step sizes  (nworld, nlsp)
+    quad_total_candidate: quad_total for step sizes   (nworld, nlsp, 3)
   """
 
   worldid: wp.array(dtype=wp.int32, ndim=1)
@@ -355,6 +359,8 @@ class Constraint:
   hi_next_alpha: wp.array(dtype=wp.float32, ndim=1)
   mid: wp.array(dtype=wp.vec3, ndim=1)
   mid_alpha: wp.array(dtype=wp.float32, ndim=1)
+  cost_candidate: wp.array(dtype=wp.float32, ndim=2)
+  quad_total_candidate: wp.array(dtype=wp.vec3f, ndim=2)
 
 
 @wp.struct
@@ -373,6 +379,7 @@ class Model:
     nexclude: number of excluded geom pairs                  ()
     nmocap: number of mocap bodies                           ()
     nM: number of non-zeros in sparse inertia matrix         ()
+    nlsp: number of step sizes for parallel linsearch        ()
     opt: physics options
     stat: model statistics
     qpos0: qpos values at default pose                       (nq,)
@@ -384,6 +391,7 @@ class Model:
     actuator_moment_tileadr: tiling configuration
     actuator_moment_tilesize_nv: tiling configuration
     actuator_moment_tilesize_nu: tiling configuration
+    alpha_candidate: step size candidates for engine solver  (nlsp,)
     qM_fullm_i: sparse mass matrix addressing
     qM_fullm_j: sparse mass matrix addressing
     qM_mulm_i: sparse mass matrix addressing
@@ -493,6 +501,7 @@ class Model:
   nexclude: int
   nmocap: int
   nM: int
+  nlsp: int  # warp only
   opt: Option
   stat: Statistic
   qpos0: wp.array(dtype=wp.float32, ndim=1)
@@ -504,6 +513,7 @@ class Model:
   actuator_moment_tileadr: wp.array(dtype=wp.int32, ndim=1)  # warp only
   actuator_moment_tilesize_nv: wp.array(dtype=wp.int32, ndim=1)  # warp only
   actuator_moment_tilesize_nu: wp.array(dtype=wp.int32, ndim=1)  # warp only
+  alpha_candidate: wp.array(dtype=wp.float32, ndim=1)  # warp only
   qM_fullm_i: wp.array(dtype=wp.int32, ndim=1)  # warp only
   qM_fullm_j: wp.array(dtype=wp.int32, ndim=1)  # warp only
   qM_mulm_i: wp.array(dtype=wp.int32, ndim=1)  # warp only

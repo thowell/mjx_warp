@@ -53,6 +53,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.nsite = mjm.nsite
   m.nmocap = mjm.nmocap
   m.nM = mjm.nM
+  m.nlsp = mjm.opt.ls_iterations  # TODO(team): how to set nlsp?
   m.nexclude = mjm.nexclude
   m.opt.timestep = mjm.opt.timestep
   m.opt.tolerance = mjm.opt.tolerance
@@ -66,6 +67,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.opt.disableflags = mjm.opt.disableflags
   m.opt.impratio = wp.float32(mjm.opt.impratio)
   m.opt.is_sparse = support.is_sparse(mjm)
+  m.opt.ls_parallel = False
   m.stat.meaninertia = mjm.stat.meaninertia
 
   m.qpos0 = wp.array(mjm.qpos0, dtype=wp.float32, ndim=1)
@@ -228,6 +230,7 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   m.actuator_moment_tilesize_nu = wp.array(
     actuator_moment_tilesize_nu, dtype=wp.int32, ndim=1, device="cpu"
   )
+  m.alpha_candidate = wp.array(np.linspace(0.0, 1.0, m.nlsp), dtype=wp.float32)
   m.body_dofadr = wp.array(mjm.body_dofadr, dtype=wp.int32, ndim=1)
   m.body_dofnum = wp.array(mjm.body_dofnum, dtype=wp.int32, ndim=1)
   m.body_jntadr = wp.array(mjm.body_jntadr, dtype=wp.int32, ndim=1)
@@ -331,10 +334,10 @@ def put_model(mjm: mujoco.MjModel) -> types.Model:
   return m
 
 
-def _constraint(nv: int, nworld: int, njmax: int) -> types.Constraint:
+def _constraint(mjm: mujoco.MjModel, nworld: int, njmax: int) -> types.Constraint:
   efc = types.Constraint()
 
-  efc.J = wp.zeros((njmax, nv), dtype=wp.float32)
+  efc.J = wp.zeros((njmax, mjm.nv), dtype=wp.float32)
   efc.D = wp.zeros((njmax,), dtype=wp.float32)
   efc.pos = wp.zeros((njmax,), dtype=wp.float32)
   efc.aref = wp.zeros((njmax,), dtype=wp.float32)
@@ -343,11 +346,11 @@ def _constraint(nv: int, nworld: int, njmax: int) -> types.Constraint:
   efc.worldid = wp.zeros((njmax,), dtype=wp.int32)
 
   efc.Jaref = wp.empty(shape=(njmax,), dtype=wp.float32)
-  efc.Ma = wp.empty(shape=(nworld, nv), dtype=wp.float32)
-  efc.grad = wp.empty(shape=(nworld, nv), dtype=wp.float32)
+  efc.Ma = wp.empty(shape=(nworld, mjm.nv), dtype=wp.float32)
+  efc.grad = wp.empty(shape=(nworld, mjm.nv), dtype=wp.float32)
   efc.grad_dot = wp.empty(shape=(nworld,), dtype=wp.float32)
-  efc.Mgrad = wp.empty(shape=(nworld, nv), dtype=wp.float32)
-  efc.search = wp.empty(shape=(nworld, nv), dtype=wp.float32)
+  efc.Mgrad = wp.empty(shape=(nworld, mjm.nv), dtype=wp.float32)
+  efc.search = wp.empty(shape=(nworld, mjm.nv), dtype=wp.float32)
   efc.search_dot = wp.empty(shape=(nworld,), dtype=wp.float32)
   efc.gauss = wp.empty(shape=(nworld,), dtype=wp.float32)
   efc.cost = wp.empty(shape=(nworld,), dtype=wp.float32)
@@ -355,14 +358,14 @@ def _constraint(nv: int, nworld: int, njmax: int) -> types.Constraint:
   efc.solver_niter = wp.empty(shape=(nworld,), dtype=wp.int32)
   efc.active = wp.empty(shape=(njmax,), dtype=wp.int32)
   efc.gtol = wp.empty(shape=(nworld,), dtype=wp.float32)
-  efc.mv = wp.empty(shape=(nworld, nv), dtype=wp.float32)
+  efc.mv = wp.empty(shape=(nworld, mjm.nv), dtype=wp.float32)
   efc.jv = wp.empty(shape=(njmax,), dtype=wp.float32)
   efc.quad = wp.empty(shape=(njmax,), dtype=wp.vec3f)
   efc.quad_gauss = wp.empty(shape=(nworld,), dtype=wp.vec3f)
-  efc.h = wp.empty(shape=(nworld, nv, nv), dtype=wp.float32)
+  efc.h = wp.empty(shape=(nworld, mjm.nv, mjm.nv), dtype=wp.float32)
   efc.alpha = wp.empty(shape=(nworld,), dtype=wp.float32)
-  efc.prev_grad = wp.empty(shape=(nworld, nv), dtype=wp.float32)
-  efc.prev_Mgrad = wp.empty(shape=(nworld, nv), dtype=wp.float32)
+  efc.prev_grad = wp.empty(shape=(nworld, mjm.nv), dtype=wp.float32)
+  efc.prev_Mgrad = wp.empty(shape=(nworld, mjm.nv), dtype=wp.float32)
   efc.beta = wp.empty(shape=(nworld,), dtype=wp.float32)
   efc.beta_num = wp.empty(shape=(nworld,), dtype=wp.float32)
   efc.beta_den = wp.empty(shape=(nworld,), dtype=wp.float32)
@@ -380,6 +383,11 @@ def _constraint(nv: int, nworld: int, njmax: int) -> types.Constraint:
   efc.hi_next_alpha = wp.empty(shape=(nworld,), dtype=wp.float32)
   efc.mid = wp.empty(shape=(nworld,), dtype=wp.vec3)
   efc.mid_alpha = wp.empty(shape=(nworld,), dtype=wp.float32)
+
+  efc.cost_candidate = wp.empty(shape=(nworld, mjm.opt.ls_iterations), dtype=wp.float32)
+  efc.quad_total_candidate = wp.empty(
+    shape=(nworld, mjm.opt.ls_iterations), dtype=wp.vec3f
+  )
 
   return efc
 
@@ -458,7 +466,7 @@ def make_data(
   d.contact.geom = wp.zeros((nconmax,), dtype=wp.vec2i)
   d.contact.efc_address = wp.zeros((nconmax,), dtype=wp.int32)
   d.contact.worldid = wp.zeros((nconmax,), dtype=wp.int32)
-  d.efc = _constraint(mjm.nv, d.nworld, d.njmax)
+  d.efc = _constraint(mjm, d.nworld, d.njmax)
   d.qfrc_passive = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qfrc_spring = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
   d.qfrc_damper = wp.zeros((nworld, mjm.nv), dtype=wp.float32)
@@ -680,7 +688,7 @@ def put_data(
   d.rne_cacc = wp.zeros(shape=(d.nworld, mjm.nbody), dtype=wp.spatial_vector)
   d.rne_cfrc = wp.zeros(shape=(d.nworld, mjm.nbody), dtype=wp.spatial_vector)
 
-  d.efc = _constraint(mjm.nv, d.nworld, d.njmax)
+  d.efc = _constraint(mjm, d.nworld, d.njmax)
   d.efc.J = wp.array(efc_J_fill, dtype=wp.float32, ndim=2)
   d.efc.D = wp.array(efc_D_fill, dtype=wp.float32, ndim=1)
   d.efc.pos = wp.array(efc_pos_fill, dtype=wp.float32, ndim=1)

@@ -46,6 +46,7 @@ _ITERATIONS = flags.DEFINE_integer("iterations", 1, "number of solver iterations
 _LS_ITERATIONS = flags.DEFINE_integer(
   "ls_iterations", 4, "number of linesearch iterations"
 )
+_LS_PARALLEL = flags.DEFINE_bool("ls_parallel", False, "solve with parallel linesearch")
 _IS_SPARSE = flags.DEFINE_bool(
   "is_sparse", False, "if model should create sparse mass matrices"
 )
@@ -99,6 +100,7 @@ def _main(argv: Sequence[str]):
   )
   print(f"Params nconmax: {_NCONMAX.value} njmax: {_NJMAX.value}")
   print(f"Data ncon: {d.ncon} nefc: {d.nefc} keyframe: {_KEYFRAME.value}")
+  print(f"Linesearch: {'parallel' if _LS_PARALLEL.value else 'iterative'}")
   print(f"Rolling out {_NSTEP.value} steps at dt = {m.opt.timestep:.3f}...")
   jit_time, run_time, trace, steps, ncon, nefc = mjwarp.benchmark(
     mjwarp.__dict__[_FUNCTION.value],
@@ -109,6 +111,7 @@ def _main(argv: Sequence[str]):
     _SOLVER.value,
     _ITERATIONS.value,
     _LS_ITERATIONS.value,
+    _LS_PARALLEL.value,
     _NCONMAX.value,
     _NJMAX.value,
     _EVENT_TRACE.value,
