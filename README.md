@@ -46,7 +46,7 @@ The following features are implemented:
 | Category          | Feature                            |
 | ----------------- | ---------------------------------- |
 | Dynamics          | Forward only                       |
-| Transmission      | `JOINT`                            |
+| Transmission      | `JOINT`, `JOINTINPARENT`           |
 | Actuator Dynamics | `NONE`                             |
 | Actuator Gain     | `FIXED`, `AFFINE`                  |
 | Actuator Bias     | `NONE`, `AFFINE`                   |
