@@ -23,6 +23,9 @@ from . import types
 
 def put_model(mjm: mujoco.MjModel) -> types.Model:
   m = types.Model()
+
+  # TODO(team): check supported constraints
+  
   m.nq = mjm.nq
   m.nv = mjm.nv
   m.na = mjm.na

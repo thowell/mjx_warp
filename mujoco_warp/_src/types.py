@@ -105,6 +105,20 @@ class BiasType(enum.IntEnum):
   # unsupported: MUSCLE, USER
 
 
+class ConstraintType(enum.IntEnum):
+  """Type of constraint.
+
+  Members:
+    LIMIT_JOINT: joint limit
+    CONTACT_PYRAMIDAL: frictional contact, pyramidal friction cone
+  """
+
+  LIMIT_JOINT = mujoco.mjtConstraint.mjCNSTR_LIMIT_JOINT
+  CONTACT_PYRAMIDAL = mujoco.mjtConstraint.mjCNSTR_CONTACT_PYRAMIDAL
+  # unsupported: EQUALITY, FRICTION_DOF, FRICTION_TENDON, LIMIT_TENDON,
+  # CONTACT_FRICTIONLESS, CONTACT_ELLIPTIC
+
+
 class JointType(enum.IntEnum):
   """Type of degree of freedom.
 
