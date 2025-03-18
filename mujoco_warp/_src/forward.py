@@ -674,7 +674,7 @@ def forward(m: Model, d: Data):
   # TODO(team): sensor.sensor_acc
 
   if d.njmax == 0:
-    kernel_copy(d.qcc, d.qacc_smooth)
+    kernel_copy(d.qacc, d.qacc_smooth)
   else:
     solver.solve(m, d)
 
