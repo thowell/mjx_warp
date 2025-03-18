@@ -143,7 +143,7 @@ class IntegratorType(enum.IntEnum):
 
   Members:
     EULER: semi-implicit Euler
-    IMPLICIT_FAST: implicit in velocity, no rne derivative
+    IMPLICITFAST: implicit in velocity, no rne derivative
   """
 
   EULER = mujoco.mjtIntegrator.mjINT_EULER
